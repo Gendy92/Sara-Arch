@@ -64,11 +64,11 @@ const App = {
 
   pageContent(screen) {
     if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
-    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ عميل جديد</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ مشروع جديد</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><button class="btn btn-primary" onclick="Crud.addTx()">+ معاملة جديدة</button></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ موظف جديد</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ مستخدم جديد</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><button class="btn btn-primary" onclick="Crud.addTx()">+ إضافة معاملات</button></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     return '';
   },
 
@@ -191,6 +191,49 @@ const App = {
   fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; }
 };
 
+// ─── COLUMN DEFINITIONS ───
+const COLS = {
+  clients: [
+    { key: 'name', label: 'اسم العميل *', req: true },
+    { key: 'phone', label: 'الهاتف' },
+    { key: 'email', label: 'البريد' },
+    { key: 'address', label: 'العنوان' },
+    { key: 'notes', label: 'ملاحظات' }
+  ],
+  projects: [
+    { key: 'name', label: 'اسم المشروع *', req: true },
+    { key: 'client_name', label: 'اسم العميل' },
+    { key: 'value', label: 'القيمة', type: 'number' },
+    { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
+    { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
+    { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+    { key: 'notes', label: 'ملاحظات' }
+  ],
+  employees: [
+    { key: 'name', label: 'اسم الموظف *', req: true },
+    { key: 'job_title', label: 'الوظيفة' },
+    { key: 'salary', label: 'الراتب', type: 'number' },
+    { key: 'phone', label: 'الهاتف' },
+    { key: 'email', label: 'البريد' },
+    { key: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
+    { key: 'notes', label: 'ملاحظات' }
+  ],
+  transactions: [
+    { key: 'type', label: 'النوع *', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
+    { key: 'amount', label: 'المبلغ *', type: 'number', req: true },
+    { key: 'party_name', label: 'الجهة / الاسم' },
+    { key: 'project_name', label: 'المشروع' },
+    { key: 'date', label: 'التاريخ', type: 'date' },
+    { key: 'description', label: 'الوصف' }
+  ],
+  users: [
+    { key: 'username', label: 'اسم المستخدم *', req: true },
+    { key: 'name', label: 'الاسم الكامل *', req: true },
+    { key: 'password', label: 'كلمة المرور *', req: true },
+    { key: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
+  ]
+};
+
 // ─── CRUD ───
 const Crud = {
   async save(table, data, id) {
@@ -198,25 +241,38 @@ const Crud = {
     else { return API.request(table, 'POST', data); }
   },
 
+  async bulkSave(table, rows) {
+    if (!rows || rows.length === 0) throw new Error('لا يوجد بيانات');
+    const clean = rows.map(r => {
+      const c = {};
+      for (const [k, v] of Object.entries(r)) {
+        if (v !== null && v !== '') c[k] = v;
+      }
+      return c;
+    }).filter(r => Object.keys(r).length > 0);
+    if (clean.length === 0) throw new Error('لا يوجد بيانات صالحة');
+    return API.request(table, 'POST', clean);
+  },
+
   async softDelete(table, id) {
     await API.request(table, 'PATCH', { deleted_at: new Date().toISOString() }, '?id=eq.' + id);
   },
 
-  // Clients
+  // Clients (bulk spreadsheet)
   addClient() {
-    UI.openModal('عميل جديد', `<form>${UI.form([{name:'name',label:'اسم العميل',req:true},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'address',label:'العنوان'},{name:'notes',label:'ملاحظات',type:'textarea'}])}</form>`, async (form) => {
-      const fd = new FormData(form);
-      await this.save('clients', {name:fd.get('name'),phone:fd.get('phone')||null,email:fd.get('email')||null,address:fd.get('address')||null,notes:fd.get('notes')||null});
-      UI.toast('تم الحفظ'); App.loadClients();
+    Spreadsheet.open('إضافة عملاء', COLS.clients, async (rows) => {
+      await this.bulkSave('clients', rows);
+      UI.toast(`تم حفظ ${rows.length} عميل`);
+      App.loadClients();
     });
   },
 
   async editClient(id) {
     const rows = await API.request('clients', 'GET', null, '?select=*&id=eq.' + id);
     if (!rows.length) return;
-    UI.openModal('تعديل عميل', `<form>${UI.form([{name:'name',label:'اسم العميل',req:true},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'address',label:'العنوان'},{name:'notes',label:'ملاحظات',type:'textarea'}], rows[0])}</form>`, async (form) => {
+    UI.openModal('تعديل عميل', `<form>${UI.form(COLS.clients, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('clients', {name:fd.get('name'),phone:fd.get('phone')||null,email:fd.get('email')||null,address:fd.get('address')||null,notes:fd.get('notes')||null}, id);
+      await this.save('clients', { name: fd.get('name'), phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadClients();
     });
   },
@@ -225,21 +281,21 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا العميل؟', async () => { await this.softDelete('clients', id); UI.toast('تم الحذف'); App.loadClients(); });
   },
 
-  // Projects
+  // Projects (bulk spreadsheet)
   addProject() {
-    UI.openModal('مشروع جديد', `<form>${UI.form([{name:'name',label:'اسم المشروع',req:true},{name:'client_name',label:'اسم العميل'},{name:'value',label:'القيمة',type:'number',default:0},{name:'status',label:'الحالة',type:'select',opts:[{v:'active',l:'نشط'},{v:'completed',l:'منتهي'},{v:'on_hold',l:'معلق'},{v:'cancelled',l:'ملغي'}]},{name:'start_date',label:'تاريخ البدء',type:'date'},{name:'end_date',label:'تاريخ الانتهاء',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}])}</form>`, async (form) => {
-      const fd = new FormData(form);
-      await this.save('projects', {name:fd.get('name'),client_name:fd.get('client_name')||null,value:+fd.get('value')||0,status:fd.get('status')||'active',start_date:fd.get('start_date')||null,end_date:fd.get('end_date')||null,notes:fd.get('notes')||null});
-      UI.toast('تم الحفظ'); App.loadProjects();
+    Spreadsheet.open('إضافة مشاريع', COLS.projects, async (rows) => {
+      await this.bulkSave('projects', rows);
+      UI.toast(`تم حفظ ${rows.length} مشروع`);
+      App.loadProjects();
     });
   },
 
   async editProject(id) {
     const rows = await API.request('projects', 'GET', null, '?select=*&id=eq.' + id);
     if (!rows.length) return;
-    UI.openModal('تعديل مشروع', `<form>${UI.form([{name:'name',label:'اسم المشروع',req:true},{name:'client_name',label:'اسم العميل'},{name:'value',label:'القيمة',type:'number'},{name:'status',label:'الحالة',type:'select',opts:[{v:'active',l:'نشط'},{v:'completed',l:'منتهي'},{v:'on_hold',l:'معلق'},{v:'cancelled',l:'ملغي'}]},{name:'start_date',label:'تاريخ البدء',type:'date'},{name:'end_date',label:'تاريخ الانتهاء',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}], rows[0])}</form>`, async (form) => {
+    UI.openModal('تعديل مشروع', `<form>${UI.form(COLS.projects, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('projects', {name:fd.get('name'),client_name:fd.get('client_name')||null,value:+fd.get('value')||0,status:fd.get('status')||'active',start_date:fd.get('start_date')||null,end_date:fd.get('end_date')||null,notes:fd.get('notes')||null}, id);
+      await this.save('projects', { name: fd.get('name'), client_name: fd.get('client_name') || null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadProjects();
     });
   },
@@ -248,21 +304,21 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
   },
 
-  // Employees
+  // Employees (bulk spreadsheet)
   addEmp() {
-    UI.openModal('موظف جديد', `<form>${UI.form([{name:'name',label:'اسم الموظف',req:true},{name:'job_title',label:'الوظيفة'},{name:'salary',label:'الراتب',type:'number',default:0},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'hire_date',label:'تاريخ التعيين',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}])}</form>`, async (form) => {
-      const fd = new FormData(form);
-      await this.save('employees', {name:fd.get('name'),job_title:fd.get('job_title')||null,salary:+fd.get('salary')||0,phone:fd.get('phone')||null,email:fd.get('email')||null,hire_date:fd.get('hire_date')||null,notes:fd.get('notes')||null});
-      UI.toast('تم الحفظ'); App.loadEmployees();
+    Spreadsheet.open('إضافة موظفين', COLS.employees, async (rows) => {
+      await this.bulkSave('employees', rows);
+      UI.toast(`تم حفظ ${rows.length} موظف`);
+      App.loadEmployees();
     });
   },
 
   async editEmp(id) {
     const rows = await API.request('employees', 'GET', null, '?select=*&id=eq.' + id);
     if (!rows.length) return;
-    UI.openModal('تعديل موظف', `<form>${UI.form([{name:'name',label:'اسم الموظف',req:true},{name:'job_title',label:'الوظيفة'},{name:'salary',label:'الراتب',type:'number'},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'hire_date',label:'تاريخ التعيين',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}], rows[0])}</form>`, async (form) => {
+    UI.openModal('تعديل موظف', `<form>${UI.form(COLS.employees, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('employees', {name:fd.get('name'),job_title:fd.get('job_title')||null,salary:+fd.get('salary')||0,phone:fd.get('phone')||null,email:fd.get('email')||null,hire_date:fd.get('hire_date')||null,notes:fd.get('notes')||null}, id);
+      await this.save('employees', { name: fd.get('name'), job_title: fd.get('job_title') || null, salary: +fd.get('salary') || 0, phone: fd.get('phone') || null, email: fd.get('email') || null, hire_date: fd.get('hire_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadEmployees();
     });
   },
@@ -271,21 +327,22 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
   },
 
-  // Transactions
+  // Transactions (bulk spreadsheet)
   addTx() {
-    UI.openModal('معاملة جديدة', `<form>${UI.form([{name:'type',label:'النوع',type:'select',req:true,opts:[{v:'income',l:'إيراد'},{v:'expense',l:'مصروف'},{v:'deposit',l:'عربون'},{v:'supervision',l:'إشراف'},{v:'office_expense',l:'مصروف مكتبي'}]},{name:'amount',label:'المبلغ',type:'number',req:true,default:0},{name:'party_name',label:'الجهة / الاسم'},{name:'project_name',label:'المشروع'},{name:'date',label:'التاريخ',type:'date'},{name:'description',label:'الوصف',type:'textarea'}])}</form>`, async (form) => {
-      const fd = new FormData(form);
-      await this.save('transactions', {type:fd.get('type'),amount:+fd.get('amount')||0,party_name:fd.get('party_name')||null,project_name:fd.get('project_name')||null,date:fd.get('date')||new Date().toISOString().slice(0,10),description:fd.get('description')||null});
-      UI.toast('تم الحفظ'); App.loadTransactions();
+    Spreadsheet.open('إضافة معاملات', COLS.transactions, async (rows) => {
+      const enriched = rows.map(r => ({ ...r, date: r.date || new Date().toISOString().slice(0, 10) }));
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} معاملة`);
+      App.loadTransactions();
     });
   },
 
   async editTx(id) {
     const rows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id);
     if (!rows.length) return;
-    UI.openModal('تعديل معاملة', `<form>${UI.form([{name:'type',label:'النوع',type:'select',req:true,opts:[{v:'income',l:'إيراد'},{v:'expense',l:'مصروف'},{v:'deposit',l:'عربون'},{v:'supervision',l:'إشراف'},{v:'office_expense',l:'مصروف مكتبي'}]},{name:'amount',label:'المبلغ',type:'number',req:true},{name:'party_name',label:'الجهة / الاسم'},{name:'project_name',label:'المشروع'},{name:'date',label:'التاريخ',type:'date'},{name:'description',label:'الوصف',type:'textarea'}], rows[0])}</form>`, async (form) => {
+    UI.openModal('تعديل معاملة', `<form>${UI.form(COLS.transactions, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('transactions', {type:fd.get('type'),amount:+fd.get('amount')||0,party_name:fd.get('party_name')||null,project_name:fd.get('project_name')||null,date:fd.get('date')||new Date().toISOString().slice(0,10),description:fd.get('description')||null}, id);
+      await this.save('transactions', { type: fd.get('type'), amount: +fd.get('amount') || 0, party_name: fd.get('party_name') || null, project_name: fd.get('project_name') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
       UI.toast('تم التحديث'); App.loadTransactions();
     });
   },
@@ -294,12 +351,14 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); });
   },
 
-  // Users (admin only)
+  // Users (admin only, bulk spreadsheet)
   addUser() {
-    UI.openModal('مستخدم جديد', `<form>${UI.form([{name:'username',label:'اسم المستخدم',req:true},{name:'name',label:'الاسم الكامل',req:true},{name:'password',label:'كلمة المرور',req:true},{name:'role',label:'الدور',type:'select',opts:[{v:'user',l:'موظف'},{v:'admin',l:'مدير'}]}])}</form>`, async (form) => {
-      const fd = new FormData(form);
-      await API.authCreateUser(Auth.toEmail(fd.get('username')), fd.get('password'), { name: fd.get('name'), username: fd.get('username'), role: fd.get('role') || 'user' });
-      UI.toast('تم إنشاء المستخدم'); App.loadUsers();
+    Spreadsheet.open('إضافة مستخدمين', COLS.users, async (rows) => {
+      for (const row of rows) {
+        await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+      }
+      UI.toast(`تم إنشاء ${rows.length} مستخدم`);
+      App.loadUsers();
     });
   }
 };

@@ -1,4 +1,4 @@
-// UI Helpers
+// UI Helpers + Spreadsheet
 
 const UI = {
   toast(msg, type = 'success') {
@@ -34,6 +34,7 @@ const UI = {
       });
     }
     document.body.style.overflow = 'hidden';
+    return overlay;
   },
 
   closeModal() {
@@ -61,3 +62,95 @@ const UI = {
     return `<div class="table-actions"><button class="btn btn-sm btn-secondary" onclick="${onEdit}('${id}')">تعديل</button><button class="btn btn-sm btn-red" onclick="${onDel}('${id}')">حذف</button></div>`;
   }
 };
+
+// ─── EXCEL-LIKE SPREADSHEET COMPONENT ───
+const Spreadsheet = {
+  open(title, columns, onSave) {
+    const content = this.render(columns);
+    UI.openModal(title, content, null);
+
+    const modalBody = document.querySelector('.modal-body');
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-primary';
+    saveBtn.style.cssText = 'margin-top:16px;width:100%';
+    saveBtn.textContent = '💾 حفظ الكل';
+    saveBtn.onclick = async () => {
+      const rows = this.getData(modalBody);
+      if (rows.length === 0) { UI.toast('لا يوجد بيانات للحفظ', 'error'); return; }
+      saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ...';
+      try {
+        await onSave(rows);
+        UI.closeModal();
+      } catch (err) {
+        console.error('Bulk save error:', err);
+        UI.toast('خطأ: ' + (err.message || 'فشل الحفظ'), 'error');
+        saveBtn.disabled = false; saveBtn.textContent = '💾 حفظ الكل';
+      }
+    };
+    modalBody.appendChild(saveBtn);
+  },
+
+  render(columns) {
+    const headerCells = columns.map(c => `<th>${c.label}</th>`).join('');
+    const inputCells = columns.map(c => {
+      if (c.type === 'select') {
+        return `<td><select data-key="${c.key}">${c.opts.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select></td>`;
+      }
+      const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
+      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${c.label.replace(/\*/g,'').trim()}" /></td>`;
+    }).join('');
+
+    return `<div class="spreadsheet">
+      <table>
+        <thead><tr><th class="row-num">#</th>${headerCells}<th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="row-num">1</td>
+            ${inputCells}
+            <td><button type="button" class="btn btn-sm btn-red" onclick="Spreadsheet.removeRow(this)">×</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <button type="button" class="btn btn-secondary" onclick="Spreadsheet.addRow(this)" style="margin-top:12px">+ إضافة صف</button>
+    </div>`;
+  },
+
+  addRow(btn) {
+    const spreadsheet = btn.closest('.spreadsheet');
+    const tbody = spreadsheet.querySelector('tbody');
+    const firstRow = tbody.querySelector('tr');
+    const newRow = firstRow.cloneNode(true);
+    newRow.querySelectorAll('input, select').forEach(el => el.value = '');
+    newRow.querySelector('.row-num').textContent = tbody.children.length + 1;
+    tbody.appendChild(newRow);
+  },
+
+  removeRow(btn) {
+    const row = btn.closest('tr');
+    const tbody = row.parentElement;
+    if (tbody.children.length <= 1) return;
+    row.remove();
+    Array.from(tbody.children).forEach((tr, i) => { tr.querySelector('.row-num').textContent = i + 1; });
+  },
+
+  getData(container) {
+    const rows = [];
+    container.querySelectorAll('tbody tr').forEach(tr => {
+      const row = {}; let hasData = false;
+      tr.querySelectorAll('input, select').forEach(el => {
+        const key = el.dataset.key;
+        let val = el.value.trim();
+        if (val) {
+          hasData = true;
+          if (el.type === 'number') val = +val;
+        } else { val = null; }
+        row[key] = val;
+      });
+      if (hasData) rows.push(row);
+    });
+    return rows;
+  }
+};
+
+window.UI = UI;
+window.Spreadsheet = Spreadsheet;
