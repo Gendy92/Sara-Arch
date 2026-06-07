@@ -1,0 +1,25 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3:00 AM UTC daily
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Backup
+        run: |
+          chmod +x scripts/backup.sh
+          ./scripts/backup.sh
+
+      - name: Commit Backup
+        run: |
+          git config user.name "Backup Bot"
+          git config user.email "backup@github.com"
+          git add backups/
+          git diff --cached --quiet || git commit -m "backup: $(date +%Y-%m-%d)"
+          git push
