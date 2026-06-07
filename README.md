@@ -148,3 +148,34 @@ If you need help:
 
 **Designed for:** Sara Abu Ela Office  
 **Developer:** Ahmed El-Gendy
+
+
+---
+
+## 🔗 Connect GitHub to Supabase (CLI + CI/CD)
+
+This repo includes Supabase CLI configuration and a GitHub Actions workflow.
+
+### 1. Link locally (one time)
+
+```bash
+npx supabase login
+npx supabase link --project-ref tvjkctttcijymqvaetsv
+```
+
+### 2. Setup GitHub Actions (optional)
+
+Add this secret to your GitHub repo (`Settings → Secrets and variables → Actions`):
+
+| Secret | How to get it |
+|--------|---------------|
+| `SUPABASE_ACCESS_TOKEN` | [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) → **New Token** |
+
+After adding the secret, every push to `main` will auto-deploy database changes to Supabase.
+
+### 3. Supabase Dashboard Integration
+
+You can also connect GitHub directly inside Supabase:
+1. Go to **Project Settings → Integrations**
+2. Click **GitHub**
+3. Authorize Supabase to access your `Gendy92/Sara-Arch` repo
