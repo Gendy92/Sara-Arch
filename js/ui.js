@@ -18,7 +18,20 @@ const UI = {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) UI.closeModal(); });
     if (onSubmit) {
       const form = overlay.querySelector('form');
-      if (form) form.addEventListener('submit', (e) => { e.preventDefault(); onSubmit(form); });
+      if (form) form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) { btn.disabled = true; btn.dataset.orig = btn.textContent; btn.textContent = 'جاري الحفظ...'; }
+        try {
+          await onSubmit(form);
+          UI.closeModal();
+        } catch (err) {
+          console.error('Save error:', err);
+          UI.toast('خطأ: ' + (err.message || 'فشل الحفظ'), 'error');
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = btn.dataset.orig || 'حفظ'; }
+        }
+      });
     }
     document.body.style.overflow = 'hidden';
   },
