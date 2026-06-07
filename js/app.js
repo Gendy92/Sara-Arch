@@ -1,63 +1,43 @@
-// Main Application Logic
+// Main App
 
 const App = {
-  currentScreen: 'login',
+  screen: 'login',
   loading: false,
 
-  async init() {
-    // Initialize auth first
-    await Auth.init();
-
-    // Setup navigation
-    this.setupNav();
-
-    // Route to correct screen
-    if (Auth.isLoggedIn()) {
-      await this.goTo('dashboard');
-    } else {
-      await this.goTo('login');
+  async start() {
+    try {
+      await Auth.init();
+      this.bindNav();
+      if (Auth.isLoggedIn()) await this.go('dashboard');
+      else this.renderLogin();
+    } catch (e) {
+      this.showError('فشل تحميل التطبيق: ' + e.message);
     }
   },
 
-  setupNav() {
+  bindNav() {
     document.addEventListener('click', (e) => {
-      const navBtn = e.target.closest('[data-nav]');
-      if (navBtn) {
-        const screen = navBtn.dataset.nav;
-        this.goTo(screen);
-      }
-
-      const logoutBtn = e.target.closest('[data-action="logout"]');
-      if (logoutBtn) {
-        this.handleLogout();
-      }
+      const nav = e.target.closest('[data-nav]');
+      if (nav) this.go(nav.dataset.nav);
+      if (e.target.closest('[data-action="logout"]')) this.doLogout();
     });
-
-    // Form submissions
     document.addEventListener('submit', (e) => {
       const form = e.target;
-      if (form.dataset.form === 'login') {
-        e.preventDefault();
-        this.handleLogin(form);
-      } else if (form.dataset.form === 'register') {
-        e.preventDefault();
-        this.handleRegister(form);
-      }
+      if (form.dataset.form === 'login') { e.preventDefault(); this.doLogin(form); }
+      if (form.dataset.form === 'register') { e.preventDefault(); this.doRegister(form); }
     });
   },
 
-  async goTo(screen) {
-    if (this.loading) return;
+  async go(screen) {
+    if (screen !== 'login' && screen !== 'register' && !Auth.isLoggedIn()) { screen = 'login'; }
+    this.screen = screen;
+    const app = document.getElementById('app');
+    if (!app) return;
 
-    // Auth guard
-    if (screen !== 'login' && screen !== 'register' && !Auth.isLoggedIn()) {
-      screen = 'login';
-    }
+    if (screen === 'login') this.renderLogin();
+    else if (screen === 'register') this.renderRegister();
+    else app.innerHTML = this.layout(this.pageContent(screen));
 
-    this.currentScreen = screen;
-    this.render();
-
-    // Load screen-specific data
     if (screen === 'dashboard') await this.loadDashboard();
     if (screen === 'clients') await this.loadClients();
     if (screen === 'projects') await this.loadProjects();
@@ -65,431 +45,231 @@ const App = {
     if (screen === 'employees') await this.loadEmployees();
   },
 
-  render() {
-    const app = document.getElementById('app');
-    if (!app) return;
+  layout(content) {
+    const user = Auth.user || {};
+    const name = user.user_metadata?.name || user.email || 'المستخدم';
+    return `<div class="app-layout"><aside class="sidebar"><div class="sidebar-logo"><div class="logo-box">S</div><div><h2>سارة أبو العلا</h2><p>النظام المالي</p></div></div><nav class="sidebar-nav">
+      <button data-nav="dashboard" class="nav-item ${this.screen === 'dashboard' ? 'active' : ''}"><span>📊</span> الرئيسية</button>
+      <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء</button>
+      <button data-nav="projects" class="nav-item ${this.screen === 'projects' ? 'active' : ''}"><span>📁</span> المشاريع</button>
+      <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
+      <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
+    </nav><div class="sidebar-footer"><div class="user-info">${name}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><main class="main-content">${content}</main></div>`;
+  },
 
-    switch (this.currentScreen) {
-      case 'login':
-        app.innerHTML = this.renderLogin();
-        break;
-      case 'register':
-        app.innerHTML = this.renderRegister();
-        break;
-      case 'dashboard':
-        app.innerHTML = this.renderLayout(this.renderDashboard());
-        break;
-      case 'clients':
-        app.innerHTML = this.renderLayout(this.renderClients());
-        break;
-      case 'projects':
-        app.innerHTML = this.renderLayout(this.renderProjects());
-        break;
-      case 'transactions':
-        app.innerHTML = this.renderLayout(this.renderTransactions());
-        break;
-      case 'employees':
-        app.innerHTML = this.renderLayout(this.renderEmployees());
-        break;
-      case 'settings':
-        app.innerHTML = this.renderLayout(this.renderSettings());
-        break;
-      default:
-        app.innerHTML = this.renderLogin();
+  pageContent(screen) {
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
+    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ عميل جديد</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ مشروع جديد</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><button class="btn btn-primary" onclick="Crud.addTx()">+ معاملة جديدة</button></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ موظف جديد</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
+    return '';
+  },
+
+  renderLogin() {
+    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><div class="logo-box large">S</div><h1>سارة أبو العلا</h1><p>النظام المالي والمحاسبي</p></div><form data-form="login" class="auth-form"><div class="form-group"><label>البريد الإلكتروني</label><input type="email" name="email" required placeholder="your@email.com" dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required placeholder="••••••••" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">دخول</button></form><p class="auth-footer">ليس لديك حساب؟ <a href="#" data-nav="register">سجل الآن</a></p></div></div>`;
+  },
+
+  renderRegister() {
+    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><div class="logo-box large">S</div><h1>إنشاء حساب</h1></div><form data-form="register" class="auth-form"><div class="form-group"><label>الاسم</label><input type="text" name="name" required></div><div class="form-group"><label>البريد الإلكتروني</label><input type="email" name="email" required dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required minlength="6" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">تسجيل</button></form><p class="auth-footer">لديك حساب؟ <a href="#" data-nav="login">تسجيل الدخول</a></p></div></div>`;
+  },
+
+  async doLogin(form) {
+    const fd = new FormData(form);
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = 'جاري الدخول...';
+    try {
+      await Auth.login(fd.get('email'), fd.get('password'));
+      await this.go('dashboard');
+    } catch (e) {
+      alert('خطأ في الدخول: ' + e.message);
+      btn.disabled = false; btn.textContent = 'دخول';
     }
   },
 
-  // ─── LAYOUT ───
-  renderLayout(content) {
-    const user = Auth.getUser();
-    const userName = user?.user_metadata?.name || user?.email || 'المستخدم';
-
-    return `
-      <div class="app-layout">
-        <aside class="sidebar">
-          <div class="sidebar-logo">
-            <div class="logo-box">S</div>
-            <div>
-              <h2>سارة أبو العلا</h2>
-              <p>النظام المالي</p>
-            </div>
-          </div>
-          <nav class="sidebar-nav">
-            <button data-nav="dashboard" class="nav-item ${this.currentScreen === 'dashboard' ? 'active' : ''}">
-              <span>📊</span> الرئيسية
-            </button>
-            <button data-nav="clients" class="nav-item ${this.currentScreen === 'clients' ? 'active' : ''}">
-              <span>👥</span> العملاء
-            </button>
-            <button data-nav="projects" class="nav-item ${this.currentScreen === 'projects' ? 'active' : ''}">
-              <span>📁</span> المشاريع
-            </button>
-            <button data-nav="transactions" class="nav-item ${this.currentScreen === 'transactions' ? 'active' : ''}">
-              <span>💰</span> المعاملات
-            </button>
-            <button data-nav="employees" class="nav-item ${this.currentScreen === 'employees' ? 'active' : ''}">
-              <span>🧑‍💼</span> الموظفين
-            </button>
-            <button data-nav="settings" class="nav-item ${this.currentScreen === 'settings' ? 'active' : ''}">
-              <span>⚙️</span> الإعدادات
-            </button>
-          </nav>
-          <div class="sidebar-footer">
-            <div class="user-info">
-              <span>${userName}</span>
-            </div>
-            <button data-action="logout" class="btn-logout">🚪 خروج</button>
-          </div>
-        </aside>
-        <main class="main-content">
-          ${content}
-        </main>
-      </div>
-    `;
+  async doRegister(form) {
+    const fd = new FormData(form);
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = 'جاري التسجيل...';
+    try {
+      await Auth.register(fd.get('email'), fd.get('password'), fd.get('name'));
+      alert('تم إنشاء الحساب! سجل الدخول الآن.');
+      this.renderLogin();
+    } catch (e) {
+      alert('خطأ: ' + e.message);
+      btn.disabled = false; btn.textContent = 'تسجيل';
+    }
   },
 
-  // ─── LOGIN SCREEN ───
-  renderLogin() {
-    return `
-      <div class="auth-page">
-        <div class="auth-card">
-          <div class="auth-logo">
-            <div class="logo-box large">S</div>
-            <h1>سارة أبو العلا</h1>
-            <p>النظام المالي والمحاسبي</p>
-          </div>
-          <form data-form="login" class="auth-form">
-            <div class="form-group">
-              <label>البريد الإلكتروني</label>
-              <input type="email" name="email" required placeholder="your@email.com" dir="ltr">
-            </div>
-            <div class="form-group">
-              <label>كلمة المرور</label>
-              <input type="password" name="password" required placeholder="••••••••" dir="ltr">
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">دخول</button>
-          </form>
-          <p class="auth-footer">
-            ليس لديك حساب؟ <a href="#" data-nav="register">سجل الآن</a>
-          </p>
-        </div>
-      </div>
-    `;
+  doLogout() {
+    if (!confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
+    Auth.logout();
+    this.renderLogin();
   },
 
-  // ─── REGISTER SCREEN ───
-  renderRegister() {
-    return `
-      <div class="auth-page">
-        <div class="auth-card">
-          <div class="auth-logo">
-            <div class="logo-box large">S</div>
-            <h1>إنشاء حساب</h1>
-          </div>
-          <form data-form="register" class="auth-form">
-            <div class="form-group">
-              <label>الاسم</label>
-              <input type="text" name="name" required placeholder="محمد أحمد">
-            </div>
-            <div class="form-group">
-              <label>البريد الإلكتروني</label>
-              <input type="email" name="email" required placeholder="your@email.com" dir="ltr">
-            </div>
-            <div class="form-group">
-              <label>كلمة المرور</label>
-              <input type="password" name="password" required placeholder="6 أحرف على الأقل" dir="ltr" minlength="6">
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">تسجيل</button>
-          </form>
-          <p class="auth-footer">
-            لديك حساب؟ <a href="#" data-nav="login">تسجيل الدخول</a>
-          </p>
-        </div>
-      </div>
-    `;
-  },
-
-  // ─── DASHBOARD ───
-  renderDashboard() {
-    return `
-      <div class="page-header">
-        <h1>📊 لوحة التحكم</h1>
-        <p>نظرة عامة على أداء المكتب</p>
-      </div>
-      <div class="kpi-grid" id="dashboard-kpis">
-        <div class="kpi-card loading">جاري التحميل...</div>
-      </div>
-      <div class="content-grid">
-        <div class="card">
-          <h3>آخر المعاملات</h3>
-          <div id="recent-transactions">جاري التحميل...</div>
-        </div>
-        <div class="card">
-          <h3>المشاريع النشطة</h3>
-          <div id="active-projects">جاري التحميل...</div>
-        </div>
-      </div>
-    `;
-  },
-
-  // ─── CLIENTS ───
-  renderClients() {
-    return `
-      <div class="page-header">
-        <h1>👥 العملاء</h1>
-        <button class="btn btn-primary" onclick="Crud.openAddClient()">+ عميل جديد</button>
-      </div>
-      <div class="card">
-        <div class="table-responsive" id="clients-table">جاري التحميل...</div>
-      </div>
-    `;
-  },
-
-  // ─── PROJECTS ───
-  renderProjects() {
-    return `
-      <div class="page-header">
-        <h1>📁 المشاريع</h1>
-        <button class="btn btn-primary" onclick="Crud.openAddProject()">+ مشروع جديد</button>
-      </div>
-      <div class="card">
-        <div class="table-responsive" id="projects-table">جاري التحميل...</div>
-      </div>
-    `;
-  },
-
-  // ─── TRANSACTIONS ───
-  renderTransactions() {
-    return `
-      <div class="page-header">
-        <h1>💰 المعاملات المالية</h1>
-        <button class="btn btn-primary" onclick="Crud.openAddTransaction()">+ معاملة جديدة</button>
-      </div>
-      <div class="card">
-        <div class="table-responsive" id="transactions-table">جاري التحميل...</div>
-      </div>
-    `;
-  },
-
-  // ─── EMPLOYEES ───
-  renderEmployees() {
-    return `
-      <div class="page-header">
-        <h1>🧑‍💼 الموظفين</h1>
-        <button class="btn btn-primary" onclick="Crud.openAddEmployee()">+ موظف جديد</button>
-      </div>
-      <div class="card">
-        <div class="table-responsive" id="employees-table">جاري التحميل...</div>
-      </div>
-    `;
-  },
-
-  // ─── SETTINGS ───
-  renderSettings() {
-    const user = Auth.getUser();
-    return `
-      <div class="page-header">
-        <h1>⚙️ الإعدادات</h1>
-      </div>
-      <div class="card">
-        <h3>معلومات الحساب</h3>
-        <p><strong>البريد:</strong> ${user?.email || ''}</p>
-        <p><strong>الاسم:</strong> ${user?.user_metadata?.name || 'غير محدد'}</p>
-        <hr style="margin:16px 0;border-color:var(--border)">
-        <p style="color:var(--text3);font-size:12px">يمكنك تحديث معلوماتك من لوحة تحكم Supabase.</p>
-      </div>
-    `;
+  showError(msg) {
+    document.getElementById('app').innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center"><div style="font-size:48px">⚠️</div><h2 style="color:var(--red)">حدث خطأ</h2><p style="color:var(--text2);max-width:400px">${msg}</p><button class="btn btn-primary" onclick="location.reload()">إعادة المحاولة</button></div>`;
   },
 
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      // Get counts
-      const { data: clients } = await sb.from('clients').select('id', { count: 'exact', head: true });
-      const { data: projects } = await sb.from('projects').select('id', { count: 'exact', head: true });
-      const { data: employees } = await sb.from('employees').select('id', { count: 'exact', head: true });
-
-      // Get transactions summary
-      const { data: transactions } = await sb
-        .from('transactions')
-        .select('type, amount')
-        .is('deleted_at', null);
-
-      const income = transactions?.filter(t => t.type === 'income' || t.type === 'deposit').reduce((s, t) => s + (+t.amount || 0), 0) || 0;
-      const expenses = transactions?.filter(t => t.type === 'expense').reduce((s, t) => s + (+t.amount || 0), 0) || 0;
-
-      document.getElementById('dashboard-kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">العملاء</div><div class="kpi-value">${clients?.length || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects?.length || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees?.length || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي الإيرادات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(income)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">صافي الربح</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(income - expenses)}</div></div>
-      `;
-
-      // Recent transactions
-      const { data: recent } = await sb
-        .from('transactions')
-        .select('*')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      document.getElementById('recent-transactions').innerHTML = recent?.length
-        ? `<table class="data-table"><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الوصف</th></tr></thead><tbody>${recent.map(t => `
-          <tr><td>${this.fmtDate(t.created_at)}</td><td>${t.type}</td><td>${this.fmtMoney(t.amount)}</td><td>${t.description || '-'}</td></tr>
-        `).join('')}</tbody></table>`
-        : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-
-      // Active projects
-      const { data: activeProjects } = await sb
-        .from('projects')
-        .select('*')
-        .is('deleted_at', null)
-        .eq('status', 'active')
-        .limit(5);
-
-      document.getElementById('active-projects').innerHTML = activeProjects?.length
-        ? `<table class="data-table"><thead><tr><th>المشروع</th><th>العميل</th><th>الحالة</th></tr></thead><tbody>${activeProjects.map(p => `
-          <tr><td>${p.name}</td><td>${p.client_name || '-'}</td><td><span class="badge badge-green">نشط</span></td></tr>
-        `).join('')}</tbody></table>`
-        : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
-
-    } catch (e) {
-      console.error('Dashboard load error:', e);
-      document.getElementById('dashboard-kpis').innerHTML = `<div class="error">خطأ في تحميل البيانات: ${e.message}</div>`;
-    }
+      const clients = await API.request('clients', 'GET', null, '?select=id&deleted_at=is.null');
+      const projects = await API.request('projects', 'GET', null, '?select=id&deleted_at=is.null');
+      const employees = await API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null');
+      const txs = await API.request('transactions', 'GET', null, '?select=type,amount&deleted_at=is.null');
+      const income = txs.filter(t => t.type === 'income' || t.type === 'deposit').reduce((s, t) => s + (+t.amount || 0), 0);
+      const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      document.getElementById('kpis').innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
+        <div class="kpi-card"><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
+        <div class="kpi-card"><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
+        <div class="kpi-card"><div class="kpi-label">الإيرادات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(income)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(exp)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">صافي الربح</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(income - exp)}</div></div>`;
+      const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
+      document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
+      document.getElementById('active-proj').innerHTML = active.length ? this.table(['المشروع', 'العميل', 'الحالة'], active.map(p => [p.name, p.client_name || '-', '<span class="badge badge-green">نشط</span>'])) : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
+    } catch (e) { console.error(e); }
   },
 
   async loadClients() {
     try {
-      const { data, error } = await sb.from('clients').select('*').is('deleted_at', null).order('created_at', { ascending: false });
-      if (error) throw error;
-      const table = document.getElementById('clients-table');
-      if (!table) return;
-      table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>العنوان</th><th>الإجراءات</th></tr></thead><tbody>${data.map(c => `
-          <tr><td>${c.name}</td><td>${c.phone || '-'}</td><td>${c.email || '-'}</td><td>${c.address || '-'}</td>
-          <td>${UI.actionButtons(c.id, 'Crud.openEditClient', 'Crud.deleteClient')}</td></tr>
-        `).join('')}</tbody></table>`
-        : '<p style="color:var(--text3)">لا يوجد عملاء</p>';
-    } catch (e) {
-      console.error('Clients load error:', e);
-    }
+      const data = await API.request('clients', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
+      document.getElementById('clients-tbl').innerHTML = data.length ? this.table(['الاسم', 'الهاتف', 'البريد', 'الإجراءات'], data.map(c => [c.name, c.phone || '-', c.email || '-', UI.actions(c.id, 'Crud.editClient', 'Crud.delClient')])) : '<p style="color:var(--text3)">لا يوجد عملاء</p>';
+    } catch (e) { console.error(e); }
   },
 
   async loadProjects() {
     try {
-      const { data, error } = await sb.from('projects').select('*').is('deleted_at', null).order('created_at', { ascending: false });
-      if (error) throw error;
-      const table = document.getElementById('projects-table');
-      if (!table) return;
-      table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>المشروع</th><th>العميل</th><th>القيمة</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>${data.map(p => `
-          <tr><td>${p.name}</td><td>${p.client_name || '-'}</td><td>${this.fmtMoney(p.value)}</td><td><span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span></td>
-          <td>${UI.actionButtons(p.id, 'Crud.openEditProject', 'Crud.deleteProject')}</td></tr>
-        `).join('')}</tbody></table>`
-        : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
-    } catch (e) {
-      console.error('Projects load error:', e);
-    }
+      const data = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
+      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'القيمة', 'الحالة', 'الإجراءات'], data.map(p => [p.name, p.client_name || '-', this.fmtMoney(p.value), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')])) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
+    } catch (e) { console.error(e); }
   },
 
   async loadTransactions() {
     try {
-      const { data, error } = await sb.from('transactions').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(50);
-      if (error) throw error;
-      const table = document.getElementById('transactions-table');
-      if (!table) return;
-      table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الوصف</th><th>الجهة</th><th>الإجراءات</th></tr></thead><tbody>${data.map(t => `
-          <tr><td>${this.fmtDate(t.created_at)}</td><td><span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span></td><td>${this.fmtMoney(t.amount)}</td><td>${t.description || '-'}</td><td>${t.party_name || '-'}</td>
-          <td>${UI.actionButtons(t.id, 'Crud.openEditTransaction', 'Crud.deleteTransaction')}</td></tr>
-        `).join('')}</tbody></table>`
-        : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-    } catch (e) {
-      console.error('Transactions load error:', e);
-    }
+      const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
+      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'الإجراءات'], data.map(t => [this.fmtDate(t.created_at), `<span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span>`, this.fmtMoney(t.amount), t.description || '-', t.party_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+    } catch (e) { console.error(e); }
   },
 
   async loadEmployees() {
     try {
-      const { data, error } = await sb.from('employees').select('*').eq('is_active', true).is('deleted_at', null).order('created_at', { ascending: false });
-      if (error) throw error;
-      const table = document.getElementById('employees-table');
-      if (!table) return;
-      table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>الهاتف</th><th>الإجراءات</th></tr></thead><tbody>${data.map(e => `
-          <tr><td>${e.name}</td><td>${e.job_title || '-'}</td><td>${this.fmtMoney(e.salary)}</td><td>${e.phone || '-'}</td>
-          <td>${UI.actionButtons(e.id, 'Crud.openEditEmployee', 'Crud.deleteEmployee')}</td></tr>
-        `).join('')}</tbody></table>`
-        : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
-    } catch (e) {
-      console.error('Employees load error:', e);
-    }
+      const data = await API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc');
+      document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'الهاتف', 'الإجراءات'], data.map(e => [e.name, e.job_title || '-', this.fmtMoney(e.salary), e.phone || '-', UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp')])) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
+    } catch (e) { console.error(e); }
   },
 
-  // ─── AUTH HANDLERS ───
-  async handleLogin(form) {
-    const fd = new FormData(form);
-    const btn = form.querySelector('button[type="submit"]');
-    btn.disabled = true;
-    btn.textContent = 'جاري الدخول...';
-    try {
-      await Auth.login(fd.get('email'), fd.get('password'));
-    } catch (e) {
-      alert('خطأ في الدخول: ' + e.message);
-      btn.disabled = false;
-      btn.textContent = 'دخول';
-    }
+  table(headers, rows) {
+    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
 
-  async handleRegister(form) {
-    const fd = new FormData(form);
-    const btn = form.querySelector('button[type="submit"]');
-    btn.disabled = true;
-    btn.textContent = 'جاري التسجيل...';
-    try {
-      await Auth.register(fd.get('email'), fd.get('password'), { name: fd.get('name') });
-      alert('تم إنشاء الحساب! يرجى تأكيد بريدك الإلكتروني.');
-      this.goTo('login');
-    } catch (e) {
-      alert('خطأ في التسجيل: ' + e.message);
-      btn.disabled = false;
-      btn.textContent = 'تسجيل';
-    }
-  },
-
-  async handleLogout() {
-    if (!confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
-    try {
-      await Auth.logout();
-    } catch (e) {
-      alert('خطأ: ' + e.message);
-    }
-  },
-
-  // ─── HELPERS ───
-  fmtMoney(n) {
-    return (+n || 0).toLocaleString('ar-EG') + ' ج.م';
-  },
-
-  fmtDate(d) {
-    if (!d) return '-';
-    return new Date(d).toLocaleDateString('ar-EG');
-  },
-
-  refreshCurrentScreen() {
-    this.goTo(this.currentScreen);
-  }
+  fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ج.م'; },
+  fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; }
 };
 
-window.App = App;
+// ─── CRUD ───
+const Crud = {
+  async save(table, data, id) {
+    if (id) { await API.request(table, 'PATCH', data, '?id=eq.' + id); return { id, ...data }; }
+    else { return API.request(table, 'POST', data); }
+  },
 
-// Start app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => App.init());
+  async softDelete(table, id) {
+    await API.request(table, 'PATCH', { deleted_at: new Date().toISOString() }, '?id=eq.' + id);
+  },
 
-// Fallback: if DOM is already loaded, init immediately
-if (document.readyState === 'interactive' || document.readyState === 'complete') {
-  App.init();
-}
+  // Clients
+  addClient() {
+    UI.openModal('عميل جديد', `<form>${UI.form([{name:'name',label:'اسم العميل',req:true},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'address',label:'العنوان'},{name:'notes',label:'ملاحظات',type:'textarea'}])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('clients', {name:fd.get('name'),phone:fd.get('phone')||null,email:fd.get('email')||null,address:fd.get('address')||null,notes:fd.get('notes')||null});
+      UI.toast('تم الحفظ'); App.loadClients();
+    });
+  },
+
+  async editClient(id) {
+    const rows = await API.request('clients', 'GET', null, '?select=*&id=eq.' + id);
+    if (!rows.length) return;
+    UI.openModal('تعديل عميل', `<form>${UI.form([{name:'name',label:'اسم العميل',req:true},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'address',label:'العنوان'},{name:'notes',label:'ملاحظات',type:'textarea'}], rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('clients', {name:fd.get('name'),phone:fd.get('phone')||null,email:fd.get('email')||null,address:fd.get('address')||null,notes:fd.get('notes')||null}, id);
+      UI.toast('تم التحديث'); App.loadClients();
+    });
+  },
+
+  delClient(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا العميل؟', async () => { await this.softDelete('clients', id); UI.toast('تم الحذف'); App.loadClients(); });
+  },
+
+  // Projects
+  addProject() {
+    UI.openModal('مشروع جديد', `<form>${UI.form([{name:'name',label:'اسم المشروع',req:true},{name:'client_name',label:'اسم العميل'},{name:'value',label:'القيمة',type:'number',default:0},{name:'status',label:'الحالة',type:'select',opts:[{v:'active',l:'نشط'},{v:'completed',l:'منتهي'},{v:'on_hold',l:'معلق'},{v:'cancelled',l:'ملغي'}]},{name:'start_date',label:'تاريخ البدء',type:'date'},{name:'end_date',label:'تاريخ الانتهاء',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('projects', {name:fd.get('name'),client_name:fd.get('client_name')||null,value:+fd.get('value')||0,status:fd.get('status')||'active',start_date:fd.get('start_date')||null,end_date:fd.get('end_date')||null,notes:fd.get('notes')||null});
+      UI.toast('تم الحفظ'); App.loadProjects();
+    });
+  },
+
+  async editProject(id) {
+    const rows = await API.request('projects', 'GET', null, '?select=*&id=eq.' + id);
+    if (!rows.length) return;
+    UI.openModal('تعديل مشروع', `<form>${UI.form([{name:'name',label:'اسم المشروع',req:true},{name:'client_name',label:'اسم العميل'},{name:'value',label:'القيمة',type:'number'},{name:'status',label:'الحالة',type:'select',opts:[{v:'active',l:'نشط'},{v:'completed',l:'منتهي'},{v:'on_hold',l:'معلق'},{v:'cancelled',l:'ملغي'}]},{name:'start_date',label:'تاريخ البدء',type:'date'},{name:'end_date',label:'تاريخ الانتهاء',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}], rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('projects', {name:fd.get('name'),client_name:fd.get('client_name')||null,value:+fd.get('value')||0,status:fd.get('status')||'active',start_date:fd.get('start_date')||null,end_date:fd.get('end_date')||null,notes:fd.get('notes')||null}, id);
+      UI.toast('تم التحديث'); App.loadProjects();
+    });
+  },
+
+  delProject(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
+  },
+
+  // Employees
+  addEmp() {
+    UI.openModal('موظف جديد', `<form>${UI.form([{name:'name',label:'اسم الموظف',req:true},{name:'job_title',label:'الوظيفة'},{name:'salary',label:'الراتب',type:'number',default:0},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'hire_date',label:'تاريخ التعيين',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('employees', {name:fd.get('name'),job_title:fd.get('job_title')||null,salary:+fd.get('salary')||0,phone:fd.get('phone')||null,email:fd.get('email')||null,hire_date:fd.get('hire_date')||null,notes:fd.get('notes')||null});
+      UI.toast('تم الحفظ'); App.loadEmployees();
+    });
+  },
+
+  async editEmp(id) {
+    const rows = await API.request('employees', 'GET', null, '?select=*&id=eq.' + id);
+    if (!rows.length) return;
+    UI.openModal('تعديل موظف', `<form>${UI.form([{name:'name',label:'اسم الموظف',req:true},{name:'job_title',label:'الوظيفة'},{name:'salary',label:'الراتب',type:'number'},{name:'phone',label:'الهاتف'},{name:'email',label:'البريد'},{name:'hire_date',label:'تاريخ التعيين',type:'date'},{name:'notes',label:'ملاحظات',type:'textarea'}], rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('employees', {name:fd.get('name'),job_title:fd.get('job_title')||null,salary:+fd.get('salary')||0,phone:fd.get('phone')||null,email:fd.get('email')||null,hire_date:fd.get('hire_date')||null,notes:fd.get('notes')||null}, id);
+      UI.toast('تم التحديث'); App.loadEmployees();
+    });
+  },
+
+  delEmp(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
+  },
+
+  // Transactions
+  addTx() {
+    UI.openModal('معاملة جديدة', `<form>${UI.form([{name:'type',label:'النوع',type:'select',req:true,opts:[{v:'income',l:'إيراد'},{v:'expense',l:'مصروف'},{v:'deposit',l:'عربون'},{v:'supervision',l:'إشراف'},{v:'office_expense',l:'مصروف مكتبي'}]},{name:'amount',label:'المبلغ',type:'number',req:true,default:0},{name:'party_name',label:'الجهة / الاسم'},{name:'project_name',label:'المشروع'},{name:'date',label:'التاريخ',type:'date'},{name:'description',label:'الوصف',type:'textarea'}])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('transactions', {type:fd.get('type'),amount:+fd.get('amount')||0,party_name:fd.get('party_name')||null,project_name:fd.get('project_name')||null,date:fd.get('date')||new Date().toISOString().slice(0,10),description:fd.get('description')||null});
+      UI.toast('تم الحفظ'); App.loadTransactions();
+    });
+  },
+
+  async editTx(id) {
+    const rows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id);
+    if (!rows.length) return;
+    UI.openModal('تعديل معاملة', `<form>${UI.form([{name:'type',label:'النوع',type:'select',req:true,opts:[{v:'income',l:'إيراد'},{v:'expense',l:'مصروف'},{v:'deposit',l:'عربون'},{v:'supervision',l:'إشراف'},{v:'office_expense',l:'مصروف مكتبي'}]},{name:'amount',label:'المبلغ',type:'number',req:true},{name:'party_name',label:'الجهة / الاسم'},{name:'project_name',label:'المشروع'},{name:'date',label:'التاريخ',type:'date'},{name:'description',label:'الوصف',type:'textarea'}], rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('transactions', {type:fd.get('type'),amount:+fd.get('amount')||0,party_name:fd.get('party_name')||null,project_name:fd.get('project_name')||null,date:fd.get('date')||new Date().toISOString().slice(0,10),description:fd.get('description')||null}, id);
+      UI.toast('تم التحديث'); App.loadTransactions();
+    });
+  },
+
+  delTx(id) {
+    UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); });
+  }
+};

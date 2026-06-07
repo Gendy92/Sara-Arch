@@ -1,22 +1,36 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مكتب سارة أبو العلا - النظام المالي</title>
-  <link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مكتب سارة أبو العلا - النظام المالي</title>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="app">
-    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:#6b7591;font-family:Segoe UI,Tahoma,Arial,sans-serif">
-      جاري التحميل...
-    </div>
+<div id="app">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#6b7591;font-family:'Segoe UI',Tahoma,Arial,sans-serif">
+    <div style="width:60px;height:60px;border:3px solid #2a3045;border-top-color:#0d7377;border-radius:50%;animation:spin 1s linear infinite"></div>
+    <span>جاري تحميل النظام...</span>
   </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
-  <!-- App Modules -->
-  <script type="module" src="js/supabase.js"></script>
-  <script type="module" src="js/auth.js"></script>
-  <script type="module" src="js/crud.js"></script>
-  <script type="module" src="js/app.js"></script>
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+<script>
+try {
+  App.start();
+} catch (e) {
+  document.getElementById('app').innerHTML =
+    '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center">' +
+    '<div style="font-size:48px">⚠️</div>' +
+    '<h2 style="color:#e53935">حدث خطأ في التحميل</h2>' +
+    '<p style="color:#6b7591;max-width:400px">' + e.message + '</p>' +
+    '<button onclick="location.reload()" style="padding:10px 24px;background:#0d7377;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit">إعادة المحاولة</button></div>';
+}
+</script>
 </body>
 </html>
