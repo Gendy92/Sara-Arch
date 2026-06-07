@@ -29,7 +29,9 @@ const App = {
   },
 
   async go(screen) {
-    if (screen !== 'login' && screen !== 'register' && !Auth.isLoggedIn()) { screen = 'login'; }
+    const isAdmin = Auth.user?.user_metadata?.role === 'admin';
+    if (screen !== 'login' && !Auth.isLoggedIn()) { screen = 'login'; }
+    if ((screen === 'register' || screen === 'users') && !isAdmin) { screen = 'dashboard'; }
     this.screen = screen;
     const app = document.getElementById('app');
     if (!app) return;
@@ -43,18 +45,21 @@ const App = {
     if (screen === 'projects') await this.loadProjects();
     if (screen === 'transactions') await this.loadTransactions();
     if (screen === 'employees') await this.loadEmployees();
+    if (screen === 'users') await this.loadUsers();
   },
 
   layout(content) {
     const user = Auth.user || {};
-    const name = user.user_metadata?.name || user.email || 'المستخدم';
+    const name = user.displayName || user.user_metadata?.name || 'المستخدم';
+    const isAdmin = user.user_metadata?.role === 'admin';
     return `<div class="app-layout"><aside class="sidebar"><div class="sidebar-logo"><div class="logo-box">S</div><div><h2>سارة أبو العلا</h2><p>النظام المالي</p></div></div><nav class="sidebar-nav">
       <button data-nav="dashboard" class="nav-item ${this.screen === 'dashboard' ? 'active' : ''}"><span>📊</span> الرئيسية</button>
       <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء</button>
       <button data-nav="projects" class="nav-item ${this.screen === 'projects' ? 'active' : ''}"><span>📁</span> المشاريع</button>
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
-    </nav><div class="sidebar-footer"><div class="user-info">${name}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><main class="main-content">${content}</main></div>`;
+      ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button>` : ''}
+    </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><main class="main-content">${content}</main></div>`;
   },
 
   pageContent(screen) {
@@ -63,15 +68,16 @@ const App = {
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ مشروع جديد</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><button class="btn btn-primary" onclick="Crud.addTx()">+ معاملة جديدة</button></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ موظف جديد</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ مستخدم جديد</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     return '';
   },
 
   renderLogin() {
-    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><div class="logo-box large">S</div><h1>سارة أبو العلا</h1><p>النظام المالي والمحاسبي</p></div><form data-form="login" class="auth-form"><div class="form-group"><label>البريد الإلكتروني</label><input type="email" name="email" required placeholder="your@email.com" dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required placeholder="••••••••" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">دخول</button></form><p class="auth-footer">ليس لديك حساب؟ <a href="#" data-nav="register">سجل الآن</a></p></div></div>`;
+    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><div class="logo-box large">S</div><h1>سارة أبو العلا</h1><p>النظام المالي والمحاسبي</p></div><form data-form="login" class="auth-form"><div class="form-group"><label>اسم المستخدم</label><input type="text" name="username" required placeholder="admin" dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required placeholder="••••••••" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">دخول</button></form></div></div>`;
   },
 
   renderRegister() {
-    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><div class="logo-box large">S</div><h1>إنشاء حساب</h1></div><form data-form="register" class="auth-form"><div class="form-group"><label>الاسم</label><input type="text" name="name" required></div><div class="form-group"><label>البريد الإلكتروني</label><input type="email" name="email" required dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required minlength="6" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">تسجيل</button></form><p class="auth-footer">لديك حساب؟ <a href="#" data-nav="login">تسجيل الدخول</a></p></div></div>`;
+    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><div class="logo-box large">S</div><h1>إضافة مستخدم جديد</h1></div><form data-form="register" class="auth-form"><div class="form-group"><label>اسم المستخدم</label><input type="text" name="username" required dir="ltr"></div><div class="form-group"><label>الاسم الكامل</label><input type="text" name="name" required></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required minlength="6" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">إنشاء</button></form></div></div>`;
   },
 
   async doLogin(form) {
@@ -79,7 +85,7 @@ const App = {
     const btn = form.querySelector('button[type="submit"]');
     btn.disabled = true; btn.textContent = 'جاري الدخول...';
     try {
-      await Auth.login(fd.get('email'), fd.get('password'));
+      await Auth.login(fd.get('username'), fd.get('password'));
       await this.go('dashboard');
     } catch (e) {
       alert('خطأ في الدخول: ' + e.message);
@@ -92,9 +98,10 @@ const App = {
     const btn = form.querySelector('button[type="submit"]');
     btn.disabled = true; btn.textContent = 'جاري التسجيل...';
     try {
-      await Auth.register(fd.get('email'), fd.get('password'), fd.get('name'));
-      alert('تم إنشاء الحساب! سجل الدخول الآن.');
-      this.renderLogin();
+      await Auth.register(fd.get('username'), fd.get('password'), fd.get('name'));
+      UI.toast('تم إنشاء الحساب');
+      if (Auth.user?.user_metadata?.role === 'admin') this.go('users');
+      else this.renderLogin();
     } catch (e) {
       alert('خطأ: ' + e.message);
       btn.disabled = false; btn.textContent = 'تسجيل';
@@ -160,6 +167,20 @@ const App = {
       const data = await API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc');
       document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'الهاتف', 'الإجراءات'], data.map(e => [e.name, e.job_title || '-', this.fmtMoney(e.salary), e.phone || '-', UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp')])) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
     } catch (e) { console.error(e); }
+  },
+
+  async loadUsers() {
+    try {
+      const data = await API.authListUsers();
+      const users = data.users || [];
+      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء'], users.map(u => [
+        Auth.fromEmail(u.email),
+        u.user_metadata?.name || '-',
+        u.user_metadata?.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
+        u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-red">غير مفعل</span>',
+        this.fmtDate(u.created_at)
+      ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
+    } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
   },
 
   table(headers, rows) {
@@ -271,5 +292,14 @@ const Crud = {
 
   delTx(id) {
     UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); });
+  },
+
+  // Users (admin only)
+  addUser() {
+    UI.openModal('مستخدم جديد', `<form>${UI.form([{name:'username',label:'اسم المستخدم',req:true},{name:'name',label:'الاسم الكامل',req:true},{name:'password',label:'كلمة المرور',req:true},{name:'role',label:'الدور',type:'select',opts:[{v:'user',l:'موظف'},{v:'admin',l:'مدير'}]}])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await API.authCreateUser(Auth.toEmail(fd.get('username')), fd.get('password'), { name: fd.get('name'), username: fd.get('username'), role: fd.get('role') || 'user' });
+      UI.toast('تم إنشاء المستخدم'); App.loadUsers();
+    });
   }
 };

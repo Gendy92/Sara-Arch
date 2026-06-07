@@ -58,5 +58,30 @@ const API = {
     });
     if (!res.ok) return null;
     return res.json();
+  },
+
+  async authListUsers() {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+      }
+    });
+    if (!res.ok) throw new Error('Failed to list users');
+    return res.json();
+  },
+
+  async authCreateUser(email, password, metadata) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, password, email_confirm: true, user_metadata: metadata })
+    });
+    if (!res.ok) throw new Error('Failed to create user');
+    return res.json();
   }
 };

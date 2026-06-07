@@ -1,30 +1,40 @@
-// Auth Module (direct REST API)
+// Auth Module - Username + Password
 
 const Auth = {
   user: null,
   token: localStorage.getItem('sara_token') || null,
+
+  toEmail(username) {
+    return username.trim().toLowerCase() + '@local';
+  },
+
+  fromEmail(email) {
+    return email.replace('@local', '');
+  },
 
   async init() {
     if (this.token) {
       const user = await API.authGetUser(this.token);
       if (user) {
         this.user = user;
+        this.user.displayName = user.user_metadata?.name || this.fromEmail(user.email);
       } else {
         this.logout();
       }
     }
   },
 
-  async login(email, password) {
-    const data = await API.authSignIn(email, password);
+  async login(username, password) {
+    const data = await API.authSignIn(this.toEmail(username), password);
     this.token = data.access_token;
     this.user = data.user;
+    this.user.displayName = data.user?.user_metadata?.name || username;
     localStorage.setItem('sara_token', this.token);
     return data;
   },
 
-  async register(email, password, name) {
-    const data = await API.authSignUp(email, password, { name });
+  async register(username, password, name) {
+    const data = await API.authSignUp(this.toEmail(username), password, { name, username });
     return data;
   },
 
