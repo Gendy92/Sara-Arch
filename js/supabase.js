@@ -2,7 +2,7 @@
 // Replace these with your own Supabase project credentials
 // Get them from: Project Settings > API in your Supabase dashboard
 
-const SUPABASE_URL = 'https://your-project.supabase.co';
+const SUPABASE_URL = 'https://tvjkctttcijymqvaetsv.supabase.co';
 const SUPABASE_ANON_KEY = 'your-anon-key';
 
 // Initialize Supabase client
