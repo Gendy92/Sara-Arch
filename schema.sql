@@ -1,6 +1,6 @@
 -- ============================================================
 -- Supabase Schema for Sara Abu Ela Financial System
--- Run this in the Supabase SQL Editor
+-- SAFE TO RUN MULTIPLE TIMES (idempotent)
 -- ============================================================
 
 -- Enable UUID extension
@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================
 -- CLIENTS
 -- ============================================================
-CREATE TABLE clients (
+CREATE TABLE IF NOT EXISTS clients (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   phone TEXT,
@@ -24,7 +24,7 @@ CREATE TABLE clients (
 -- ============================================================
 -- PROJECTS
 -- ============================================================
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   client_id UUID REFERENCES clients(id),
@@ -42,7 +42,7 @@ CREATE TABLE projects (
 -- ============================================================
 -- EMPLOYEES
 -- ============================================================
-CREATE TABLE employees (
+CREATE TABLE IF NOT EXISTS employees (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   job_title TEXT,
@@ -60,7 +60,7 @@ CREATE TABLE employees (
 -- ============================================================
 -- VENDORS / SUPPLIERS
 -- ============================================================
-CREATE TABLE vendors (
+CREATE TABLE IF NOT EXISTS vendors (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   contact_person TEXT,
@@ -76,7 +76,7 @@ CREATE TABLE vendors (
 -- ============================================================
 -- ITEMS / PRODUCTS
 -- ============================================================
-CREATE TABLE items (
+CREATE TABLE IF NOT EXISTS items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   specification TEXT,
@@ -91,7 +91,7 @@ CREATE TABLE items (
 -- ============================================================
 -- SECTORS (for categorizing office expenses)
 -- ============================================================
-CREATE TABLE sectors (
+CREATE TABLE IF NOT EXISTS sectors (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   description TEXT,
@@ -103,7 +103,7 @@ CREATE TABLE sectors (
 -- ============================================================
 -- TRANSACTIONS (Income & Expenses)
 -- ============================================================
-CREATE TABLE transactions (
+CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   type TEXT NOT NULL CHECK (type IN ('income','expense','deposit','withdrawal','supervision','office_expense')),
   amount NUMERIC NOT NULL DEFAULT 0,
@@ -123,7 +123,7 @@ CREATE TABLE transactions (
 -- ============================================================
 -- PROCUREMENTS (Project Expenses / Purchases)
 -- ============================================================
-CREATE TABLE procurements (
+CREATE TABLE IF NOT EXISTS procurements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID REFERENCES projects(id),
   project_name TEXT,
@@ -145,7 +145,7 @@ CREATE TABLE procurements (
 -- ============================================================
 -- EMPLOYEE TRANSACTIONS (advances, penalties, bonuses)
 -- ============================================================
-CREATE TABLE employee_transactions (
+CREATE TABLE IF NOT EXISTS employee_transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   employee_id UUID REFERENCES employees(id),
   employee_name TEXT,
@@ -161,7 +161,7 @@ CREATE TABLE employee_transactions (
 -- ============================================================
 -- EMPLOYEE SALARY HISTORY
 -- ============================================================
-CREATE TABLE employee_salary_history (
+CREATE TABLE IF NOT EXISTS employee_salary_history (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   employee_id UUID REFERENCES employees(id),
   employee_name TEXT,
@@ -175,7 +175,7 @@ CREATE TABLE employee_salary_history (
 -- ============================================================
 -- CUSTODY RECORDS
 -- ============================================================
-CREATE TABLE custody_records (
+CREATE TABLE IF NOT EXISTS custody_records (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   employee_id UUID REFERENCES employees(id),
   employee_name TEXT,
@@ -197,20 +197,32 @@ CREATE TABLE custody_records (
 -- ============================================================
 
 -- Enable RLS on all tables
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sectors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE procurements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employee_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employee_salary_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE custody_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS vendors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS sectors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS procurements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS employee_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS employee_salary_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS custody_records ENABLE ROW LEVEL SECURITY;
 
--- Allow all operations for authenticated users (simplified policy)
--- You can refine these later based on roles
+-- Drop existing policies to avoid conflicts
+DROP POLICY IF EXISTS "Allow all for authenticated" ON clients;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON projects;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON employees;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON vendors;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON items;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON sectors;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON transactions;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON procurements;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON employee_transactions;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON employee_salary_history;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON custody_records;
+
+-- Create policies
 CREATE POLICY "Allow all for authenticated" ON clients FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON projects FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON employees FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -222,9 +234,6 @@ CREATE POLICY "Allow all for authenticated" ON procurements FOR ALL TO authentic
 CREATE POLICY "Allow all for authenticated" ON employee_transactions FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON employee_salary_history FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON custody_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
--- Allow anon to sign up (auth handled by Supabase Auth)
--- No direct anon access to app tables
 
 -- ============================================================
 -- FUNCTIONS
@@ -247,6 +256,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop existing triggers to avoid conflicts
+DROP TRIGGER IF EXISTS clients_updated_at ON clients;
+DROP TRIGGER IF EXISTS projects_updated_at ON projects;
+DROP TRIGGER IF EXISTS employees_updated_at ON employees;
+DROP TRIGGER IF EXISTS vendors_updated_at ON vendors;
+DROP TRIGGER IF EXISTS items_updated_at ON items;
+DROP TRIGGER IF EXISTS sectors_updated_at ON sectors;
+DROP TRIGGER IF EXISTS transactions_updated_at ON transactions;
+DROP TRIGGER IF EXISTS procurements_updated_at ON procurements;
+DROP TRIGGER IF EXISTS employee_transactions_updated_at ON employee_transactions;
+DROP TRIGGER IF EXISTS custody_records_updated_at ON custody_records;
+
 -- Apply update trigger to all tables
 CREATE TRIGGER clients_updated_at BEFORE UPDATE ON clients FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER projects_updated_at BEFORE UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -263,10 +284,12 @@ CREATE TRIGGER custody_records_updated_at BEFORE UPDATE ON custody_records FOR E
 -- SEED DATA (Optional)
 -- ============================================================
 
-INSERT INTO sectors (name, description) VALUES
+INSERT INTO sectors (name, description)
+VALUES
   ('رواتب', 'مصروفات الرواتب الشهرية'),
   ('إيجارات', 'إيجارات المكاتب والمستودعات'),
   ('مرافق', 'كهرباء، مياه، إنترنت، تليفون'),
   ('صيانة', 'صيانة المعدات والأجهزة'),
   ('تسويق', 'إعلانات وتسويق'),
-  ('نثرية', 'مصروفات نثرية ومتنوعة');
+  ('نثرية', 'مصروفات نثرية ومتنوعة')
+ON CONFLICT DO NOTHING;
