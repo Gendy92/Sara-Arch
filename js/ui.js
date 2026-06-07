@@ -49,12 +49,13 @@ const UI = {
 
   form(fields, values = {}) {
     return `<div class="form-grid">${fields.map(f => {
-      const v = values[f.name] !== undefined ? values[f.name] : (f.default || '');
-      if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${f.name}" rows="3" ${f.req ? 'required' : ''}>${v}</textarea></div>`;
-      if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><select name="${f.name}" ${f.req ? 'required' : ''}>${f.opts.map(o => `<option value="${o.v}" ${v === o.v ? 'selected' : ''}>${o.l}</option>`).join('')}</select></div>`;
-      if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${f.name}" value="${v}" ${f.req ? 'required' : ''} /></div>`;
-      if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${f.name}" value="${v}" ${f.req ? 'required' : ''} step="any" /></div>`;
-      return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${f.name}" value="${v}" ${f.req ? 'required' : ''} /></div>`;
+      const fieldName = f.name || f.key;
+      const v = values[fieldName] !== undefined ? values[fieldName] : (f.default || '');
+      if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" ${f.req ? 'required' : ''}>${v}</textarea></div>`;
+      if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><select name="${fieldName}" ${f.req ? 'required' : ''}>${f.opts.map(o => `<option value="${o.v}" ${v == o.v ? 'selected' : ''}>${o.l}</option>`).join('')}</select></div>`;
+      if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} /></div>`;
+      if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} step="any" /></div>`;
+      return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} /></div>`;
     }).join('')}</div><div style="display:flex;gap:8px;margin-top:20px"><button type="submit" class="btn btn-primary">حفظ</button><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button></div>`;
   },
 

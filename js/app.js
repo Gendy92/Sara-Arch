@@ -158,7 +158,7 @@ const App = {
   async loadTransactions() {
     try {
       const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
-      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'الإجراءات'], data.map(t => [this.fmtDate(t.created_at), `<span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span>`, this.fmtMoney(t.amount), t.description || '-', t.party_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'الإجراءات'], data.map(t => [this.fmtDate(t.created_at), `<span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span>`, this.fmtMoney(t.amount), t.description || '-', t.party_name || '-', t.project_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -191,49 +191,6 @@ const App = {
   fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; }
 };
 
-// ─── COLUMN DEFINITIONS ───
-const COLS = {
-  clients: [
-    { key: 'name', label: 'اسم العميل *', req: true },
-    { key: 'phone', label: 'الهاتف' },
-    { key: 'email', label: 'البريد' },
-    { key: 'address', label: 'العنوان' },
-    { key: 'notes', label: 'ملاحظات' }
-  ],
-  projects: [
-    { key: 'name', label: 'اسم المشروع *', req: true },
-    { key: 'client_name', label: 'اسم العميل' },
-    { key: 'value', label: 'القيمة', type: 'number' },
-    { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
-    { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
-    { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
-    { key: 'notes', label: 'ملاحظات' }
-  ],
-  employees: [
-    { key: 'name', label: 'اسم الموظف *', req: true },
-    { key: 'job_title', label: 'الوظيفة' },
-    { key: 'salary', label: 'الراتب', type: 'number' },
-    { key: 'phone', label: 'الهاتف' },
-    { key: 'email', label: 'البريد' },
-    { key: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
-    { key: 'notes', label: 'ملاحظات' }
-  ],
-  transactions: [
-    { key: 'type', label: 'النوع *', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
-    { key: 'amount', label: 'المبلغ *', type: 'number', req: true },
-    { key: 'party_name', label: 'الجهة / الاسم' },
-    { key: 'project_name', label: 'المشروع' },
-    { key: 'date', label: 'التاريخ', type: 'date' },
-    { key: 'description', label: 'الوصف' }
-  ],
-  users: [
-    { key: 'username', label: 'اسم المستخدم *', req: true },
-    { key: 'name', label: 'الاسم الكامل *', req: true },
-    { key: 'password', label: 'كلمة المرور *', req: true },
-    { key: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
-  ]
-};
-
 // ─── CRUD ───
 const Crud = {
   async save(table, data, id) {
@@ -258,9 +215,16 @@ const Crud = {
     await API.request(table, 'PATCH', { deleted_at: new Date().toISOString() }, '?id=eq.' + id);
   },
 
-  // Clients (bulk spreadsheet)
+  // ─── CLIENTS ───
   addClient() {
-    Spreadsheet.open('إضافة عملاء', COLS.clients, async (rows) => {
+    const cols = [
+      { key: 'name', label: 'اسم العميل *', req: true },
+      { key: 'phone', label: 'الهاتف' },
+      { key: 'email', label: 'البريد' },
+      { key: 'address', label: 'العنوان' },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة عملاء', cols, async (rows) => {
       await this.bulkSave('clients', rows);
       UI.toast(`تم حفظ ${rows.length} عميل`);
       App.loadClients();
@@ -270,7 +234,14 @@ const Crud = {
   async editClient(id) {
     const rows = await API.request('clients', 'GET', null, '?select=*&id=eq.' + id);
     if (!rows.length) return;
-    UI.openModal('تعديل عميل', `<form>${UI.form(COLS.clients, rows[0])}</form>`, async (form) => {
+    const fields = [
+      { name: 'name', label: 'اسم العميل', req: true },
+      { name: 'phone', label: 'الهاتف' },
+      { name: 'email', label: 'البريد' },
+      { name: 'address', label: 'العنوان' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل عميل', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
       await this.save('clients', { name: fd.get('name'), phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadClients();
@@ -281,21 +252,52 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا العميل؟', async () => { await this.softDelete('clients', id); UI.toast('تم الحذف'); App.loadClients(); });
   },
 
-  // Projects (bulk spreadsheet)
-  addProject() {
-    Spreadsheet.open('إضافة مشاريع', COLS.projects, async (rows) => {
-      await this.bulkSave('projects', rows);
+  // ─── PROJECTS (linked to Clients) ───
+  async addProject() {
+    const clients = await API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const cols = [
+      { key: 'name', label: 'اسم المشروع *', req: true },
+      { key: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { key: 'value', label: 'القيمة', type: 'number' },
+      { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
+      { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة مشاريع', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const client = clients.find(c => c.id === r.client_id);
+        return { ...r, client_id: r.client_id || null, client_name: client ? client.name : null };
+      });
+      await this.bulkSave('projects', enriched);
       UI.toast(`تم حفظ ${rows.length} مشروع`);
       App.loadProjects();
     });
   },
 
   async editProject(id) {
-    const rows = await API.request('projects', 'GET', null, '?select=*&id=eq.' + id);
-    if (!rows.length) return;
-    UI.openModal('تعديل مشروع', `<form>${UI.form(COLS.projects, rows[0])}</form>`, async (form) => {
+    const [projectRows, clients] = await Promise.all([
+      API.request('projects', 'GET', null, '?select=*&id=eq.' + id),
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    if (!projectRows.length) return;
+    const project = projectRows[0];
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const fields = [
+      { name: 'name', label: 'اسم المشروع', req: true },
+      { name: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'value', label: 'القيمة', type: 'number' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
+      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    const values = { ...project, client_id: project.client_id || '' };
+    UI.openModal('تعديل مشروع', `<form>${UI.form(fields, values)}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('projects', { name: fd.get('name'), client_name: fd.get('client_name') || null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
+      const client = clients.find(c => c.id === fd.get('client_id'));
+      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadProjects();
     });
   },
@@ -304,9 +306,18 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
   },
 
-  // Employees (bulk spreadsheet)
+  // ─── EMPLOYEES ───
   addEmp() {
-    Spreadsheet.open('إضافة موظفين', COLS.employees, async (rows) => {
+    const cols = [
+      { key: 'name', label: 'اسم الموظف *', req: true },
+      { key: 'job_title', label: 'الوظيفة' },
+      { key: 'salary', label: 'الراتب', type: 'number' },
+      { key: 'phone', label: 'الهاتف' },
+      { key: 'email', label: 'البريد' },
+      { key: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة موظفين', cols, async (rows) => {
       await this.bulkSave('employees', rows);
       UI.toast(`تم حفظ ${rows.length} موظف`);
       App.loadEmployees();
@@ -316,7 +327,16 @@ const Crud = {
   async editEmp(id) {
     const rows = await API.request('employees', 'GET', null, '?select=*&id=eq.' + id);
     if (!rows.length) return;
-    UI.openModal('تعديل موظف', `<form>${UI.form(COLS.employees, rows[0])}</form>`, async (form) => {
+    const fields = [
+      { name: 'name', label: 'اسم الموظف', req: true },
+      { name: 'job_title', label: 'الوظيفة' },
+      { name: 'salary', label: 'الراتب', type: 'number' },
+      { name: 'phone', label: 'الهاتف' },
+      { name: 'email', label: 'البريد' },
+      { name: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل موظف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
       await this.save('employees', { name: fd.get('name'), job_title: fd.get('job_title') || null, salary: +fd.get('salary') || 0, phone: fd.get('phone') || null, email: fd.get('email') || null, hire_date: fd.get('hire_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadEmployees();
@@ -327,10 +347,39 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
   },
 
-  // Transactions (bulk spreadsheet)
-  addTx() {
-    Spreadsheet.open('إضافة معاملات', COLS.transactions, async (rows) => {
-      const enriched = rows.map(r => ({ ...r, date: r.date || new Date().toISOString().slice(0, 10) }));
+  // ─── TRANSACTIONS (linked to Clients & Projects) ───
+  async addTx() {
+    const [clients, projects] = await Promise.all([
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const cols = [
+      { key: 'type', label: 'النوع *', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
+      { key: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { key: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { key: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('إضافة معاملات', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const client = clients.find(c => c.id === r.client_id);
+        const project = projects.find(p => p.id === r.project_id);
+        return {
+          type: r.type,
+          amount: r.amount,
+          client_id: r.client_id || null,
+          party_id: r.client_id || null,
+          party_name: client ? client.name : null,
+          party_type: 'client',
+          project_id: r.project_id || null,
+          project_name: project ? project.name : null,
+          date: r.date || new Date().toISOString().slice(0, 10),
+          description: r.description || null
+        };
+      });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} معاملة`);
       App.loadTransactions();
@@ -338,11 +387,29 @@ const Crud = {
   },
 
   async editTx(id) {
-    const rows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id);
-    if (!rows.length) return;
-    UI.openModal('تعديل معاملة', `<form>${UI.form(COLS.transactions, rows[0])}</form>`, async (form) => {
+    const [txRows, clients, projects] = await Promise.all([
+      API.request('transactions', 'GET', null, '?select=*&id=eq.' + id),
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    if (!txRows.length) return;
+    const tx = txRows[0];
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const fields = [
+      { name: 'type', label: 'النوع', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
+      { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { name: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'description', label: 'الوصف', type: 'textarea' }
+    ];
+    const values = { ...tx, client_id: tx.party_id || '', project_id: tx.project_id || '' };
+    UI.openModal('تعديل معاملة', `<form>${UI.form(fields, values)}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('transactions', { type: fd.get('type'), amount: +fd.get('amount') || 0, party_name: fd.get('party_name') || null, project_name: fd.get('project_name') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+      const client = clients.find(c => c.id === fd.get('client_id'));
+      const project = projects.find(p => p.id === fd.get('project_id'));
+      await this.save('transactions', { type: fd.get('type'), amount: +fd.get('amount') || 0, client_id: fd.get('client_id') || null, party_id: fd.get('client_id') || null, party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id') || null, project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
       UI.toast('تم التحديث'); App.loadTransactions();
     });
   },
@@ -351,9 +418,15 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); });
   },
 
-  // Users (admin only, bulk spreadsheet)
+  // ─── USERS (admin only) ───
   addUser() {
-    Spreadsheet.open('إضافة مستخدمين', COLS.users, async (rows) => {
+    const cols = [
+      { key: 'username', label: 'اسم المستخدم *', req: true },
+      { key: 'name', label: 'الاسم الكامل *', req: true },
+      { key: 'password', label: 'كلمة المرور *', req: true },
+      { key: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
+    ];
+    Spreadsheet.open('إضافة مستخدمين', cols, async (rows) => {
       for (const row of rows) {
         await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
       }
