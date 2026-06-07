@@ -132,7 +132,7 @@ You can later refine policies based on user roles (admin, accountant, viewer, et
 - [ ] Add file attachments (invoices, contracts)
 - [ ] Add role-based access control
 - [ ] Add notifications and activity log
-- [ ] Deploy to GitHub Pages / Vercel / Netlify
+- [x] Deploy to GitHub Pages
 
 ---
 
