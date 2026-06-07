@@ -237,7 +237,7 @@ const App = {
     return `
       <div class="page-header">
         <h1>👥 العملاء</h1>
-        <button class="btn btn-primary" onclick="App.openModal('add_client')">+ عميل جديد</button>
+        <button class="btn btn-primary" onclick="Crud.openAddClient()">+ عميل جديد</button>
       </div>
       <div class="card">
         <div class="table-responsive" id="clients-table">جاري التحميل...</div>
@@ -250,7 +250,7 @@ const App = {
     return `
       <div class="page-header">
         <h1>📁 المشاريع</h1>
-        <button class="btn btn-primary" onclick="App.openModal('add_project')">+ مشروع جديد</button>
+        <button class="btn btn-primary" onclick="Crud.openAddProject()">+ مشروع جديد</button>
       </div>
       <div class="card">
         <div class="table-responsive" id="projects-table">جاري التحميل...</div>
@@ -263,7 +263,7 @@ const App = {
     return `
       <div class="page-header">
         <h1>💰 المعاملات المالية</h1>
-        <button class="btn btn-primary" onclick="App.openModal('add_transaction')">+ معاملة جديدة</button>
+        <button class="btn btn-primary" onclick="Crud.openAddTransaction()">+ معاملة جديدة</button>
       </div>
       <div class="card">
         <div class="table-responsive" id="transactions-table">جاري التحميل...</div>
@@ -276,7 +276,7 @@ const App = {
     return `
       <div class="page-header">
         <h1>🧑‍💼 الموظفين</h1>
-        <button class="btn btn-primary" onclick="App.openModal('add_employee')">+ موظف جديد</button>
+        <button class="btn btn-primary" onclick="Crud.openAddEmployee()">+ موظف جديد</button>
       </div>
       <div class="card">
         <div class="table-responsive" id="employees-table">جاري التحميل...</div>
@@ -370,7 +370,7 @@ const App = {
       table.innerHTML = data?.length
         ? `<table class="data-table"><thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>العنوان</th><th>الإجراءات</th></tr></thead><tbody>${data.map(c => `
           <tr><td>${c.name}</td><td>${c.phone || '-'}</td><td>${c.email || '-'}</td><td>${c.address || '-'}</td>
-          <td><button class="btn btn-sm btn-secondary" onclick="App.editClient('${c.id}')">تعديل</button></td></tr>
+          <td>${UI.actionButtons(c.id, 'Crud.openEditClient', 'Crud.deleteClient')}</td></tr>
         `).join('')}</tbody></table>`
         : '<p style="color:var(--text3)">لا يوجد عملاء</p>';
     } catch (e) {
@@ -385,8 +385,9 @@ const App = {
       const table = document.getElementById('projects-table');
       if (!table) return;
       table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>المشروع</th><th>العميل</th><th>القيمة</th><th>الحالة</th></tr></thead><tbody>${data.map(p => `
-          <tr><td>${p.name}</td><td>${p.client_name || '-'}</td><td>${this.fmtMoney(p.value)}</td><td><span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span></td></tr>
+        ? `<table class="data-table"><thead><tr><th>المشروع</th><th>العميل</th><th>القيمة</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>${data.map(p => `
+          <tr><td>${p.name}</td><td>${p.client_name || '-'}</td><td>${this.fmtMoney(p.value)}</td><td><span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span></td>
+          <td>${UI.actionButtons(p.id, 'Crud.openEditProject', 'Crud.deleteProject')}</td></tr>
         `).join('')}</tbody></table>`
         : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
     } catch (e) {
@@ -401,8 +402,9 @@ const App = {
       const table = document.getElementById('transactions-table');
       if (!table) return;
       table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الوصف</th><th>الجهة</th></tr></thead><tbody>${data.map(t => `
-          <tr><td>${this.fmtDate(t.created_at)}</td><td><span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span></td><td>${this.fmtMoney(t.amount)}</td><td>${t.description || '-'}</td><td>${t.party_name || '-'}</td></tr>
+        ? `<table class="data-table"><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الوصف</th><th>الجهة</th><th>الإجراءات</th></tr></thead><tbody>${data.map(t => `
+          <tr><td>${this.fmtDate(t.created_at)}</td><td><span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span></td><td>${this.fmtMoney(t.amount)}</td><td>${t.description || '-'}</td><td>${t.party_name || '-'}</td>
+          <td>${UI.actionButtons(t.id, 'Crud.openEditTransaction', 'Crud.deleteTransaction')}</td></tr>
         `).join('')}</tbody></table>`
         : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) {
@@ -417,8 +419,9 @@ const App = {
       const table = document.getElementById('employees-table');
       if (!table) return;
       table.innerHTML = data?.length
-        ? `<table class="data-table"><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>الهاتف</th></tr></thead><tbody>${data.map(e => `
-          <tr><td>${e.name}</td><td>${e.job_title || '-'}</td><td>${this.fmtMoney(e.salary)}</td><td>${e.phone || '-'}</td></tr>
+        ? `<table class="data-table"><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الراتب</th><th>الهاتف</th><th>الإجراءات</th></tr></thead><tbody>${data.map(e => `
+          <tr><td>${e.name}</td><td>${e.job_title || '-'}</td><td>${this.fmtMoney(e.salary)}</td><td>${e.phone || '-'}</td>
+          <td>${UI.actionButtons(e.id, 'Crud.openEditEmployee', 'Crud.deleteEmployee')}</td></tr>
         `).join('')}</tbody></table>`
         : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
     } catch (e) {
@@ -476,12 +479,8 @@ const App = {
     return new Date(d).toLocaleDateString('ar-EG');
   },
 
-  openModal(type) {
-    alert('النوافذ المنبثقة قيد التطوير. النوع: ' + type);
-  },
-
-  editClient(id) {
-    alert('تعديل العميل: ' + id);
+  refreshCurrentScreen() {
+    this.goTo(this.currentScreen);
   }
 };
 
