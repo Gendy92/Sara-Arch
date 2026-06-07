@@ -25,11 +25,14 @@ const Auth = {
   },
 
   async login(username, password) {
+    console.log('[Auth] Logging in:', username);
     const data = await API.authSignIn(this.toEmail(username), password);
+    console.log('[Auth] Got token:', data.access_token ? data.access_token.substring(0, 20) + '...' : 'NONE');
     this.token = data.access_token;
     this.user = data.user;
     this.user.displayName = data.user?.user_metadata?.name || username;
     localStorage.setItem('sara_token', this.token);
+    console.log('[Auth] Saved to localStorage');
     return data;
   },
 

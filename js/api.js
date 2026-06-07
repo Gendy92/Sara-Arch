@@ -5,6 +5,7 @@ const API = {
 
   getHeaders() {
     const token = (typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY;
+    console.log('[API] Using token:', token ? token.substring(0, 20) + '...' : 'ANON');
     return {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + token,
@@ -17,9 +18,12 @@ const API = {
     const url = `${this.base}/${table}${query}`;
     const opts = { method, headers: this.getHeaders() };
     if (body) opts.body = JSON.stringify(body);
+    console.log('[API]', method, url);
     const res = await fetch(url, opts);
+    console.log('[API] Response:', res.status);
     if (!res.ok) {
       const text = await res.text();
+      console.error('[API] Error:', text);
       throw new Error(text || `HTTP ${res.status}`);
     }
     const text = await res.text();
