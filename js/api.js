@@ -2,16 +2,20 @@
 
 const API = {
   base: SUPABASE_URL + '/rest/v1',
-  headers: {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
+
+  getHeaders() {
+    const token = (typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY;
+    return {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
   },
 
   async request(table, method = 'GET', body = null, query = '') {
     const url = `${this.base}/${table}${query}`;
-    const opts = { method, headers: { ...this.headers } };
+    const opts = { method, headers: this.getHeaders() };
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);
     if (!res.ok) {
@@ -22,14 +26,11 @@ const API = {
     return text ? JSON.parse(text) : [];
   },
 
-  // Auth endpoints
+  // Auth endpoints (use anon key)
   async authSignIn(email, password) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
     if (!res.ok) throw new Error('Invalid login');
@@ -39,10 +40,7 @@ const API = {
   async authSignUp(email, password, data = {}) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, data })
     });
     if (!res.ok) throw new Error('Registration failed');
@@ -51,21 +49,16 @@ const API = {
 
   async authGetUser(token) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + token
-      }
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token }
     });
     if (!res.ok) return null;
     return res.json();
   },
 
+  // Admin endpoints (require service_role key)
   async authListUsers() {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-      }
+      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY }
     });
     if (!res.ok) throw new Error('Failed to list users');
     return res.json();
@@ -74,11 +67,7 @@ const API = {
   async authCreateUser(email, password, metadata) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
       method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, email_confirm: true, user_metadata: metadata })
     });
     if (!res.ok) throw new Error('Failed to create user');
