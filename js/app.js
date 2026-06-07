@@ -488,3 +488,8 @@ window.App = App;
 
 // Start app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => App.init());
+
+// Fallback: if DOM is already loaded, init immediately
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+  App.init();
+}
