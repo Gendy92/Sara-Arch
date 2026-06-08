@@ -34,7 +34,7 @@ const API = {
   async authSignIn(email, password) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' }
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ email, password })
     });
     if (!res.ok) throw new Error('Invalid login');
@@ -44,7 +44,7 @@ const API = {
   async authSignUp(email, password, data = {}) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' }
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ email, password, data })
     });
     if (!res.ok) throw new Error('Registration failed');
