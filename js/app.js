@@ -316,7 +316,16 @@ const App = {
   async loadEmployees() {
     try {
       const data = await API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'الهاتف', 'الإجراءات'], data.map(e => [e.name, e.job_title || '-', this.fmtMoney(e.salary), e.phone || '-', UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp')])) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
+      const empIds = data.map(e => e.id);
+      const custodyData = await API.request('custody_records', 'GET', null, `?select=employee_id,amount,status&employee_id=in.(${empIds.join(',')})&deleted_at=is.null`);
+      const custodyByEmp = {};
+      custodyData.forEach(c => { custodyByEmp[c.employee_id] = (custodyByEmp[c.employee_id] || 0) + (+c.amount || 0); });
+      document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
+        const cAmt = custodyByEmp[e.id] || 0;
+        const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
+        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp') + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button>`;
+        return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
+      })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -643,6 +652,55 @@ const Crud = {
 
   delEmp(id) {
     UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
+  },
+
+  // ─── CUSTODY (العهدة) ───
+  async addCustody(empId, empName) {
+    const [projects, clients] = await Promise.all([
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const fields = [
+      { name: 'amount', label: 'مبلغ العهدة', type: 'number', req: true },
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تسليم عهدة مالية', `<form>${UI.form(fields, {})}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const project = projects.find(p => p.id === fd.get('project_id'));
+      const client = clients.find(c => c.id === fd.get('client_id'));
+      await this.save('custody_records', { employee_id: empId, employee_name: empName, amount: +fd.get('amount') || 0, project_id: fd.get('project_id') || null, project_name: project ? project.name : null, client_id: fd.get('client_id') || null, client_name: client ? client.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null, status: 'active' });
+      UI.toast('تم تسليم العهدة'); App.loadEmployees(); Crud.employeeCustody(empId);
+    });
+  },
+
+  async employeeCustody(empId) {
+    const [empRows, custodyRecs] = await Promise.all([
+      API.request('employees', 'GET', null, `?select=*&id=eq.${empId}`),
+      API.request('custody_records', 'GET', null, `?select=*&employee_id=eq.${empId}&deleted_at=is.null&order=date.desc`)
+    ]);
+    if (!empRows.length) return;
+    const emp = empRows[0];
+    const activeTotal = custodyRecs.filter(c => c.status === 'active').reduce((s, c) => s + (+c.amount || 0), 0);
+    const settledTotal = custodyRecs.filter(c => c.status === 'settled').reduce((s, c) => s + (+c.amount || 0), 0);
+    const rows = custodyRecs.map(c => {
+      const statusBadge = c.status === 'active' ? '<span class="badge badge-green">نشطة</span>' : '<span class="badge badge-gray">مقفلة</span>';
+      const actions = c.status === 'active' ? `<button class="btn btn-sm btn-secondary" onclick="Crud.settleCustody('${c.id}', '${empId}')">تسوية</button>` : '-';
+      return [App.fmtDate(c.date), c.project_name || '-', c.client_name || '-', App.fmtMoney(c.amount), statusBadge, c.notes || '-', actions];
+    });
+    const html = `<div style="margin-bottom:16px"><strong>الموظف:</strong> ${emp.name}<br><strong>الوظيفة:</strong> ${emp.job_title || '-'}<br><strong>العهدة النشطة:</strong> <span style="color:var(--green)">${App.fmtMoney(activeTotal)}</span><br><strong>العهدة المقفلة:</strong> ${App.fmtMoney(settledTotal)}</div><div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addCustody('${emp.id}', '${emp.name}')">+ تسليم عهدة جديدة</button></div>${rows.length ? App.table(['التاريخ', 'المشروع', 'العميل', 'المبلغ', 'الحالة', 'ملاحظات', 'إجراء'], rows) : '<p style="color:var(--text3)">لا توجد سجلات عهدة</p>'}`;
+    UI.openModal('سجل العهدة — ' + emp.name, html, null);
+  },
+
+  async settleCustody(id, empId) {
+    UI.confirm('هل أنت متأكد من تسوية هذه العهدة؟', async () => {
+      await this.save('custody_records', { status: 'settled' }, id);
+      UI.toast('تمت التسوية'); App.loadEmployees(); Crud.employeeCustody(empId);
+    });
   },
 
   // ─── TRANSACTIONS: 4 Types ───
