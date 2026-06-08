@@ -172,6 +172,7 @@ const App = {
         const clientProjects = projByClient[c.id] || [];
         let totalExp = 0;
         let totalSup = 0;
+        let totalDesign = 0;
         clientProjects.forEach(p => {
           const exp = expByProject[p.id] || 0;
           totalExp += exp;
@@ -179,11 +180,11 @@ const App = {
           totalDesign += exp * (p.design_percentage || 0) / 100;
         });
         const dep = depByClient[c.id] || 0;
-        const balance = dep - totalExp - totalSup;
+        const balance = dep - totalExp - totalSup - totalDesign;
         const color = balance >= 0 ? 'var(--green)' : 'var(--red)';
-        return [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`];
-      }).filter(r => r[1] !== '0 ج.م' || r[2] !== '0 ج.م');
-      document.getElementById('customer-balances').innerHTML = balanceRows.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], balanceRows) : '<p style="color:var(--text3)">لا يوجد بيانات مالية</p>';
+        return [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), this.fmtMoney(totalDesign), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`];
+      }).filter(r => r[1] !== '0 ج.م' || r[2] !== '0 ج.م' || r[4] !== '0 ج.م');
+      document.getElementById('customer-balances').innerHTML = balanceRows.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'التصميم', 'الرصيد'], balanceRows) : '<p style="color:var(--text3)">لا يوجد بيانات مالية</p>';
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
