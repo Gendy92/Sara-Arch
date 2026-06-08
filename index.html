@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Sara Abo Elelaa — Financial System</title>
-<link rel="stylesheet" href="css/style.css?v=56">
+<link rel="stylesheet" href="css/style.css?v=71">
 </head>
 <body>
 <div id="app">
@@ -17,25 +17,66 @@
   </div>
 </div>
 
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="js/config.js?v=70"></script>
-<script src="js/api.js?v=70"></script>
-<script src="js/auth.js?v=70"></script>
-<script src="js/ui.js?v=70"></script>
-<script src="js/app.js?v=70"></script>
 <script>
-try {
-  App.start();
-} catch (e) {
-  document.getElementById('app').innerHTML =
-    '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center;background:#3d2e22">' +
-    '<div style="font-size:48px">⚠️</div>' +
-    '<h2 style="color:#d4726e">حدث خطأ في التحميل</h2>' +
-    '<p style="color:#6b6560;max-width:400px">' + e.message + '</p>' +
-    '<button onclick="location.reload()" style="padding:10px 24px;background:linear-gradient(135deg,#c4a97a,#d4bc94);color:#14161f;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:600">إعادة المحاولة</button></div>';
-}
+(function() {
+  function showError(msg) {
+    document.getElementById('app').innerHTML =
+      '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center;background:#3d2e22">' +
+      '<div style="font-size:48px">⚠️</div>' +
+      '<h2 style="color:#d4726e">حدث خطأ في التحميل</h2>' +
+      '<p style="color:#6b6560;max-width:400px">' + msg + '</p>' +
+      '<button onclick="location.reload(true)" style="padding:10px 24px;background:linear-gradient(135deg,#c4a97a,#d4bc94);color:#14161f;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:600">إعادة المحاولة</button></div>';
+  }
+
+  function loadResources(version) {
+    localStorage.setItem('sara_app_version', version);
+    var cdnScripts = [
+      'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+    ];
+    var localScripts = ['config.js','api.js','auth.js','ui.js','app.js'];
+    var total = cdnScripts.length + localScripts.length;
+    var loaded = 0;
+
+    function onLoad() {
+      loaded++;
+      if (loaded === total) {
+        try { App.start(); }
+        catch (e) { showError(e.message || 'Unknown error'); }
+      }
+    }
+
+    function onError(url) {
+      showError('فشل تحميل: ' + url);
+    }
+
+    cdnScripts.forEach(function(url) {
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = onLoad;
+      s.onerror = function() { onError(url); };
+      document.head.appendChild(s);
+    });
+
+    localScripts.forEach(function(file) {
+      var s = document.createElement('script');
+      s.src = 'js/' + file + '?v=' + version;
+      s.onload = onLoad;
+      s.onerror = function() { onError(file); };
+      document.head.appendChild(s);
+    });
+  }
+
+  // Always fetch version.json uncached to detect updates
+  fetch('version.json?_=' + Date.now(), { cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { loadResources(data.version); })
+    .catch(function(err) {
+      console.error('[Version] failed to fetch version.json:', err);
+      // Fallback to hardcoded version if version.json unavailable
+      loadResources('71');
+    });
+})();
 </script>
 </body>
 </html>
