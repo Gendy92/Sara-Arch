@@ -832,11 +832,23 @@ const App = {
 
   async loadMasterData() {
     try {
-      // Fetch sectors & items (always exist)
-      const [sectors, items] = await Promise.all([
-        API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
-        API.request('items', 'GET', null, '?select=*&order=name.asc')
+      // Fetch sectors & items (always exist). Filter out soft-deleted and deduplicate by name.
+      const [sectorsRaw, itemsRaw] = await Promise.all([
+        API.request('sectors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
+        API.request('items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc')
       ]);
+      const dedup = (arr) => {
+        const seen = new Set();
+        return arr.filter(x => {
+          const key = String(x.name || '').trim().toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      };
+      const sectors = dedup(sectorsRaw);
+      const items = dedup(itemsRaw);
+
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
         s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : '<p style="color:var(--text3)">لا توجد تصنيفات</p>';
