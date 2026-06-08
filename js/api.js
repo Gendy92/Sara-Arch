@@ -34,7 +34,7 @@ const API = {
   async authSignIn(email, password) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' }
       body: JSON.stringify({ email, password })
     });
     if (!res.ok) throw new Error('Invalid login');
@@ -44,7 +44,7 @@ const API = {
   async authSignUp(email, password, data = {}) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' }
       body: JSON.stringify({ email, password, data })
     });
     if (!res.ok) throw new Error('Registration failed');
@@ -53,7 +53,7 @@ const API = {
 
   async authGetUser(token) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token }
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'Accept-Charset': 'utf-8' }
     });
     if (!res.ok) return null;
     return res.json();
@@ -62,7 +62,7 @@ const API = {
   // Admin endpoints (require service_role key)
   async authListUsers() {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY }
+      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Accept': 'application/json', 'Accept-Charset': 'utf-8' }
     });
     if (!res.ok) throw new Error('Failed to list users');
     return res.json();
@@ -71,10 +71,20 @@ const API = {
   async authCreateUser(email, password, metadata) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
       method: 'POST',
-      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' },
+      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json', 'Accept-Charset': 'utf-8' },
       body: JSON.stringify({ email, password, email_confirm: true, user_metadata: metadata })
     });
     if (!res.ok) throw new Error('Failed to create user');
+    return res.json();
+  },
+
+  async authUpdateUser(id, metadata) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, {
+      method: 'PUT',
+      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json', 'Accept-Charset': 'utf-8' },
+      body: JSON.stringify({ user_metadata: metadata })
+    });
+    if (!res.ok) throw new Error('Failed to update user');
     return res.json();
   }
 };

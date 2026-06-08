@@ -177,12 +177,13 @@ const App = {
     try {
       const data = await API.authListUsers();
       const users = data.users || [];
-      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء'], users.map(u => [
+      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         Auth.fromEmail(u.email),
         u.user_metadata?.name || '-',
         u.user_metadata?.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
         u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-red">غير مفعل</span>',
-        this.fmtDate(u.created_at)
+        this.fmtDate(u.created_at),
+        `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
   },
@@ -519,6 +520,21 @@ const Crud = {
       }
       UI.toast(`تم إنشاء ${rows.length} مستخدم`);
       App.loadUsers();
+    });
+  },
+
+  async editUser(id) {
+    const data = await API.authListUsers();
+    const user = (data.users || []).find(u => u.id === id);
+    if (!user) return;
+    const fields = [
+      { name: 'name', label: 'الاسم الكامل', req: true },
+      { name: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
+    ];
+    UI.openModal('تعديل اسم المستخدم', `<form>${UI.form(fields, { name: user.user_metadata?.name || '', role: user.user_metadata?.role || 'user' })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await API.authUpdateUser(id, { name: fd.get('name'), role: fd.get('role'), username: Auth.fromEmail(user.email) });
+      UI.toast('تم التحديث'); App.loadUsers();
     });
   }
 };
