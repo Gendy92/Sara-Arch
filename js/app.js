@@ -154,7 +154,10 @@ const App = {
   async loadProjects() {
     try {
       const data = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'الحالة', 'الإجراءات'], data.map(p => [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')])) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
+      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'نسبة الإشراف', 'قيمة الإشراف', 'الحالة', 'الإجراءات'], data.map(p => {
+        const supAmt = (p.value || 0) * (p.supervision_percentage || 0) / 100;
+        return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')];
+      })) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -171,17 +174,21 @@ const App = {
 
   async loadOffice() {
     try {
-      const [incomeTxs, expenseTxs, sectors] = await Promise.all([
+      const [incomeTxs, expenseTxs, sectors, projects] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=in.(owner_deposit,supervision)&deleted_at=is.null&order=created_at.desc"),
         API.request('transactions', 'GET', null, "?select=*&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc"),
-        API.request('sectors', 'GET', null, '?select=*&order=name.asc')
+        API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
+        API.request('projects', 'GET', null, '?select=value,supervision_percentage&deleted_at=is.null')
       ]);
-      const income = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const txIncome = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const calcSupervision = projects.reduce((s, p) => s + ((p.value || 0) * (p.supervision_percentage || 0) / 100), 0);
+      const totalIncome = txIncome + calcSupervision;
       const expense = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
       document.getElementById('office-kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(income)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div></div>
         <div class="kpi-card"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(income - expense)}</div></div>`;
+        <div class="kpi-card"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">إشراف المشاريع (محسوب)</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(calcSupervision)}</div></div>`;
       const bySector = {};
       expenseTxs.forEach(t => { const name = t.sector_name || 'غير مصنف'; bySector[name] = (bySector[name] || 0) + (+t.amount || 0); });
       const sectorRows = Object.entries(bySector).map(([name, amount]) => [name, this.fmtMoney(amount)]);
@@ -306,6 +313,7 @@ const Crud = {
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'address', label: 'العنوان' },
       { key: 'value', label: 'القيمة', type: 'number' },
+      { key: 'supervision_percentage', label: 'نسبة الإشراف %', type: 'number' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
       { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
@@ -335,6 +343,7 @@ const Crud = {
       { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { name: 'address', label: 'العنوان' },
       { name: 'value', label: 'القيمة', type: 'number' },
+      { name: 'supervision_percentage', label: 'نسبة الإشراف %', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
       { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },

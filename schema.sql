@@ -2,7 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS clients (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,phone TEXT,email TEXT,address TEXT,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
-CREATE TABLE IF NOT EXISTS projects (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,client_id UUID REFERENCES clients(id),client_name TEXT,address TEXT,value NUMERIC DEFAULT 0,status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled','on_hold')),start_date DATE,end_date DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS projects (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,client_id UUID REFERENCES clients(id),client_name TEXT,address TEXT,value NUMERIC DEFAULT 0,supervision_percentage NUMERIC DEFAULT 0,status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled','on_hold')),start_date DATE,end_date DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS employees (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,job_title TEXT,salary NUMERIC DEFAULT 0,phone TEXT,email TEXT,hire_date DATE,is_active BOOLEAN DEFAULT true,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS vendors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,contact_person TEXT,phone TEXT,email TEXT,address TEXT,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS items (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,specification TEXT,brand TEXT,unit TEXT DEFAULT 'قطعة',notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS custody_records (id UUID PRIMARY KEY DEFAULT uuid_gen
 -- Migrations: projects still require client
 DO $$ BEGIN ALTER TABLE projects ALTER COLUMN client_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
 
--- Migration: add address to projects
+-- Migration: add address and supervision to projects
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS supervision_percentage NUMERIC DEFAULT 0;
 
 -- Migrations: 4-type transaction model
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
