@@ -50,6 +50,7 @@ const App = {
     if (screen === 'dashboard') await this.loadDashboard();
     if (screen === 'clients') await this.loadClients();
     if (screen === 'projects') await this.loadProjects();
+    if (screen === 'vendors') await this.loadVendors();
     if (screen === 'transactions') await this.loadTransactions();
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
@@ -64,6 +65,7 @@ const App = {
       <button data-nav="dashboard" class="nav-item ${this.screen === 'dashboard' ? 'active' : ''}"><span>📊</span> الرئيسية</button>
       <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء</button>
       <button data-nav="projects" class="nav-item ${this.screen === 'projects' ? 'active' : ''}"><span>📁</span> المشاريع</button>
+      <button data-nav="vendors" class="nav-item ${this.screen === 'vendors' ? 'active' : ''}"><span>🚚</span> الموردين</button>
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
@@ -77,6 +79,7 @@ const App = {
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 وارد vs مصروف — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     return '';
@@ -201,6 +204,16 @@ const App = {
         const actions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button>`;
         return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, actions];
       })) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
+    } catch (e) { console.error(e); }
+  },
+
+  async loadVendors() {
+    try {
+      const data = await API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
+      document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'الشخص المسؤول', 'الهاتف', 'البريد', 'الإجراءات'], data.map(v => {
+        const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor') + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`;
+        return [v.name, v.contact_person || '-', v.phone || '-', v.email || '-', actions];
+      })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -529,6 +542,63 @@ const Crud = {
 
   delProject(id) {
     UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
+  },
+
+  // ─── VENDORS ───
+  addVendor() {
+    const cols = [
+      { key: 'name', label: 'اسم المورد *', req: true },
+      { key: 'contact_person', label: 'الشخص المسؤول' },
+      { key: 'phone', label: 'الهاتف' },
+      { key: 'email', label: 'البريد' },
+      { key: 'address', label: 'العنوان' },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة موردين', cols, async (rows) => {
+      await this.bulkSave('vendors', rows);
+      UI.toast(`تم حفظ ${rows.length} مورد`);
+      App.loadVendors();
+    });
+  },
+
+  async editVendor(id) {
+    const rows = await API.request('vendors', 'GET', null, '?select=*&id=eq.' + id);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'name', label: 'اسم المورد', req: true },
+      { name: 'contact_person', label: 'الشخص المسؤول' },
+      { name: 'phone', label: 'الهاتف' },
+      { name: 'email', label: 'البريد' },
+      { name: 'address', label: 'العنوان' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل مورد', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('vendors', { name: fd.get('name'), contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
+      UI.toast('تم التحديث'); App.loadVendors();
+    });
+  },
+
+  delVendor(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id); UI.toast('تم الحذف'); App.loadVendors(); });
+  },
+
+  async vendorStatement(id) {
+    const [vendorRows, procs] = await Promise.all([
+      API.request('vendors', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
+    ]);
+    if (!vendorRows.length) return;
+    const vendor = vendorRows[0];
+    let running = 0;
+    const rows = procs.map(p => {
+      running += (+p.total_price || 0);
+      return [App.fmtDate(p.date), p.project_name || '-', p.item_name || '-', p.quantity || '-', App.fmtMoney(p.unit_price), App.fmtMoney(p.total_price), p.expense_type || '-', App.fmtMoney(running)];
+    });
+    const total = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
+    if (rows.length) rows.push(['', '', '', '', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(total)}</strong>`, '', `<strong>${App.fmtMoney(running)}</strong>`]);
+    const html = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(total)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>${rows.length ? App.table(['التاريخ', 'المشروع', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'التصنيف', 'الرصيد'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>'}`;
+    UI.openModal('كشف حساب المورد', html, null);
   },
 
   // ─── EMPLOYEES ───
