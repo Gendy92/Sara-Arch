@@ -4,7 +4,7 @@
 SUPABASE_URL="https://tvjkctttcijymqvaetsv.supabase.co"
 SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amtjdHR0Y2lqeW1xdmFldHN2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDg0MTM3NiwiZXhwIjoyMDk2NDE3Mzc2fQ.zH-yB4Ip_y7Ojsu541MMRD_P9FWO9E2dacALbRKBlmQ"
 
-TABLES="clients projects employees vendors items sectors transactions procurements employee_transactions employee_salary_history custody_records"
+TABLES="clients projects employees vendors items sectors transactions procurements employee_transactions employee_salary_history custody_records profiles"
 DATE=$(date +%Y-%m-%d)
 DIR="backups/$DATE"
 
