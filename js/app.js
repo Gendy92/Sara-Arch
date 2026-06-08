@@ -200,12 +200,26 @@ const App = {
 
   async loadUsers() {
     try {
-      const data = await API.authListUsers();
-      const users = data.users || [];
+      const [authData, profiles] = await Promise.all([
+        API.authListUsers(),
+        API.request('profiles', 'GET', null, '?select=*&order=created_at.desc')
+      ]);
+      const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
+      const users = (authData.users || []).map(u => {
+        const p = profileMap[u.id];
+        return {
+          id: u.id,
+          email: u.email,
+          name: p?.name || u.user_metadata?.name || '-',
+          role: p?.role || u.user_metadata?.role || 'user',
+          email_confirmed_at: u.email_confirmed_at,
+          created_at: u.created_at
+        };
+      });
       document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         Auth.fromEmail(u.email),
-        u.user_metadata?.name || '-',
-        u.user_metadata?.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
+        u.name,
+        u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
         u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-red">غير مفعل</span>',
         this.fmtDate(u.created_at),
         `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
@@ -601,7 +615,10 @@ const Crud = {
     ];
     Spreadsheet.open('إضافة مستخدمين', cols, async (rows) => {
       for (const row of rows) {
-        await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+        const authData = await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+        if (authData.user?.id) {
+          await API.request('profiles', 'POST', { id: authData.user.id, name: row.name, username: row.username, role: row.role || 'user' });
+        }
       }
       UI.toast(`تم إنشاء ${rows.length} مستخدم`);
       App.loadUsers();
@@ -609,16 +626,19 @@ const Crud = {
   },
 
   async editUser(id) {
-    const data = await API.authListUsers();
-    const user = (data.users || []).find(u => u.id === id);
-    if (!user) return;
+    const profiles = await API.request('profiles', 'GET', null, `?id=eq.${id}`);
+    const profile = profiles[0];
     const fields = [
       { name: 'name', label: 'الاسم الكامل', req: true },
       { name: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
     ];
-    UI.openModal('تعديل اسم المستخدم', `<form>${UI.form(fields, { name: user.user_metadata?.name || '', role: user.user_metadata?.role || 'user' })}</form>`, async (form) => {
+    UI.openModal('تعديل اسم المستخدم', `<form>${UI.form(fields, { name: profile?.name || '', role: profile?.role || 'user' })}</form>`, async (form) => {
       const fd = new FormData(form);
-      await API.authUpdateUser(id, { name: fd.get('name'), role: fd.get('role'), username: Auth.fromEmail(user.email) });
+      if (profile) {
+        await API.request('profiles', 'PATCH', { name: fd.get('name'), role: fd.get('role') }, `?id=eq.${id}`);
+      } else {
+        await API.request('profiles', 'POST', { id, name: fd.get('name'), role: fd.get('role') });
+      }
       UI.toast('تم التحديث'); App.loadUsers();
     });
   }

@@ -87,6 +87,19 @@ DROP TRIGGER IF EXISTS procurements_u ON procurements; CREATE TRIGGER procuremen
 DROP TRIGGER IF EXISTS employee_transactions_u ON employee_transactions; CREATE TRIGGER employee_transactions_u BEFORE UPDATE ON employee_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS custody_records_u ON custody_records; CREATE TRIGGER custody_records_u BEFORE UPDATE ON custody_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- Profiles table (stores Arabic names reliably outside auth metadata)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY,
+  name TEXT,
+  username TEXT,
+  role TEXT DEFAULT 'user',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated_all" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP TRIGGER IF EXISTS profiles_u ON profiles; CREATE TRIGGER profiles_u BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
 INSERT INTO sectors (name, description) VALUES
   ('رواتب', 'مصروفات الرواتب الشهرية'),
   ('إيجارات', 'إيجارات المكاتب والمستودعات'),

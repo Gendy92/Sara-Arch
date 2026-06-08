@@ -17,7 +17,16 @@ const Auth = {
       const user = await API.authGetUser(this.token);
       if (user) {
         this.user = user;
-        this.user.displayName = user.user_metadata?.name || this.fromEmail(user.email);
+        // Load profile from profiles table (Arabic names stored reliably here)
+        try {
+          const profiles = await API.request('profiles', 'GET', null, `?id=eq.${user.id}`);
+          const profile = profiles[0];
+          this.user.displayName = profile?.name || user.user_metadata?.name || this.fromEmail(user.email);
+          this.user.role = profile?.role || user.user_metadata?.role || 'user';
+        } catch (e) {
+          this.user.displayName = user.user_metadata?.name || this.fromEmail(user.email);
+          this.user.role = user.user_metadata?.role || 'user';
+        }
       } else {
         this.logout();
       }
@@ -30,7 +39,16 @@ const Auth = {
     console.log('[Auth] Got token:', data.access_token ? data.access_token.substring(0, 20) + '...' : 'NONE');
     this.token = data.access_token;
     this.user = data.user;
-    this.user.displayName = data.user?.user_metadata?.name || username;
+    // Try to load profile for correct Arabic name
+    try {
+      const profiles = await API.request('profiles', 'GET', null, `?id=eq.${data.user.id}`);
+      const profile = profiles[0];
+      this.user.displayName = profile?.name || data.user?.user_metadata?.name || username;
+      this.user.role = profile?.role || data.user?.user_metadata?.role || 'user';
+    } catch (e) {
+      this.user.displayName = data.user?.user_metadata?.name || username;
+      this.user.role = data.user?.user_metadata?.role || 'user';
+    }
     localStorage.setItem('sara_token', this.token);
     console.log('[Auth] Saved to localStorage');
     return data;
