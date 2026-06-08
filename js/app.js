@@ -72,7 +72,7 @@ const App = {
   },
 
   pageContent(screen) {
-    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 وارد vs مصروف — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
@@ -132,10 +132,10 @@ const App = {
   async loadDashboard() {
     try {
       const [clients, projects, employees, txs] = await Promise.all([
-        API.request('clients', 'GET', null, '?select=id&deleted_at=is.null'),
-        API.request('projects', 'GET', null, '?select=id,status&deleted_at=is.null'),
+        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+        API.request('projects', 'GET', null, '?select=id,status,client_id,supervision_percentage&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=type,amount&deleted_at=is.null')
+        API.request('transactions', 'GET', null, '?select=type,amount,client_id,project_id&deleted_at=is.null')
       ]);
       const activeProjects = projects.filter(p => p.status === 'active').length;
       const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
@@ -146,6 +146,30 @@ const App = {
         <div class="kpi-card"><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
         <div class="kpi-card"><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
+      // Customer balances
+      const deposits = txs.filter(t => t.type === 'project_deposit');
+      const expenses = txs.filter(t => t.type === 'project_expense');
+      const expByProject = {};
+      expenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const projByClient = {};
+      projects.forEach(p => { if (!projByClient[p.client_id]) projByClient[p.client_id] = []; projByClient[p.client_id].push(p); });
+      const depByClient = {};
+      deposits.forEach(t => { depByClient[t.client_id] = (depByClient[t.client_id] || 0) + (+t.amount || 0); });
+      const balanceRows = clients.map(c => {
+        const clientProjects = projByClient[c.id] || [];
+        let totalExp = 0;
+        let totalSup = 0;
+        clientProjects.forEach(p => {
+          const exp = expByProject[p.id] || 0;
+          totalExp += exp;
+          totalSup += exp * (p.supervision_percentage || 0) / 100;
+        });
+        const dep = depByClient[c.id] || 0;
+        const balance = dep - totalExp - totalSup;
+        const color = balance >= 0 ? 'var(--green)' : 'var(--red)';
+        return [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`];
+      }).filter(r => r[1] !== '0 ج.م' || r[2] !== '0 ج.م');
+      document.getElementById('customer-balances').innerHTML = balanceRows.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], balanceRows) : '<p style="color:var(--text3)">لا يوجد بيانات مالية</p>';
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
