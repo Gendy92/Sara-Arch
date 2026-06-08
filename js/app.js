@@ -897,7 +897,15 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة موردين', cols, async (rows) => {
-      await this.bulkSave('vendors', rows);
+      try {
+        await this.bulkSave('vendors', rows);
+      } catch (e) {
+        // Fallback: retry without 'sector' if column missing in schema cache
+        if (e.message && e.message.includes('sector')) {
+          const withoutSector = rows.map(r => { const { sector, ...rest } = r; return rest; });
+          await this.bulkSave('vendors', withoutSector);
+        } else { throw e; }
+      }
       UI.toast(`تم حفظ ${rows.length} مورد`);
       App.loadVendors();
     }, {}, {}, 'none');
@@ -917,7 +925,15 @@ const Crud = {
     ];
     UI.openModal('تعديل مورد', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('vendors', { name: fd.get('name'), sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
+      const data = { name: fd.get('name'), sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
+      try {
+        await this.save('vendors', data, id);
+      } catch (e) {
+        if (e.message && e.message.includes('sector')) {
+          const { sector, ...rest } = data;
+          await this.save('vendors', rest, id);
+        } else { throw e; }
+      }
       UI.toast('تم التحديث'); App.loadVendors();
     });
   },
