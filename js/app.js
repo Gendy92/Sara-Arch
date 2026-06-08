@@ -507,7 +507,7 @@ const Crud = {
       await this.bulkSave('clients', rows);
       UI.toast(`تم حفظ ${rows.length} عميل`);
       App.loadClients();
-    });
+    }, {}, {}, 'none');
   },
 
   async editClient(id) {
@@ -555,7 +555,7 @@ const Crud = {
       await this.bulkSave('projects', enriched);
       UI.toast(`تم حفظ ${rows.length} مشروع`);
       App.loadClients();
-    }, defaults);
+    }, defaults, {}, 'none');
   },
 
   async editProject(id) {
@@ -719,7 +719,7 @@ const Crud = {
       await this.bulkSave('vendors', rows);
       UI.toast(`تم حفظ ${rows.length} مورد`);
       App.loadVendors();
-    });
+    }, {}, {}, 'none');
   },
 
   async editVendor(id) {
@@ -889,7 +889,7 @@ const Crud = {
       await this.bulkSave('employees', rows);
       UI.toast(`تم حفظ ${rows.length} موظف`);
       App.loadEmployees();
-    });
+    }, {}, {}, 'none');
   },
 
   async editEmp(id) {
@@ -1302,7 +1302,7 @@ const Crud = {
       }
       UI.toast(`تم إنشاء ${rows.length} مستخدم`);
       App.loadUsers();
-    });
+    }, {}, {}, 'none');
   },
 
   async editUser(id) {

@@ -66,7 +66,7 @@ const UI = {
 
 // ─── EXCEL-LIKE SPREADSHEET COMPONENT ───
 const Spreadsheet = {
-  open(title, columns, onSave, defaults = {}, cascade = {}) {
+  open(title, columns, onSave, defaults = {}, cascade = {}, excelMode = 'paste') {
     const content = this.render(columns, defaults, cascade);
     UI.openModal(title, content, null);
 
@@ -76,7 +76,7 @@ const Spreadsheet = {
     spreadsheetDiv._cascade = cascade;
 
     // Excel toolbar
-    this.addExcelToolbar(modalBody, columns, spreadsheetDiv);
+    if (excelMode !== 'none') this.addExcelToolbar(modalBody, columns, spreadsheetDiv, excelMode);
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
@@ -136,17 +136,18 @@ const Spreadsheet = {
     </div>`;
   },
 
-  addExcelToolbar(container, columns, spreadsheetDiv) {
+  addExcelToolbar(container, columns, spreadsheetDiv, mode = 'paste') {
     const toolbar = document.createElement('div');
     toolbar.style.cssText = 'margin:16px 0;padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px';
+    const uploadBtn = mode === 'full' ? `<label class="btn btn-sm btn-secondary" style="cursor:pointer">
+          📁 رفع ملف Excel
+          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="Spreadsheet.handleFile(this, '${columns.map(c => c.key).join(',')}')">
+        </label>` : '';
     toolbar.innerHTML = `
       <div style="font-weight:600;color:var(--gold);margin-bottom:10px">📥 استيراد من Excel</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <button type="button" class="btn btn-sm btn-secondary" onclick="Spreadsheet.downloadTemplate(this)">📄 تحميل قالب Excel</button>
-        <label class="btn btn-sm btn-secondary" style="cursor:pointer">
-          📁 رفع ملف Excel
-          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="Spreadsheet.handleFile(this, '${columns.map(c => c.key).join(',')}')">
-        </label>
+        ${uploadBtn}
       </div>
       <div style="color:var(--text3);font-size:11px;margin-bottom:6px">أو انسخ من Excel والصق هنا (Ctrl+V):</div>
       <textarea class="excel-paste" placeholder="انسخ صفوف من Excel والصقها هنا..." rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:inherit;resize:vertical"></textarea>
