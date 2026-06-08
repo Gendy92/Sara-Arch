@@ -59,8 +59,10 @@ const UI = {
     }).join('')}</div><div style="display:flex;gap:8px;margin-top:20px"><button type="submit" class="btn btn-primary">حفظ</button><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button></div>`;
   },
 
-  actions(id, onEdit, onDel) {
-    return `<div class="table-actions"><button class="btn btn-sm btn-secondary" onclick="${onEdit}('${id}')">تعديل</button><button class="btn btn-sm btn-red" onclick="${onDel}('${id}')">حذف</button></div>`;
+  actions(id, onEdit, onDel, canEdit = true, canDelete = true) {
+    const editBtn = canEdit ? `<button class="btn btn-sm btn-secondary" onclick="${onEdit}('${id}')">تعديل</button>` : '';
+    const delBtn = canDelete ? `<button class="btn btn-sm btn-red" onclick="${onDel}('${id}')">حذف</button>` : '';
+    return `<div class="table-actions">${editBtn}${delBtn}</div>`;
   }
 };
 

@@ -32,6 +32,7 @@ const Auth = {
           this.user.displayName = this.safeName(user.user_metadata?.name, this.fromEmail(user.email));
           this.user.role = user.user_metadata?.role || 'user';
         }
+        await this.loadPermissions();
       } else {
         this.logout();
       }
@@ -56,6 +57,7 @@ const Auth = {
     }
     localStorage.setItem('sara_token', this.token);
     console.log('[Auth] Saved to localStorage');
+    await this.loadPermissions();
     return data;
   },
 
@@ -72,5 +74,43 @@ const Auth = {
 
   isLoggedIn() {
     return !!this.user;
+  },
+
+  isAdmin() {
+    return this.user?.role === 'admin';
+  },
+
+  permissions: {},
+
+  async loadPermissions() {
+    if (!this.user) return;
+    // Admin always has full access
+    if (this.isAdmin()) {
+      this.permissions = { _admin: true };
+      return;
+    }
+    try {
+      const perms = await API.request('user_permissions', 'GET', null, `?user_id=eq.${this.user.id}`);
+      this.permissions = {};
+      perms.forEach(p => {
+        this.permissions[p.screen] = {
+          view: p.can_view,
+          add: p.can_add,
+          edit: p.can_edit,
+          delete: p.can_delete,
+          print: p.can_print
+        };
+      });
+    } catch (e) {
+      console.log('[Auth] Permissions not loaded:', e.message);
+      this.permissions = {};
+    }
+  },
+
+  can(screen, action = 'view') {
+    if (this.isAdmin()) return true;
+    const p = this.permissions[screen];
+    if (!p) return true; // backward compatibility: no restrictions = full access
+    return !!p[action];
   }
 };

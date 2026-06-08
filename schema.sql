@@ -232,6 +232,25 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "authenticated_all" ON audit_logs;
 CREATE POLICY "authenticated_all" ON audit_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+-- User permissions (flexible RBAC)
+CREATE TABLE IF NOT EXISTS user_permissions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  screen TEXT NOT NULL,
+  can_view BOOLEAN DEFAULT false,
+  can_add BOOLEAN DEFAULT false,
+  can_edit BOOLEAN DEFAULT false,
+  can_delete BOOLEAN DEFAULT false,
+  can_print BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, screen)
+);
+ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_all" ON user_permissions;
+CREATE POLICY "authenticated_all" ON user_permissions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP TRIGGER IF EXISTS user_permissions_u ON user_permissions; CREATE TRIGGER user_permissions_u BEFORE UPDATE ON user_permissions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
 INSERT INTO sectors (name, description) VALUES
   ('رواتب', 'مصروفات الرواتب الشهرية'),
   ('إيجارات', 'إيجارات المكاتب والمستودعات'),
@@ -240,3 +259,6 @@ INSERT INTO sectors (name, description) VALUES
   ('تسويق', 'إعلانات وتسويق'),
   ('نثرية', 'مصروفات نثرية ومتنوعة')
 ON CONFLICT DO NOTHING;
+
+-- Refresh PostgREST schema cache
+NOTIFY pgrst, 'reload schema';

@@ -38,7 +38,8 @@ const App = {
   async go(screen) {
     const isAdmin = Auth.user?.user_metadata?.role === 'admin';
     if (screen !== 'login' && !Auth.isLoggedIn()) { screen = 'login'; }
-    if ((screen === 'register' || screen === 'users') && !isAdmin) { screen = 'dashboard'; }
+    if ((screen === 'register' || screen === 'users' || screen === 'permissions' || screen === 'audit' || screen === 'backup') && !isAdmin) { screen = 'dashboard'; }
+    if (!Auth.can(screen, 'view')) { screen = 'dashboard'; }
     this.screen = screen;
     const app = document.getElementById('app');
     if (!app) return;
@@ -53,6 +54,10 @@ const App = {
     if (screen === 'transactions') await this.loadTransactions();
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
+    if (screen === 'users') await this.loadUsers();
+    if (screen === 'permissions') await this.loadPermissionsScreen();
+    if (screen === 'audit') await this.loadAuditLog();
+    if (screen === 'backup') await this.loadBackup();
     if (screen === 'master') await this.loadMasterData();
   },
 
@@ -60,31 +65,32 @@ const App = {
     const user = Auth.user || {};
     const name = user.displayName || user.user_metadata?.name || 'المستخدم';
     const isAdmin = user.user_metadata?.role === 'admin';
+    const navItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button data-nav="${screen}" class="nav-item ${this.screen === screen ? 'active' : ''}"><span>${icon}</span> ${label}</button>` : '';
     return `<div class="app-layout"><aside class="sidebar" id="sidebar"><div class="sidebar-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h2>سارة أبو العلا</h2><p>النظام المالي والمحاسبي</p></div><nav class="sidebar-nav">
-      <button data-nav="dashboard" class="nav-item ${this.screen === 'dashboard' ? 'active' : ''}"><span>📊</span> الرئيسية</button>
-      <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء والمشاريع</button>
-
-      <button data-nav="vendors" class="nav-item ${this.screen === 'vendors' ? 'active' : ''}"><span>🚚</span> الموردين</button>
-      <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
-      <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
-      <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
-      <button data-nav="master" class="nav-item ${this.screen === 'master' ? 'active' : ''}"><span>📋</span> البيانات الأساسية</button>
-      ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button><button data-nav="audit" class="nav-item ${this.screen === 'audit' ? 'active' : ''}"><span>📜</span> سجل العمليات</button><button data-nav="backup" class="nav-item ${this.screen === 'backup' ? 'active' : ''}"><span>💾</span> النسخ الاحتياطي</button>` : ''}
+      ${navItem('dashboard', '📊', 'الرئيسية')}
+      ${navItem('clients', '👥', 'العملاء والمشاريع')}
+      ${navItem('vendors', '🚚', 'الموردين')}
+      ${navItem('transactions', '💰', 'المعاملات')}
+      ${navItem('office', '🏢', 'المكتب')}
+      ${navItem('employees', '🧑‍💼', 'الموظفين')}
+      ${navItem('master', '📋', 'البيانات الأساسية')}
+      ${isAdmin ? navItem('users', '🔐', 'المستخدمين') + navItem('permissions', '🔑', 'الصلاحيات') + navItem('audit', '📜', 'سجل العمليات') + navItem('backup', '💾', 'النسخ الاحتياطي') : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
   },
 
   pageContent(screen) {
     if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
-    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button></div><div id="clients-list">جاري التحميل...</div>`;
+    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1>${Auth.can('clients', 'add') ? `<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button>` : ''}</div><div id="clients-list">جاري التحميل...</div>`;
     if (screen === 'projects') { this.go('clients'); return ''; }
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 وارد vs مصروف — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1>${Auth.can('vendors', 'add') ? `<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button>` : ''}</div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1>${Auth.can('users', 'add') ? `<button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button>` : ''}</div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">المعاملات</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl">جاري التحميل...</div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div>`;
-    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button><div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button><div id="work-items-tbl">جاري التحميل...</div></div></div>`;
+    if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1></div><div class="card"><div id="permissions-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl">جاري التحميل...</div></div></div>`;
     return '';
     return '';
   },
@@ -206,12 +212,12 @@ const App = {
 
       const html = clients.map(c => {
         const cProjects = projByClient[c.id] || [];
-        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient') + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
+        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
         const projRows = cProjects.map(p => {
           const exp = expByProject[p.id] || 0;
           const dep = depByProject[p.id] || 0;
           const supAmt = exp * (p.supervision_percentage || 0) / 100;
-          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button>`;
+          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button>`;
           return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'نسبة الإشراف', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
@@ -253,7 +259,7 @@ const App = {
     try {
       const data = await API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
       document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
-        const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor') + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
+        const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
         return [v.name, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
@@ -374,7 +380,7 @@ const App = {
       document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
-        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp') + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
+        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
       })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
@@ -662,7 +668,7 @@ const App = {
       document.getElementById('backup-last').innerHTML = last
         ? `آخر نسخة يدوية: <strong>${new Date(last).toLocaleString('ar-EG')}</strong>`
         : 'لم يتم عمل نسخة يدوية بعد';
-      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles'];
+      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions'];
       // Check which tables actually exist
       const results = await Promise.all(tables.map(async t => {
         try { await API.request(t, 'GET', null, '?select=id&limit=1'); return { table: t, ok: true }; }
@@ -676,7 +682,7 @@ const App = {
   },
 
   async downloadLocalBackup() {
-    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles'];
+    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions'];
     const progress = document.getElementById('backup-progress');
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
     const zip = new JSZip();
@@ -707,6 +713,84 @@ const App = {
     const skipMsg = skip > 0 ? ` (تم تخطي ${skip} جدول غير منشأ)` : '';
     progress.innerHTML = `<p style="color:var(--green)">✅ تم التحميل بنجاح — ${ok} جدول${skipMsg}</p>`;
     this.loadBackup();
+  },
+
+  async loadPermissionsScreen() {
+    try {
+      const [users, perms] = await Promise.all([
+        API.request('profiles', 'GET', null, '?select=*&role=eq.user&order=name.asc'),
+        API.request('user_permissions', 'GET', null, '?select=*')
+      ]);
+      if (!users.length) {
+        document.getElementById('permissions-tbl').innerHTML = '<p style="color:var(--text3)">لا يوجد مستخدمين عاديين</p>';
+        return;
+      }
+      const screens = [
+        { key: 'dashboard', label: '📊 الرئيسية' },
+        { key: 'clients', label: '👥 العملاء' },
+        { key: 'vendors', label: '🚚 الموردين' },
+        { key: 'transactions', label: '💰 المعاملات' },
+        { key: 'office', label: '🏢 المكتب' },
+        { key: 'employees', label: '🧑‍💼 الموظفين' },
+        { key: 'master', label: '📋 البيانات الأساسية' }
+      ];
+      const actions = [
+        { key: 'can_view', label: 'عرض' },
+        { key: 'can_add', label: 'إضافة' },
+        { key: 'can_edit', label: 'تعديل' },
+        { key: 'can_delete', label: 'حذف' },
+        { key: 'can_print', label: 'طباعة' }
+      ];
+      const permMap = {};
+      perms.forEach(p => { permMap[`${p.user_id}_${p.screen}`] = p; });
+
+      const html = users.map(u => {
+        const rows = screens.map(s => {
+          const pk = `${u.id}_${s.key}`;
+          const p = permMap[pk] || {};
+          const cells = actions.map(a => {
+            const checked = p[a.key] ? 'checked' : '';
+            return `<td style="text-align:center"><input type="checkbox" data-user="${u.id}" data-screen="${s.key}" data-action="${a.key}" ${checked} style="width:18px;height:18px;cursor:pointer;accent-color:var(--gold)"></td>`;
+          }).join('');
+          return `<tr><td style="font-weight:600;font-size:13px">${s.label}</td>${cells}</tr>`;
+        }).join('');
+        return `<div class="card" style="margin-bottom:16px"><h3 style="margin-bottom:12px">👤 ${u.name || u.username}</h3><div class="table-responsive"><table class="data-table"><thead><tr><th>الشاشة</th>${actions.map(a => `<th style="text-align:center">${a.label}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      }).join('');
+
+      const saveBtn = `<div style="margin-bottom:20px"><button class="btn btn-primary" onclick="App.savePermissions()">💾 حفظ الصلاحيات</button></div>`;
+      document.getElementById('permissions-tbl').innerHTML = saveBtn + html;
+    } catch (e) {
+      console.error(e);
+      const msg = e.message && e.message.includes('does not exist')
+        ? '<p style="color:var(--red)">جدول user_permissions غير موجود. شغّل schema.sql في Supabase.</p>'
+        : '<p style="color:var(--red)">خطأ في التحميل</p>';
+      document.getElementById('permissions-tbl').innerHTML = msg;
+    }
+  },
+
+  async savePermissions() {
+    const checkboxes = document.querySelectorAll('#permissions-tbl input[type="checkbox"]');
+    const perms = {};
+    checkboxes.forEach(cb => {
+      const userId = cb.dataset.user;
+      const screen = cb.dataset.screen;
+      const action = cb.dataset.action;
+      const key = `${userId}_${screen}`;
+      if (!perms[key]) perms[key] = { user_id: userId, screen };
+      perms[key][action] = cb.checked;
+    });
+    try {
+      for (const p of Object.values(perms)) {
+        const existing = await API.request('user_permissions', 'GET', null, `?user_id=eq.${p.user_id}&screen=eq.${p.screen}`);
+        if (existing.length) {
+          await API.request('user_permissions', 'PATCH', p, `?id=eq.${existing[0].id}`);
+        } else {
+          await API.request('user_permissions', 'POST', p);
+        }
+      }
+      UI.toast('تم حفظ الصلاحيات');
+      this.loadPermissionsScreen();
+    } catch (e) { console.error(e); UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
   },
 
   async loadAuditLog() {
@@ -741,11 +825,11 @@ const App = {
         API.request('items', 'GET', null, '?select=*&order=name.asc')
       ]);
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
-        s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector')
+        s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : '<p style="color:var(--text3)">لا توجد تصنيفات</p>';
       this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...');
       document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'الماركة', 'الوحدة', 'الإجراءات'], items.map(i => [
-        i.name, i.specification || '-', i.brand || '-', i.unit || 'قطعة', UI.actions(i.id, 'Crud.editItem', 'Crud.delItem')
+        i.name, i.specification || '-', i.brand || '-', i.unit || 'قطعة', UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : '<p style="color:var(--text3)">لا توجد أصناف</p>';
       this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
 
@@ -760,11 +844,11 @@ const App = {
 
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
       document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
-        s.name, s.notes || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection')
+        s.name, s.notes || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : '<p style="color:var(--text3)">لا يوجد أقسام</p>';
       this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
       document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
-        i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem')
+        i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : '<p style="color:var(--text3)">لا توجد بنود</p>';
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
     } catch (e) { console.error(e); }
