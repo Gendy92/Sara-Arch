@@ -271,7 +271,13 @@ const App = {
       const allTxs = [...data, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
-        const party = t.vendor_name || t.employee_name || t.party_name || t.sector_name || '-';
+        let party;
+        if (t.type === 'project_expense') {
+          party = t.party_name || '-';
+          if (t.vendor_name) party += ' ← ' + t.vendor_name;
+        } else {
+          party = t.vendor_name || t.employee_name || t.party_name || t.sector_name || '-';
+        }
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', actions];
@@ -782,13 +788,16 @@ const Crud = {
   },
 
   async addProjectExpense() {
-    const [projects, vendors] = await Promise.all([
+    const [clients, projects, vendors] = await Promise.all([
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
       API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
-    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
     const cols = [
+      { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -799,7 +808,9 @@ const Crud = {
       const enriched = rows.map(r => {
         const project = projects.find(p => p.id === r.project_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
-        return { type: 'project_expense', amount: r.amount, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        if (!project) { UI.toast('مشروع غير موجود', 'error'); throw new Error('invalid project'); }
+        if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
+        return { type: 'project_expense', amount: r.amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف`);
@@ -907,22 +918,26 @@ const Crud = {
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'project_expense') {
-      const [projects, vendors] = await Promise.all([
+      const [clients, projects, vendors] = await Promise.all([
+        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
         API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
       ]);
       const fields = [
-        { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
+        { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
+        { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, project_id: tx.project_id || '', vendor_id: tx.vendor_id || '' })}</form>`, async (form) => {
+      UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '' })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
-        await this.save('transactions', { type: 'project_expense', amount: +fd.get('amount') || 0, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
+        if (fd.get('client_id') && project.client_id !== fd.get('client_id')) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
+        await this.save('transactions', { type: 'project_expense', amount: +fd.get('amount') || 0, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'office_expense') {
