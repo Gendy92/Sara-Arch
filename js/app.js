@@ -53,6 +53,7 @@ const App = {
     if (screen === 'transactions') await this.loadTransactions();
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
+    if (screen === 'attendance') await this.loadAttendance();
     if (screen === 'users') await this.loadUsers();
     if (screen === 'master') await this.loadMasterData();
   },
@@ -69,6 +70,7 @@ const App = {
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
+      <button data-nav="attendance" class="nav-item ${this.screen === 'attendance' ? 'active' : ''}"><span>📅</span> الحضور والرواتب</button>
       <button data-nav="master" class="nav-item ${this.screen === 'master' ? 'active' : ''}"><span>📋</span> البيانات الأساسية</button>
       ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button>` : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
@@ -84,6 +86,7 @@ const App = {
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div>`;
+    if (screen === 'attendance') return `<div class="page-header"><h1>📅 الحضور والرواتب</h1></div><div class="card" style="margin-bottom:16px"><h3>📝 تسجيل الحضور اليومي</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">التاريخ:</label><input type="date" id="attendance-date" value="${new Date().toISOString().slice(0,10)}" onchange="App.loadAttendanceDay()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><button class="btn btn-primary" onclick="App.saveAttendance()">💾 حفظ الحضور</button></div><div id="attendance-tbl">جاري التحميل...</div></div><div class="card" style="margin-bottom:16px"><h3>💰 كشف الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="payroll-month" onchange="App.loadPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="payroll-year" onchange="App.loadPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generatePayroll()">🔄 توليد الرواتب</button></div><div id="payroll-tbl">جاري التحميل...</div></div>`;
     return '';
   },
 
@@ -372,11 +375,169 @@ const App = {
       document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
-        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp') + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button>`;
+        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp') + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
       })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
     } catch (e) { console.error(e); }
+  },
+
+  async loadAttendance() {
+    await this.loadAttendanceDay();
+    await this.loadPayroll();
+  },
+
+  async loadAttendanceDay() {
+    try {
+      const dateInput = document.getElementById('attendance-date');
+      const date = dateInput ? dateInput.value : new Date().toISOString().slice(0, 10);
+      const [employees, attendance] = await Promise.all([
+        API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+        API.request('attendance_records', 'GET', null, `?select=*&date=eq.${date}&deleted_at=is.null`)
+      ]);
+      const attMap = Object.fromEntries(attendance.map(a => [a.employee_id, a]));
+      const statusOpts = [
+        { v: 'present', l: 'حاضر' },
+        { v: 'absent', l: 'غائب' },
+        { v: 'late', l: 'متأخر' },
+        { v: 'half_day', l: 'نصف يوم' },
+        { v: 'leave', l: 'إجازة' }
+      ];
+      if (!employees.length) {
+        document.getElementById('attendance-tbl').innerHTML = '<p style="color:var(--text3)">لا يوجد موظفين نشطين</p>';
+        return;
+      }
+      const rows = employees.map(e => {
+        const att = attMap[e.id];
+        const status = att ? att.status : 'present';
+        const checkIn = att ? (att.check_in || '') : '';
+        const checkOut = att ? (att.check_out || '') : '';
+        const notes = att ? (att.notes || '') : '';
+        const attId = att ? att.id : '';
+        return `
+          <tr data-emp-id="${e.id}" data-att-id="${attId}">
+            <td style="font-weight:600">${e.name}</td>
+            <td><select class="att-status" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px">
+              ${statusOpts.map(o => `<option value="${o.v}" ${status === o.v ? 'selected' : ''}>${o.l}</option>`).join('')}
+            </select></td>
+            <td><input type="time" class="att-in" value="${checkIn}" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px"></td>
+            <td><input type="time" class="att-out" value="${checkOut}" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px"></td>
+            <td><input type="text" class="att-notes" value="${notes}" placeholder="ملاحظات" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;width:140px"></td>
+          </tr>`;
+      }).join('');
+      document.getElementById('attendance-tbl').innerHTML = `<div class="table-responsive"><table class="data-table"><thead><tr><th>الموظف</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    } catch (e) { console.error(e); document.getElementById('attendance-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل البيانات</p>'; }
+  },
+
+  async saveAttendance() {
+    try {
+      const date = document.getElementById('attendance-date').value;
+      const rows = document.querySelectorAll('#attendance-tbl tbody tr');
+      const toInsert = [];
+      const toUpdate = [];
+      rows.forEach(tr => {
+        const empId = tr.dataset.empId;
+        const attId = tr.dataset.attId;
+        const status = tr.querySelector('.att-status').value;
+        const checkIn = tr.querySelector('.att-in').value || null;
+        const checkOut = tr.querySelector('.att-out').value || null;
+        const notes = tr.querySelector('.att-notes').value || null;
+        const empName = tr.querySelector('td').textContent;
+        const data = { employee_id: empId, employee_name: empName, date, status, check_in: checkIn, check_out: checkOut, notes };
+        if (attId) toUpdate.push({ id: attId, data });
+        else toInsert.push(data);
+      });
+      for (const u of toUpdate) {
+        await API.request('attendance_records', 'PATCH', u.data, '?id=eq.' + u.id);
+      }
+      if (toInsert.length) {
+        await API.request('attendance_records', 'POST', toInsert);
+      }
+      UI.toast(`تم حفظ ${rows.length} سجل حضور`);
+      this.loadAttendanceDay();
+    } catch (e) { console.error(e); UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
+  },
+
+  async loadPayroll() {
+    try {
+      const month = +document.getElementById('payroll-month').value;
+      const year = +document.getElementById('payroll-year').value;
+      const [employees, payrolls] = await Promise.all([
+        API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+        API.request('payroll_records', 'GET', null, `?month=eq.${month}&year=eq.${year}&deleted_at=is.null`)
+      ]);
+      const payrollMap = Object.fromEntries(payrolls.map(p => [p.employee_id, p]));
+      const statusBadge = (s) => {
+        const map = { draft: '<span class="badge badge-gray">مسودة</span>', approved: '<span class="badge" style="background:rgba(212,165,116,0.12);color:var(--gold);border:1px solid rgba(212,165,116,0.15)">معتمد</span>', paid: '<span class="badge badge-green">مدفوع</span>' };
+        return map[s] || s;
+      };
+      const rows = employees.map(e => {
+        const p = payrollMap[e.id];
+        if (!p) return [e.name, App.fmtMoney(e.salary), '-', '-', '-', '-', '-', '-', '-', '<span class="badge badge-gray">غير مولد</span>', '-'];
+        const actions = p.status === 'draft'
+          ? `<button class="btn btn-sm btn-primary" onclick="Crud.editPayroll('${p.id}')">تعديل</button> <button class="btn btn-sm btn-secondary" onclick="Crud.approvePayroll('${p.id}')">اعتماد</button>`
+          : p.status === 'approved'
+            ? `<button class="btn btn-sm btn-primary" onclick="Crud.payPayroll('${p.id}')">💰 دفع</button> <button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`
+            : `<button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`;
+        return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), statusBadge(p.status), actions];
+      });
+      document.getElementById('payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
+    } catch (e) { console.error(e); document.getElementById('payroll-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل البيانات</p>'; }
+  },
+
+  async generatePayroll() {
+    try {
+      const month = +document.getElementById('payroll-month').value;
+      const year = +document.getElementById('payroll-year').value;
+      const [employees, attendance, empTxs] = await Promise.all([
+        API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+        API.request('attendance_records', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null`),
+        API.request('employee_transactions', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null`)
+      ]);
+      const attByEmp = {};
+      attendance.forEach(a => { attByEmp[a.employee_id] = attByEmp[a.employee_id] || []; attByEmp[a.employee_id].push(a); });
+      const bonusByEmp = {};
+      const penaltyByEmp = {};
+      empTxs.forEach(t => {
+        if (t.type === 'bonus') bonusByEmp[t.employee_id] = (bonusByEmp[t.employee_id] || 0) + (+t.amount || 0);
+        if (t.type === 'penalty') penaltyByEmp[t.employee_id] = (penaltyByEmp[t.employee_id] || 0) + (+t.amount || 0);
+      });
+      const records = employees.map(e => {
+        const empAtt = attByEmp[e.id] || [];
+        const present = empAtt.filter(a => a.status === 'present').length;
+        const absent = empAtt.filter(a => a.status === 'absent').length;
+        const late = empAtt.filter(a => a.status === 'late').length;
+        const half = empAtt.filter(a => a.status === 'half_day').length;
+        const leave = empAtt.filter(a => a.status === 'leave').length;
+        const base = +e.salary || 0;
+        const dailyRate = base / 30;
+        const deductions = Math.round(absent * dailyRate + half * dailyRate * 0.5);
+        const bonuses = bonusByEmp[e.id] || 0;
+        const penalties = penaltyByEmp[e.id] || 0;
+        const net = base - deductions + bonuses - penalties;
+        return {
+          employee_id: e.id, employee_name: e.name, month, year,
+          base_salary: base, days_present: present, days_absent: absent,
+          days_late: late, days_half: half, days_leave: leave,
+          deductions, bonuses, penalties, net_salary: net, status: 'draft'
+        };
+      });
+      for (const r of records) {
+        try {
+          await API.request('payroll_records', 'POST', r);
+        } catch (e) {
+          // unique constraint — update instead
+          if (e.message && e.message.includes('23505')) {
+            const existing = await API.request('payroll_records', 'GET', null, `?employee_id=eq.${r.employee_id}&month=eq.${month}&year=eq.${year}&deleted_at=is.null`);
+            if (existing.length) {
+              await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary }, `?id=eq.${existing[0].id}`);
+            }
+          } else { throw e; }
+        }
+      }
+      UI.toast(`تم توليد رواتب ${records.length} موظف`);
+      this.loadPayroll();
+    } catch (e) { console.error(e); UI.toast('خطأ في توليد الرواتب: ' + e.message, 'error'); }
   },
 
   async loadUsers() {
@@ -1070,6 +1231,39 @@ const Crud = {
     });
   },
 
+  async employeeAttendance(empId) {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const [empRows, attendance] = await Promise.all([
+        API.request('employees', 'GET', null, `?select=*&id=eq.${empId}`),
+        API.request('attendance_records', 'GET', null, `?select=*&employee_id=eq.${empId}&date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null&order=date.asc`)
+      ]);
+      if (!empRows.length) return;
+      const emp = empRows[0];
+      const statusLabels = { present: 'حاضر', absent: 'غائب', late: 'متأخر', half_day: 'نصف يوم', leave: 'إجازة' };
+      const statusColors = { present: 'var(--green)', absent: 'var(--red)', late: 'var(--gold)', half_day: 'var(--blue)', leave: 'var(--text3)' };
+      const summary = { present: 0, absent: 0, late: 0, half_day: 0, leave: 0 };
+      attendance.forEach(a => { if (summary[a.status] !== undefined) summary[a.status]++; });
+      const rows = attendance.map(a => [
+        App.fmtDate(a.date),
+        `<span style="color:${statusColors[a.status] || 'var(--text)'};font-weight:600">${statusLabels[a.status] || a.status}</span>`,
+        a.check_in || '-', a.check_out || '-', a.notes || '-'
+      ]);
+      const html = `<div style="margin-bottom:16px"><strong>الموظف:</strong> ${emp.name}<br><strong>الشهر:</strong> ${month}/${year}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;font-size:13px">
+        <span style="color:var(--green)">✓ حاضر: ${summary.present}</span>
+        <span style="color:var(--red)">✗ غائب: ${summary.absent}</span>
+        <span style="color:var(--gold)">⏱ متأخر: ${summary.late}</span>
+        <span style="color:var(--blue)">½ نصف يوم: ${summary.half_day}</span>
+        <span style="color:var(--text3)">🏖 إجازة: ${summary.leave}</span>
+      </div>
+      ${rows.length ? App.table(['التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات'], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور هذا الشهر</p>'}`;
+      UI.openModal('سجل الحضور — ' + emp.name, html, null);
+    } catch (e) { console.error(e); UI.toast('خطأ في تحميل سجل الحضور', 'error'); }
+  },
+
   // ─── TRANSACTIONS: 4 Types ───
   async addProjectDeposit() {
     const [clients, projects] = await Promise.all([
@@ -1413,6 +1607,50 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا الصنف؟', async () => {
       await this.softDelete('items', id);
       UI.toast('تم الحذف'); App.loadMasterData();
+    });
+  },
+
+  // ─── PAYROLL ───
+  async editPayroll(id) {
+    const rows = await API.request('payroll_records', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const p = rows[0];
+    const fields = [
+      { name: 'base_salary', label: 'الراتب الأساسي', type: 'number', req: true },
+      { name: 'days_present', label: 'أيام الحضور', type: 'number' },
+      { name: 'days_absent', label: 'أيام الغياب', type: 'number' },
+      { name: 'days_late', label: 'أيام التأخر', type: 'number' },
+      { name: 'deductions', label: 'الخصومات', type: 'number' },
+      { name: 'bonuses', label: 'المكافآت', type: 'number' },
+      { name: 'penalties', label: 'الجزاءات', type: 'number' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل راتب — ' + p.employee_name, `<form>${UI.form(fields, p)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const base = +fd.get('base_salary') || 0;
+      const deductions = +fd.get('deductions') || 0;
+      const bonuses = +fd.get('bonuses') || 0;
+      const penalties = +fd.get('penalties') || 0;
+      const net = base - deductions + bonuses - penalties;
+      await this.save('payroll_records', {
+        base_salary: base, days_present: +fd.get('days_present') || 0, days_absent: +fd.get('days_absent') || 0,
+        days_late: +fd.get('days_late') || 0, deductions, bonuses, penalties, net_salary: net, notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث'); App.loadPayroll();
+    });
+  },
+
+  async approvePayroll(id) {
+    UI.confirm('هل أنت متأكد من اعتماد هذا الراتب؟', async () => {
+      await this.save('payroll_records', { status: 'approved' }, id);
+      UI.toast('تم الاعتماد'); App.loadPayroll();
+    });
+  },
+
+  async payPayroll(id) {
+    UI.confirm('هل أنت متأكد من تسجيل دفع هذا الراتب؟', async () => {
+      await this.save('payroll_records', { status: 'paid' }, id);
+      UI.toast('تم تسجيل الدفع'); App.loadPayroll();
     });
   }
 };

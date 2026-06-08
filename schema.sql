@@ -31,6 +31,56 @@ CREATE TABLE IF NOT EXISTS custody_expenses (id UUID PRIMARY KEY DEFAULT uuid_ge
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS vendor_id UUID REFERENCES vendors(id);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS vendor_name TEXT;
 
+-- Migration: attendance & payroll
+CREATE TABLE IF NOT EXISTS attendance_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  employee_id UUID REFERENCES employees(id),
+  employee_name TEXT,
+  date DATE NOT NULL,
+  status TEXT DEFAULT 'present' CHECK (status IN ('present','absent','late','half_day','leave')),
+  check_in TIME,
+  check_out TIME,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS payroll_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  employee_id UUID REFERENCES employees(id),
+  employee_name TEXT,
+  month INTEGER NOT NULL,
+  year INTEGER NOT NULL,
+  base_salary NUMERIC DEFAULT 0,
+  days_present INTEGER DEFAULT 0,
+  days_absent INTEGER DEFAULT 0,
+  days_late INTEGER DEFAULT 0,
+  days_half INTEGER DEFAULT 0,
+  days_leave INTEGER DEFAULT 0,
+  deductions NUMERIC DEFAULT 0,
+  bonuses NUMERIC DEFAULT 0,
+  penalties NUMERIC DEFAULT 0,
+  net_salary NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft','approved','paid')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  UNIQUE(employee_id, month, year)
+);
+
+ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "authenticated_all" ON attendance_records;
+DROP POLICY IF EXISTS "authenticated_all" ON payroll_records;
+CREATE POLICY "authenticated_all" ON attendance_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON payroll_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP TRIGGER IF EXISTS attendance_records_u ON attendance_records; CREATE TRIGGER attendance_records_u BEFORE UPDATE ON attendance_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS payroll_records_u ON payroll_records; CREATE TRIGGER payroll_records_u BEFORE UPDATE ON payroll_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
 -- Migrations: 4-type transaction model
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_name TEXT;
