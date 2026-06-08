@@ -181,13 +181,16 @@ const App = {
 
   async loadClients() {
     try {
-      const [clients, projects, expenses] = await Promise.all([
+      const [clients, projects, expenses, deposits] = await Promise.all([
         API.request('clients', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
-        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null"),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_deposit&deleted_at=is.null")
       ]);
       const expByProject = {};
       expenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const depByProject = {};
+      deposits.forEach(t => { depByProject[t.project_id] = (depByProject[t.project_id] || 0) + (+t.amount || 0); });
       const projByClient = {};
       projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
 
@@ -201,8 +204,9 @@ const App = {
         const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient') + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
         const projRows = cProjects.map(p => {
           const exp = expByProject[p.id] || 0;
+          const dep = depByProject[p.id] || 0;
           const supAmt = exp * (p.supervision_percentage || 0) / 100;
-          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button>`;
+          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button>`;
           return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'نسبة الإشراف', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
@@ -549,6 +553,47 @@ const Crud = {
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
     const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
     UI.openModal('كشف حساب المشروع', html, null);
+  },
+
+  async projectBudget(id) {
+    const [projectRows, deposits, expenses] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('transactions', 'GET', null, `?select=amount&type=eq.project_deposit&project_id=eq.${id}&deleted_at=is.null`),
+      API.request('transactions', 'GET', null, `?select=amount&type=eq.project_expense&project_id=eq.${id}&deleted_at=is.null`)
+    ]);
+    if (!projectRows.length) return;
+    const project = projectRows[0];
+    const budget = +project.value || 0;
+    const totalDep = deposits.reduce((s, t) => s + (+t.amount || 0), 0);
+    const totalExp = expenses.reduce((s, t) => s + (+t.amount || 0), 0);
+    const supervision = totalExp * (project.supervision_percentage || 0) / 100;
+    const remainingBudget = budget - totalExp;
+    const clientBalance = totalDep - totalExp - supervision;
+    const expPct = budget > 0 ? Math.min(100, (totalExp / budget) * 100) : 0;
+
+    const bar = (label, value, max, color) => {
+      const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+      return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${label}</span><span>${App.fmtMoney(value)}</span></div><div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color};border-radius:5px;transition:.4s"></div></div></div>`;
+    };
+
+    const kpi = (label, value, color) => `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center"><div style="font-size:11px;color:var(--text3);margin-bottom:6px">${label}</div><div style="font-size:20px;font-weight:700;color:${color}">${App.fmtMoney(value)}</div></div>`;
+
+    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
+      ${kpi('ميزانية المشروع', budget, 'var(--text)')}
+      ${kpi('الوارد من العميل', totalDep, 'var(--green)')}
+      ${kpi('المصروفات الفعلية', totalExp, 'var(--red)')}
+      ${kpi('إشراف المكتب', supervision, 'var(--gold)')}
+      ${kpi('المتبقي من الميزانية', remainingBudget, remainingBudget >= 0 ? 'var(--green)' : 'var(--red)')}
+      ${kpi('رصيد العميل', clientBalance, clientBalance >= 0 ? 'var(--blue)' : 'var(--red)')}
+    </div>
+    ${bar('نسبة الصرف من الميزانية', totalExp, budget, totalExp > budget ? 'var(--red)' : 'var(--green)')}
+    <div style="margin-top:16px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px;color:var(--text2)">
+      ${remainingBudget > 0 ? `✅ المتبقي من الميزانية: <strong>${App.fmtMoney(remainingBudget)}</strong> — ممكن يتصرف على المشروع` : remainingBudget < 0 ? `⚠️ تجاوز الميزانية بـ <strong>${App.fmtMoney(Math.abs(remainingBudget))}</strong>` : '✅ الميزانية مستنفدة بالكامل'}
+      <br>${clientBalance > 0 ? `💰 للعميل رصيد مسترد: <strong>${App.fmtMoney(clientBalance)}</strong>` : clientBalance < 0 ? `📥 العميل مديون بـ <strong>${App.fmtMoney(Math.abs(clientBalance))}</strong>` : '✅ الرصيد صفر'}
+    </div>
+    <div style="margin-top:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
+    UI.openModal('📊 ميزانية المشروع — ' + project.name, html, null);
   },
 
   async clientStatement(id) {
