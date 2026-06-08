@@ -385,6 +385,10 @@ const App = {
   async parseFingerprintFile(input) {
     const file = input.files[0];
     if (!file) return;
+    if (typeof XLSX === 'undefined') {
+      UI.toast('مكتبة Excel لم يتم تحميلها — تأكد من اتصال الإنترنت', 'error');
+      return;
+    }
     const preview = document.getElementById('fingerprint-preview');
     preview.innerHTML = '<p style="color:var(--text3)">جاري قراءة الملف...</p>';
     try {
@@ -401,11 +405,12 @@ const App = {
         preview.innerHTML = '<p style="color:var(--red)">الملف فارغ أو غير صالح</p>';
         return;
       }
-      const headers = json[0].map(h => String(h || '').trim());
+      const headers = (json[0] || []).map(h => String(h || '').trim());
       const lowerHeaders = headers.map(h => h.toLowerCase());
       // Auto-detect columns
       const findCol = patterns => {
         for (let i = 0; i < lowerHeaders.length; i++) {
+          if (!lowerHeaders[i]) continue;
           for (const p of patterns) { if (lowerHeaders[i].includes(p)) return i; }
         }
         return -1;
@@ -427,20 +432,25 @@ const App = {
       const parsed = [];
       for (let i = 1; i < json.length; i++) {
         const row = json[i];
-        if (!row[colName]) continue;
+        if (!Array.isArray(row) || row.length <= colName || !row[colName]) continue;
         const rawName = String(row[colName]).trim();
-        const rawDate = colDate >= 0 ? row[colDate] : null;
-        const rawIn = colIn >= 0 ? row[colIn] : null;
-        const rawOut = colOut >= 0 ? row[colOut] : null;
+        const rawDate = (colDate >= 0 && colDate < row.length) ? row[colDate] : null;
+        const rawIn = (colIn >= 0 && colIn < row.length) ? row[colIn] : null;
+        const rawOut = (colOut >= 0 && colOut < row.length) ? row[colOut] : null;
 
-        // Parse date
+        // Parse date (handle Excel serial numbers, Date objects, and strings)
         let dateStr = null;
         if (rawDate) {
-          if (typeof rawDate === 'object' && rawDate instanceof Date) {
+          if (rawDate instanceof Date) {
             dateStr = rawDate.toISOString().slice(0, 10);
+          } else if (typeof rawDate === 'number') {
+            // Excel serial date → JS Date
+            const epoch = new Date(1899, 11, 30);
+            const fixed = rawDate > 60 ? rawDate - 1 : rawDate; // Excel 1900 leap year bug
+            const d = new Date(epoch.getTime() + fixed * 86400000);
+            dateStr = d.toISOString().slice(0, 10);
           } else {
             const s = String(rawDate).trim();
-            // Try common formats: 2026-05-19, 19/05/2026, 19-05-2026
             if (/^\d{4}-\d{2}-\d{2}$/.test(s)) dateStr = s;
             else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(s)) {
               const [d, m, y] = s.split(/[\/\-]/);
@@ -453,8 +463,10 @@ const App = {
         const searchName = rawName.toLowerCase();
         let emp = empByName[searchName];
         if (!emp) {
-          // Try partial match
-          emp = employees.find(e => searchName.includes(e.name.trim().toLowerCase()) || e.name.trim().toLowerCase().includes(searchName));
+          emp = employees.find(e => {
+            const en = e.name.trim().toLowerCase();
+            return searchName.includes(en) || en.includes(searchName);
+          });
         }
 
         // Determine status
@@ -549,7 +561,13 @@ const App = {
         return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), statusBadge(p.status), actions];
       });
       document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
-    } catch (e) { console.error(e); document.getElementById('emp-payroll-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل البيانات</p>'; }
+    } catch (e) {
+      console.error(e);
+      const msg = e.message && e.message.includes('does not exist')
+        ? '<p style="color:var(--red)">جداول الرواتب غير موجودة. شغّل schema.sql في Supabase.</p>'
+        : '<p style="color:var(--red)">خطأ في تحميل البيانات</p>';
+      document.getElementById('emp-payroll-tbl').innerHTML = msg;
+    }
   },
 
   async generateEmpPayroll() {
