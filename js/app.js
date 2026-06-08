@@ -151,7 +151,7 @@ const App = {
   async loadProjects() {
     try {
       const data = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'القيمة', 'الحالة', 'الإجراءات'], data.map(p => [p.name, p.client_name || '-', this.fmtMoney(p.value), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')])) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
+      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'الحالة', 'الإجراءات'], data.map(p => [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')])) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -264,6 +264,7 @@ const Crud = {
     const cols = [
       { key: 'name', label: 'اسم المشروع *', req: true },
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { key: 'address', label: 'العنوان' },
       { key: 'value', label: 'القيمة', type: 'number' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
@@ -292,6 +293,7 @@ const Crud = {
     const fields = [
       { name: 'name', label: 'اسم المشروع', req: true },
       { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'address', label: 'العنوان' },
       { name: 'value', label: 'القيمة', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
