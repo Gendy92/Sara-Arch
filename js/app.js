@@ -248,7 +248,7 @@ const App = {
     try {
       const data = await API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
       document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
-        const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor') + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`;
+        const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor') + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
         return [v.name, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
@@ -746,21 +746,132 @@ const Crud = {
   },
 
   async vendorStatement(id) {
-    const [vendorRows, procs] = await Promise.all([
+    const [vendorRows, procs, payments] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=*&id=eq.${id}`),
-      API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
+      API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`),
+      API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
     ]);
     if (!vendorRows.length) return;
     const vendor = vendorRows[0];
+
+    // Build combined ledger
+    const ledger = [];
+    procs.forEach(p => ledger.push({ date: p.date, type: 'purchase', desc: `شراء: ${p.item_name || '-'} (${p.project_name || '-'})`, amount: +p.total_price || 0, qty: p.quantity, unit: p.unit_price }));
+    payments.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'payment', desc: t.description || 'دفعة للمورد', amount: +t.amount || 0 }));
+    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+
     let running = 0;
-    const rows = procs.map(p => {
-      running += (+p.total_price || 0);
-      return [App.fmtDate(p.date), p.project_name || '-', p.item_name || '-', p.quantity || '-', App.fmtMoney(p.unit_price), App.fmtMoney(p.total_price), p.expense_type || '-', App.fmtMoney(running)];
+    const rows = ledger.map(r => {
+      if (r.type === 'purchase') running += r.amount;
+      else running -= r.amount;
+      const debit = r.type === 'purchase' ? App.fmtMoney(r.amount) : '-';
+      const credit = r.type === 'payment' ? App.fmtMoney(r.amount) : '-';
+      return [App.fmtDate(r.date), r.desc, debit, credit, `<strong style="color:${running >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(running))}</strong>`, running >= 0 ? 'علينا' : 'له'];
     });
+
+    const totalPurchases = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
+    const totalPayments = payments.reduce((s, t) => s + (+t.amount || 0), 0);
+    const balance = totalPurchases - totalPayments;
+
+    if (rows.length) rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalPurchases)}</strong>`, `<strong>${App.fmtMoney(totalPayments)}</strong>`, `<strong style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(balance))}</strong>`, balance >= 0 ? 'علينا' : 'له']);
+
+    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(totalPurchases)}<br><strong>إجمالي المدفوعات:</strong> ${App.fmtMoney(totalPayments)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
+    const tableHtml = rows.length ? App.table(['التاريخ', 'البيان', 'مدين (شراء)', 'دائن (دفعة)', 'الرصيد', ''], rows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
+    UI.openModal('📋 كشف حساب المورد — ' + vendor.name, summary + tableHtml, null);
+  },
+
+  async vendorPurchases(vendorId) {
+    const [vendorRows, procs, projects] = await Promise.all([
+      API.request('vendors', 'GET', null, `?select=*&id=eq.${vendorId}`),
+      API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`),
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    if (!vendorRows.length) return;
+    const vendor = vendorRows[0];
     const total = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
-    if (rows.length) rows.push(['', '', '', '', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(total)}</strong>`, '', `<strong>${App.fmtMoney(running)}</strong>`]);
-    const html = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(total)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>${rows.length ? App.table(['التاريخ', 'المشروع', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'التصنيف', 'الرصيد'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>'}`;
-    UI.openModal('كشف حساب المورد', html, null);
+    const rows = procs.map(p => [
+      App.fmtDate(p.date), p.project_name || '-', p.item_name || '-', p.quantity || '-',
+      App.fmtMoney(p.unit_price), App.fmtMoney(p.total_price), p.expense_type || '-',
+      UI.actions(p.id, 'Crud.editProcurement', 'Crud.delProcurement')
+    ]);
+    const html = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(total)}</div>
+      <div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addProcurement('${vendorId}')">+ إضافة مشتريات</button></div>
+      ${rows.length ? App.table(['التاريخ', 'المشروع', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'التصنيف', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>'}`;
+    UI.openModal('💰 مشتريات — ' + vendor.name, html, null);
+  },
+
+  async addProcurement(vendorId) {
+    const [projects, vendors] = await Promise.all([
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
+    const fields = [
+      { name: 'vendor_id', label: 'المورد', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'item_name', label: 'البند / الصنف', req: true },
+      { name: 'quantity', label: 'الكمية', type: 'number' },
+      { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
+      { name: 'expense_type', label: 'التصنيف' },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    const overlay = UI.openModal('إضافة مشتريات', `<form>${UI.form(fields, { vendor_id: vendorId || '', date: new Date().toISOString().slice(0, 10) })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const project = projects.find(p => p.id === fd.get('project_id'));
+      const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+      await this.save('procurements', {
+        vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
+        project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
+        item_name: fd.get('item_name'), quantity: +fd.get('quantity') || 1, unit_price: +fd.get('unit_price') || 0,
+        expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
+      });
+      UI.toast('تمت الإضافة');
+      if (vendorId) this.vendorPurchases(vendorId);
+      else App.loadVendors();
+    });
+    this._setupClientProjectCascade(overlay, projects, null, null);
+  },
+
+  async editProcurement(id) {
+    const rows = await API.request('procurements', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const p = rows[0];
+    const [projects, vendors] = await Promise.all([
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    const fields = [
+      { name: 'vendor_id', label: 'المورد', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
+      { name: 'item_name', label: 'البند / الصنف', req: true },
+      { name: 'quantity', label: 'الكمية', type: 'number' },
+      { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
+      { name: 'expense_type', label: 'التصنيف' },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    const overlay = UI.openModal('تعديل مشتريات', `<form>${UI.form(fields, { ...p, vendor_id: p.vendor_id || '', project_id: p.project_id || '' })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const project = projects.find(pr => pr.id === fd.get('project_id'));
+      const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+      await this.save('procurements', {
+        vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
+        project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
+        item_name: fd.get('item_name'), quantity: +fd.get('quantity') || 1, unit_price: +fd.get('unit_price') || 0,
+        expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث'); App.loadVendors();
+    });
+    this._setupClientProjectCascade(overlay, projects, p.vendor_id, p.project_id);
+  },
+
+  delProcurement(id) {
+    UI.confirm('هل أنت متأكد من حذف هذه المشتريات؟', async () => {
+      await this.softDelete('procurements', id);
+      UI.toast('تم الحذف'); App.loadVendors();
+    });
   },
 
   // ─── EMPLOYEES ───
