@@ -162,7 +162,8 @@ const App = {
       document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'مصروفات', 'نسبة الإشراف', 'إشراف', 'الحالة', 'الإجراءات'], data.map(p => {
         const exp = expByProject[p.id] || 0;
         const supAmt = exp * (p.supervision_percentage || 0) / 100;
-        return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')];
+        const actions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button>`;
+        return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, actions];
       })) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
     } catch (e) { console.error(e); }
   },
@@ -372,6 +373,35 @@ const Crud = {
       await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadProjects();
     });
+  },
+
+  async projectStatement(id) {
+    const [projectRows, deposits, expenses] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('transactions', 'GET', null, `?select=*&type=eq.project_deposit&project_id=eq.${id}&deleted_at=is.null&order=date.asc`),
+      API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&project_id=eq.${id}&deleted_at=is.null&order=date.asc`)
+    ]);
+    if (!projectRows.length) return;
+    const project = projectRows[0];
+    const totalExpenses = expenses.reduce((s, t) => s + (+t.amount || 0), 0);
+    const supervisionAmount = totalExpenses * (project.supervision_percentage || 0) / 100;
+    const ledger = [];
+    deposits.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: t.description || 'عربون من العميل' }));
+    expenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
+    if (supervisionAmount > 0) {
+      ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: supervisionAmount, desc: `إشراف ${project.name} (${project.supervision_percentage || 0}%)` });
+    }
+    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+    let balance = 0;
+    const rows = ledger.map(r => {
+      balance += r.in - r.out;
+      return [App.fmtDate(r.date), r.type, App.fmtMoney(r.in), App.fmtMoney(r.out), App.fmtMoney(balance), r.desc];
+    });
+    const totalIn = ledger.reduce((s, r) => s + r.in, 0);
+    const totalOut = ledger.reduce((s, r) => s + r.out, 0);
+    rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
+    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%</div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'الرصيد', 'البيان'], rows)}`;
+    UI.openModal('كشف حساب المشروع', html, null);
   },
 
   delProject(id) {
