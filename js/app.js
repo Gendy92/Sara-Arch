@@ -229,9 +229,10 @@ const App = {
         return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` };
       }).filter(Boolean);
       const allTxs = [...incomeTxs, ...expenseTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => {
+      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = ['owner_deposit','supervision'].includes(t.type) ? 'green' : 'red';
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'];
+        const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
@@ -532,7 +533,7 @@ const Crud = {
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} عربون`);
-      App.loadTransactions();
+      App.loadTransactions(); App.loadOffice();
     });
   },
 
@@ -552,7 +553,7 @@ const Crud = {
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف`);
-      App.loadTransactions();
+      App.loadTransactions(); App.loadOffice();
     });
   },
 
@@ -592,7 +593,7 @@ const Crud = {
       const enriched = rows.map(r => ({ type: 'owner_deposit', amount: r.amount, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} توريد`);
-      App.loadTransactions();
+      App.loadTransactions(); App.loadOffice();
     });
   },
 
@@ -626,7 +627,7 @@ const Crud = {
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} إشراف`);
-      App.loadTransactions();
+      App.loadTransactions(); App.loadOffice();
     });
   },
 
@@ -653,7 +654,7 @@ const Crud = {
         const client = clients.find(c => c.id === fd.get('client_id'));
         const project = projects.find(p => p.id === fd.get('project_id'));
         await this.save('transactions', { type: 'project_deposit', amount: +fd.get('amount') || 0, client_id: fd.get('client_id'), party_id: fd.get('client_id'), party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, payment_method: fd.get('payment_method') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-        UI.toast('تم التحديث'); App.loadTransactions();
+        UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'project_expense') {
       const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
@@ -667,7 +668,7 @@ const Crud = {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         await this.save('transactions', { type: 'project_expense', amount: +fd.get('amount') || 0, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-        UI.toast('تم التحديث'); App.loadTransactions();
+        UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'office_expense') {
       const [employees, sectors] = await Promise.all([
@@ -686,7 +687,7 @@ const Crud = {
         const emp = employees.find(e => e.id === fd.get('employee_id'));
         const sector = sectors.find(s => s.id === fd.get('sector_id'));
         await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-        UI.toast('تم التحديث'); App.loadTransactions();
+        UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'supervision') {
       const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
@@ -700,7 +701,7 @@ const Crud = {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         await this.save('transactions', { type: 'supervision', amount: +fd.get('amount') || 0, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-        UI.toast('تم التحديث'); App.loadTransactions();
+        UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else {
       const fields = [
@@ -718,7 +719,7 @@ const Crud = {
   },
 
   delTx(id) {
-    UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); });
+    UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); App.loadOffice(); });
   },
 
   // ─── USERS (admin only) ───
