@@ -16,9 +16,10 @@ CREATE TABLE IF NOT EXISTS custody_records (id UUID PRIMARY KEY DEFAULT uuid_gen
 -- Migrations: projects still require client
 DO $$ BEGIN ALTER TABLE projects ALTER COLUMN client_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
 
--- Migration: add address and supervision to projects
+-- Migration: add address, supervision, and design to projects
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS supervision_percentage NUMERIC DEFAULT 0;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS design_percentage NUMERIC DEFAULT 0;
 
 -- Migration: add sector to vendors
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS sector TEXT;
