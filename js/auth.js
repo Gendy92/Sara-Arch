@@ -12,6 +12,11 @@ const Auth = {
     return email.replace('@local', '');
   },
 
+  safeName(name, fallback) {
+    if (!name || name.includes('?')) return fallback;
+    return name;
+  },
+
   async init() {
     if (this.token) {
       const user = await API.authGetUser(this.token);
@@ -21,10 +26,10 @@ const Auth = {
         try {
           const profiles = await API.request('profiles', 'GET', null, `?id=eq.${user.id}`);
           const profile = profiles[0];
-          this.user.displayName = profile?.name || user.user_metadata?.name || this.fromEmail(user.email);
+          this.user.displayName = this.safeName(profile?.name, this.safeName(user.user_metadata?.name, this.fromEmail(user.email)));
           this.user.role = profile?.role || user.user_metadata?.role || 'user';
         } catch (e) {
-          this.user.displayName = user.user_metadata?.name || this.fromEmail(user.email);
+          this.user.displayName = this.safeName(user.user_metadata?.name, this.fromEmail(user.email));
           this.user.role = user.user_metadata?.role || 'user';
         }
       } else {
@@ -43,10 +48,10 @@ const Auth = {
     try {
       const profiles = await API.request('profiles', 'GET', null, `?id=eq.${data.user.id}`);
       const profile = profiles[0];
-      this.user.displayName = profile?.name || data.user?.user_metadata?.name || username;
+      this.user.displayName = this.safeName(profile?.name, this.safeName(data.user?.user_metadata?.name, username));
       this.user.role = profile?.role || data.user?.user_metadata?.role || 'user';
     } catch (e) {
-      this.user.displayName = data.user?.user_metadata?.name || username;
+      this.user.displayName = this.safeName(data.user?.user_metadata?.name, username);
       this.user.role = data.user?.user_metadata?.role || 'user';
     }
     localStorage.setItem('sara_token', this.token);
