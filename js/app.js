@@ -131,40 +131,48 @@ const App = {
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      const clients = await API.request('clients', 'GET', null, '?select=id&deleted_at=is.null');
-      const projects = await API.request('projects', 'GET', null, '?select=id&deleted_at=is.null');
-      const employees = await API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null');
-      const txs = await API.request('transactions', 'GET', null, '?select=type,amount,date,created_at&deleted_at=is.null');
-      const income = txs.filter(t => ['income','deposit','project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
-      const exp = txs.filter(t => ['expense','project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      const [clients, projects, employees, txs, projData] = await Promise.all([
+        API.request('clients', 'GET', null, '?select=id&deleted_at=is.null'),
+        API.request('projects', 'GET', null, '?select=id,supervision_percentage&deleted_at=is.null'),
+        API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, '?select=type,amount,date,created_at,project_id&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+      ]);
+      const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
+      const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      const expByProject = {};
+      projData.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const supervision = projects.reduce((s, p) => s + ((expByProject[p.id] || 0) * (p.supervision_percentage || 0) / 100), 0);
+      const balance = deposits - expenses - supervision;
       document.getElementById('kpis').innerHTML = `
         <div class="kpi-card"><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
         <div class="kpi-card"><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
         <div class="kpi-card"><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
-        <div class="kpi-card"><div class="kpi-label">الإيرادات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(income)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(exp)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">صافي الربح</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(income - exp)}</div></div>`;
-      // Monthly chart
+        <div class="kpi-card"><div class="kpi-label">إجمالي الوارد</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
+      // Monthly chart (project only)
       const months = [];
       const now = new Date();
       for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleDateString('ar-EG', {month:'short'}) }); }
       const monthData = {};
-      months.forEach(m => monthData[m.key] = { income: 0, expense: 0 });
-      txs.forEach(t => {
+      months.forEach(m => monthData[m.key] = { deposits: 0, expenses: 0 });
+      txs.filter(t => ['project_deposit','project_expense'].includes(t.type)).forEach(t => {
         const d = new Date(t.date || t.created_at);
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
         if (monthData[key]) {
-          if (['income','deposit','project_deposit','owner_deposit'].includes(t.type)) monthData[key].income += (+t.amount || 0);
-          if (['expense','project_expense','office_expense'].includes(t.type)) monthData[key].expense += (+t.amount || 0);
+          if (t.type === 'project_deposit') monthData[key].deposits += (+t.amount || 0);
+          if (t.type === 'project_expense') monthData[key].expenses += (+t.amount || 0);
         }
       });
-      const maxVal = Math.max(...Object.values(monthData).map(m => Math.max(m.income, m.expense)), 1);
+      const maxVal = Math.max(...Object.values(monthData).map(m => Math.max(m.deposits, m.expenses)), 1);
       const chartHtml = `<div class="chart-container">${months.map(m => {
         const d = monthData[m.key];
-        const incH = Math.round((d.income / maxVal) * 140);
-        const expH = Math.round((d.expense / maxVal) * 140);
-        return `<div class="chart-bar"><div class="chart-bar-value" style="font-size:10px;color:var(--green)">${d.income > 0 ? (d.income/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-fill" style="height:${incH}px;background:linear-gradient(to top,rgba(125,187,138,0.3),rgba(125,187,138,0.7))"></div><div class="chart-bar-fill" style="height:${expH}px;background:linear-gradient(to top,rgba(200,126,122,0.3),rgba(200,126,122,0.7));margin-top:2px"></div><div class="chart-bar-value" style="font-size:10px;color:var(--red)">${d.expense > 0 ? (d.expense/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-label">${m.label}</div></div>`;
-      }).join('')}</div><div class="chart-legend"><span><i style="background:var(--green)"></i> إيرادات</span><span><i style="background:var(--red)"></i> مصروفات</span></div>`;
+        const depH = Math.round((d.deposits / maxVal) * 140);
+        const expH = Math.round((d.expenses / maxVal) * 140);
+        return `<div class="chart-bar"><div class="chart-bar-value" style="font-size:10px;color:var(--green)">${d.deposits > 0 ? (d.deposits/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-fill" style="height:${depH}px;background:linear-gradient(to top,rgba(125,187,138,0.3),rgba(125,187,138,0.7))"></div><div class="chart-bar-fill" style="height:${expH}px;background:linear-gradient(to top,rgba(200,126,122,0.3),rgba(200,126,122,0.7));margin-top:2px"></div><div class="chart-bar-value" style="font-size:10px;color:var(--red)">${d.expenses > 0 ? (d.expenses/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-label">${m.label}</div></div>`;
+      }).join('')}</div><div class="chart-legend"><span><i style="background:var(--green)"></i> وارد</span><span><i style="background:var(--red)"></i> مصروف</span></div>`;
       document.getElementById('monthly-chart').innerHTML = chartHtml;
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
