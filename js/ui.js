@@ -78,7 +78,7 @@ const Spreadsheet = {
     spreadsheetDiv._cascade = cascade;
 
     // Excel toolbar
-    if (excelMode !== 'none') this.addExcelToolbar(modalBody, columns, spreadsheetDiv, excelMode);
+    if (excelMode !== 'none') this.addExcelToolbar(modalBody, columns, spreadsheetDiv, excelMode, title);
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
@@ -138,9 +138,10 @@ const Spreadsheet = {
     </div>`;
   },
 
-  addExcelToolbar(container, columns, spreadsheetDiv, mode = 'paste') {
+  addExcelToolbar(container, columns, spreadsheetDiv, mode = 'paste', title = 'Template') {
     const toolbar = document.createElement('div');
     toolbar.dataset.toolbar = 'excel';
+    toolbar.dataset.title = title;
     toolbar.style.cssText = 'margin:16px 0;padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px';
     const uploadBtn = mode === 'full' ? `<label class="btn btn-sm btn-secondary" style="cursor:pointer">
           📁 رفع ملف Excel
@@ -188,7 +189,15 @@ const Spreadsheet = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'template.xlsx';
+
+    // Build unique filename: Sara_Function_Date_User_Timestamp.xlsx
+    const titleText = toolbar.dataset.title || 'Template';
+    const safeTitle = titleText.replace(/[^\w\u0600-\u06FF\s]/g, '').replace(/\s+/g, '_');
+    const userName = (Auth.user?.displayName || Auth.fromEmail?.(Auth.user?.email) || 'user').replace(/\s+/g, '_');
+    const dateStr = new Date().toISOString().slice(0,10);
+    const ts = Date.now();
+    a.download = `Sara_${safeTitle}_${dateStr}_${userName}_${ts}.xlsx`;
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
