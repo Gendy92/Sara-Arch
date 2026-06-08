@@ -31,6 +31,7 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES pro
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS project_name TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS employee_name TEXT;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_method TEXT;
 ALTER TABLE transactions ALTER COLUMN client_id DROP NOT NULL;
 ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL;
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;

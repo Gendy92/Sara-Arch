@@ -174,10 +174,11 @@ const App = {
   async loadTransactions() {
     try {
       const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
-      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'الإجراءات'], data.map(t => {
+      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], data.map(t => {
         const badgeColor = ['project_deposit','owner_deposit','supervision','income','deposit'].includes(t.type) ? 'green' : 'red';
         const party = t.employee_name || t.party_name || t.sector_name || '-';
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
@@ -389,7 +390,10 @@ const Crud = {
     const totalExpenses = expenses.reduce((s, t) => s + (+t.amount || 0), 0);
     const supervisionAmount = totalExpenses * (project.supervision_percentage || 0) / 100;
     const ledger = [];
-    deposits.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: t.description || 'عربون من العميل' }));
+    deposits.forEach(t => {
+      const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '';
+      ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: (t.description || 'عربون من العميل') + (pm ? ` (${pm})` : '') });
+    });
     expenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
     if (supervisionAmount > 0) {
       ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: supervisionAmount, desc: `إشراف ${project.name} (${project.supervision_percentage || 0}%)` });
@@ -427,7 +431,10 @@ const Crud = {
     const totalExp = clientExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
     const balance = totalDep - totalExp - totalSup;
     const ledger = [];
-    clientDeposits.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: t.description || '-' }));
+    clientDeposits.forEach(t => {
+      const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '';
+      ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: (t.description || '-') + (pm ? ` (${pm})` : '') });
+    });
     clientExpenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
     if (totalSup > 0) {
       ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: totalSup, desc: `إجمالي إشراف المشاريع` });
@@ -441,7 +448,7 @@ const Crud = {
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalDep)}</strong>`, `<strong>${App.fmtMoney(totalExp + totalSup)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
     const html = `<div style="margin-bottom:16px"><strong>العميل:</strong> ${client.name}<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalDep)}<br><strong>إجمالي المصروفات:</strong> ${App.fmtMoney(totalExp)}<br><strong>إجمالي الإشراف:</strong> ${App.fmtMoney(totalSup)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
     UI.openModal('كشف حساب العميل', html, null);
-  }
+  },
 
   delProject(id) {
     UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
@@ -500,6 +507,7 @@ const Crud = {
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
@@ -507,7 +515,7 @@ const Crud = {
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
         const project = projects.find(p => p.id === r.project_id);
-        return { type: 'project_deposit', amount: r.amount, client_id: r.client_id, party_id: r.client_id, party_name: client ? client.name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        return { type: 'project_deposit', amount: r.amount, client_id: r.client_id, party_id: r.client_id, party_name: client ? client.name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, payment_method: r.payment_method || null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} عربون`);
@@ -623,6 +631,7 @@ const Crud = {
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
@@ -630,7 +639,7 @@ const Crud = {
         const fd = new FormData(form);
         const client = clients.find(c => c.id === fd.get('client_id'));
         const project = projects.find(p => p.id === fd.get('project_id'));
-        await this.save('transactions', { type: 'project_deposit', amount: +fd.get('amount') || 0, client_id: fd.get('client_id'), party_id: fd.get('client_id'), party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        await this.save('transactions', { type: 'project_deposit', amount: +fd.get('amount') || 0, client_id: fd.get('client_id'), party_id: fd.get('client_id'), party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, payment_method: fd.get('payment_method') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions();
       });
     } else if (tx.type === 'project_expense') {
