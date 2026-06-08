@@ -138,6 +138,7 @@ const Spreadsheet = {
 
   addExcelToolbar(container, columns, spreadsheetDiv, mode = 'paste') {
     const toolbar = document.createElement('div');
+    toolbar.dataset.toolbar = 'excel';
     toolbar.style.cssText = 'margin:16px 0;padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px';
     const uploadBtn = mode === 'full' ? `<label class="btn btn-sm btn-secondary" style="cursor:pointer">
           📁 رفع ملف Excel
@@ -159,7 +160,8 @@ const Spreadsheet = {
   },
 
   downloadTemplate(btn) {
-    const toolbar = btn.closest('[style*="background:var(--bg3)"]');
+    const toolbar = btn.closest('[data-toolbar="excel"]');
+    if (!toolbar) { UI.toast('لم يتم العثور على شريط الأدوات', 'error'); return; }
     const columns = toolbar._columns;
     if (!columns || !columns.length) return;
 
@@ -177,13 +179,24 @@ const Spreadsheet = {
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
-    XLSX.writeFile(wb, 'template.xlsx');
+
+    // Manual Blob download (more reliable than XLSX.writeFile)
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'template.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   async handleFile(input, keysStr) {
     const file = input.files[0];
     if (!file) return;
-    const toolbar = input.closest('[style*="background:var(--bg3)"]');
+    const toolbar = input.closest('[data-toolbar="excel"]');
     const columns = toolbar._columns;
     const spreadsheetDiv = toolbar._spreadsheet;
 
@@ -204,7 +217,7 @@ const Spreadsheet = {
   },
 
   handlePaste(btn, keysStr) {
-    const toolbar = btn.closest('[style*="background:var(--bg3)"]');
+    const toolbar = btn.closest('[data-toolbar="excel"]');
     const columns = toolbar._columns;
     const spreadsheetDiv = toolbar._spreadsheet;
     const textarea = toolbar.querySelector('.excel-paste');
