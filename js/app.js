@@ -153,10 +153,16 @@ const App = {
 
   async loadProjects() {
     try {
-      const data = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'نسبة الإشراف', 'قيمة الإشراف', 'الحالة', 'الإجراءات'], data.map(p => {
-        const supAmt = (p.value || 0) * (p.supervision_percentage || 0) / 100;
-        return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')];
+      const [data, expenses] = await Promise.all([
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+      ]);
+      const expByProject = {};
+      expenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'مصروفات', 'نسبة الإشراف', 'إشراف', 'الحالة', 'الإجراءات'], data.map(p => {
+        const exp = expByProject[p.id] || 0;
+        const supAmt = exp * (p.supervision_percentage || 0) / 100;
+        return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, UI.actions(p.id, 'Crud.editProject', 'Crud.delProject')];
       })) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
     } catch (e) { console.error(e); }
   },
@@ -174,14 +180,17 @@ const App = {
 
   async loadOffice() {
     try {
-      const [incomeTxs, expenseTxs, sectors, projects] = await Promise.all([
-        API.request('transactions', 'GET', null, "?select=*&type=in.(owner_deposit,supervision)&deleted_at=is.null&order=created_at.desc"),
+      const [incomeTxs, expenseTxs, sectors, projects, projectExpenses] = await Promise.all([
+        API.request('transactions', 'GET', null, "?select=*&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc"),
         API.request('transactions', 'GET', null, "?select=*&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc"),
         API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
-        API.request('projects', 'GET', null, '?select=value,supervision_percentage&deleted_at=is.null')
+        API.request('projects', 'GET', null, '?select=id,name,created_at,value,supervision_percentage&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
       ]);
       const txIncome = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
-      const calcSupervision = projects.reduce((s, p) => s + ((p.value || 0) * (p.supervision_percentage || 0) / 100), 0);
+      const expByProject = {};
+      projectExpenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const calcSupervision = projects.reduce((s, p) => s + ((expByProject[p.id] || 0) * (p.supervision_percentage || 0) / 100), 0);
       const totalIncome = txIncome + calcSupervision;
       const expense = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
       document.getElementById('office-kpis').innerHTML = `
@@ -193,7 +202,14 @@ const App = {
       expenseTxs.forEach(t => { const name = t.sector_name || 'غير مصنف'; bySector[name] = (bySector[name] || 0) + (+t.amount || 0); });
       const sectorRows = Object.entries(bySector).map(([name, amount]) => [name, this.fmtMoney(amount)]);
       document.getElementById('office-by-sector').innerHTML = sectorRows.length ? this.table(['النوع', 'المبلغ'], sectorRows) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
-      const allTxs = [...incomeTxs, ...expenseTxs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      // Build virtual supervision rows from projects
+      const supRows = projects.map(p => {
+        const exp = expByProject[p.id] || 0;
+        const supAmt = exp * (p.supervision_percentage || 0) / 100;
+        if (supAmt <= 0) return null;
+        return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` };
+      }).filter(Boolean);
+      const allTxs = [...incomeTxs, ...expenseTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => [this.fmtDate(t.created_at), this.fmtTxType(t.type), this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
