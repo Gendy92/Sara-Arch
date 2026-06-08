@@ -44,6 +44,7 @@ const App = {
     if (screen === 'clients') await this.loadClients();
     if (screen === 'projects') await this.loadProjects();
     if (screen === 'transactions') await this.loadTransactions();
+    if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
     if (screen === 'users') await this.loadUsers();
   },
@@ -57,6 +58,7 @@ const App = {
       <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء</button>
       <button data-nav="projects" class="nav-item ${this.screen === 'projects' ? 'active' : ''}"><span>📁</span> المشاريع</button>
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
+      <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
       ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button>` : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><main class="main-content">${content}</main></div>`;
@@ -67,6 +69,7 @@ const App = {
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button></div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>المصروفات حسب النوع</h3><div id="office-by-sector">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     return '';
@@ -160,9 +163,31 @@ const App = {
       const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
       document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'الإجراءات'], data.map(t => {
         const badgeColor = ['project_deposit','owner_deposit','income','deposit'].includes(t.type) ? 'green' : 'red';
-        const party = t.employee_name || t.party_name || '-';
+        const party = t.employee_name || t.party_name || t.sector_name || '-';
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+    } catch (e) { console.error(e); }
+  },
+
+  async loadOffice() {
+    try {
+      const [incomeTxs, expenseTxs, sectors] = await Promise.all([
+        API.request('transactions', 'GET', null, "?select=*&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc"),
+        API.request('transactions', 'GET', null, "?select=*&type=eq.office_expense&deleted_at=is.null&order=created_at.desc"),
+        API.request('sectors', 'GET', null, '?select=*&order=name.asc')
+      ]);
+      const income = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const expense = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      document.getElementById('office-kpis').innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(income)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(income - expense)}</div></div>`;
+      const bySector = {};
+      expenseTxs.forEach(t => { const name = t.sector_name || 'غير مصنف'; bySector[name] = (bySector[name] || 0) + (+t.amount || 0); });
+      const sectorRows = Object.entries(bySector).map(([name, amount]) => [name, this.fmtMoney(amount)]);
+      document.getElementById('office-by-sector').innerHTML = sectorRows.length ? this.table(['النوع', 'المبلغ'], sectorRows) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
+      const allTxs = [...incomeTxs, ...expenseTxs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => [this.fmtDate(t.created_at), this.fmtTxType(t.type), this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -403,10 +428,15 @@ const Crud = {
   },
 
   async addOfficeExpense() {
-    const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+    const [employees, sectors] = await Promise.all([
+      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+      API.request('sectors', 'GET', null, '?select=id,name&order=name.asc')
+    ]);
     const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
+    const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
     const cols = [
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
+      { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
@@ -414,7 +444,8 @@ const Crud = {
     Spreadsheet.open('🏢 مصروف مكتبي (موظف)', cols, async (rows) => {
       const enriched = rows.map(r => {
         const emp = employees.find(e => e.id === r.employee_id);
-        return { type: 'office_expense', amount: r.amount, employee_id: r.employee_id, employee_name: emp ? emp.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        const sector = sectors.find(s => s.id === r.sector_id);
+        return { type: 'office_expense', amount: r.amount, employee_id: r.employee_id, employee_name: emp ? emp.name : null, sector_id: r.sector_id, sector_name: sector ? sector.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف مكتبي`);
@@ -475,17 +506,22 @@ const Crud = {
         UI.toast('تم التحديث'); App.loadTransactions();
       });
     } else if (tx.type === 'office_expense') {
-      const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+      const [employees, sectors] = await Promise.all([
+        API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+        API.request('sectors', 'GET', null, '?select=id,name&order=name.asc')
+      ]);
       const fields = [
         { name: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...employees.map(e => ({ v: e.id, l: e.name }))] },
+        { name: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      UI.openModal('تعديل مصروف مكتبي', `<form>${UI.form(fields, { ...tx, employee_id: tx.employee_id || '' })}</form>`, async (form) => {
+      UI.openModal('تعديل مصروف مكتبي', `<form>${UI.form(fields, { ...tx, employee_id: tx.employee_id || '', sector_id: tx.sector_id || '' })}</form>`, async (form) => {
         const fd = new FormData(form);
         const emp = employees.find(e => e.id === fd.get('employee_id'));
-        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        const sector = sectors.find(s => s.id === fd.get('sector_id'));
+        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions();
       });
     } else {
