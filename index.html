@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Sara Abo Elelaa — Financial System</title>
-<link rel="stylesheet" href="css/style.css?v=71">
+<link rel="stylesheet" href="css/style.css?v=74">
 </head>
 <body>
 <div id="app">
@@ -28,53 +28,54 @@
       '<button onclick="location.reload(true)" style="padding:10px 24px;background:linear-gradient(135deg,#c4a97a,#d4bc94);color:#14161f;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:600">إعادة المحاولة</button></div>';
   }
 
-  function loadResources(version) {
+  function loadScript(src) {
+    return new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = function() { resolve(src); };
+      s.onerror = function() { reject(src); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function loadAll(version) {
     localStorage.setItem('sara_app_version', version);
     var cdnScripts = [
       'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
     ];
     var localScripts = ['config.js','api.js','auth.js','ui.js','app.js'];
-    var total = cdnScripts.length + localScripts.length;
-    var loaded = 0;
 
-    function onLoad() {
-      loaded++;
-      if (loaded === total) {
+    // Load CDN scripts in parallel (no dependencies between them)
+    var cdnPromise = Promise.all(cdnScripts.map(loadScript));
+
+    // Load local scripts sequentially (each depends on previous)
+    var localPromise = cdnPromise.then(function() {
+      return localScripts.reduce(function(chain, file) {
+        return chain.then(function() {
+          return loadScript('js/' + file + '?v=' + version);
+        });
+      }, Promise.resolve());
+    });
+
+    localPromise
+      .then(function() {
         try { App.start(); }
         catch (e) { showError(e.message || 'Unknown error'); }
-      }
-    }
-
-    function onError(url) {
-      showError('فشل تحميل: ' + url);
-    }
-
-    cdnScripts.forEach(function(url) {
-      var s = document.createElement('script');
-      s.src = url;
-      s.onload = onLoad;
-      s.onerror = function() { onError(url); };
-      document.head.appendChild(s);
-    });
-
-    localScripts.forEach(function(file) {
-      var s = document.createElement('script');
-      s.src = 'js/' + file + '?v=' + version;
-      s.onload = onLoad;
-      s.onerror = function() { onError(file); };
-      document.head.appendChild(s);
-    });
+      })
+      .catch(function(url) {
+        showError('فشل تحميل: ' + url);
+      });
   }
 
   // Always fetch version.json uncached to detect updates
   fetch('version.json?_=' + Date.now(), { cache: 'no-store' })
     .then(function(r) { return r.json(); })
-    .then(function(data) { loadResources(data.version); })
+    .then(function(data) { loadAll(data.version); })
     .catch(function(err) {
       console.error('[Version] failed to fetch version.json:', err);
       // Fallback to hardcoded version if version.json unavailable
-      loadResources('74');
+      loadAll('75');
     });
 })();
 </script>
