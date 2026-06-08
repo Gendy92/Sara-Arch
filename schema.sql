@@ -198,6 +198,40 @@ CREATE POLICY "authenticated_all" ON work_items FOR ALL TO authenticated USING (
 DROP TRIGGER IF EXISTS work_sections_u ON work_sections; CREATE TRIGGER work_sections_u BEFORE UPDATE ON work_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS work_items_u ON work_items; CREATE TRIGGER work_items_u BEFORE UPDATE ON work_items FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- Security: created_by / updated_by on key tables
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS updated_by UUID;
+
+-- Audit logs
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  table_name TEXT NOT NULL,
+  record_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('INSERT','UPDATE','DELETE')),
+  old_data JSONB,
+  new_data JSONB,
+  user_id UUID,
+  user_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_all" ON audit_logs;
+CREATE POLICY "authenticated_all" ON audit_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
 INSERT INTO sectors (name, description) VALUES
   ('رواتب', 'مصروفات الرواتب الشهرية'),
   ('إيجارات', 'إيجارات المكاتب والمستودعات'),

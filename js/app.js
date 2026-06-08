@@ -69,7 +69,7 @@ const App = {
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
       <button data-nav="master" class="nav-item ${this.screen === 'master' ? 'active' : ''}"><span>📋</span> البيانات الأساسية</button>
-      ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button><button data-nav="backup" class="nav-item ${this.screen === 'backup' ? 'active' : ''}"><span>💾</span> النسخ الاحتياطي</button>` : ''}
+      ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button><button data-nav="audit" class="nav-item ${this.screen === 'audit' ? 'active' : ''}"><span>📜</span> سجل العمليات</button><button data-nav="backup" class="nav-item ${this.screen === 'backup' ? 'active' : ''}"><span>💾</span> النسخ الاحتياطي</button>` : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
   },
 
@@ -82,6 +82,7 @@ const App = {
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">المعاملات</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl">جاري التحميل...</div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button><div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button><div id="work-items-tbl">جاري التحميل...</div></div></div>`;
     return '';
@@ -700,13 +701,36 @@ const App = {
     this.loadBackup();
   },
 
+  async loadAuditLog() {
+    try {
+      const tableFilter = document.getElementById('audit-table')?.value;
+      const query = '?select=*&order=created_at.desc&limit=100' + (tableFilter ? '&table_name=eq.' + tableFilter : '');
+      const logs = await API.request('audit_logs', 'GET', null, query);
+      const actionLabels = { INSERT: 'إضافة', UPDATE: 'تعديل', DELETE: 'حذف' };
+      const actionColors = { INSERT: 'var(--green)', UPDATE: 'var(--gold)', DELETE: 'var(--red)' };
+      document.getElementById('audit-tbl').innerHTML = logs.length ? this.table(['التاريخ', 'المستخدم', 'الجدول', 'العملية', 'السجل', 'البيانات'], logs.map(l => [
+        this.fmtDate(l.created_at) + ' ' + new Date(l.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        l.user_name || '-',
+        l.table_name || '-',
+        `<span style="color:${actionColors[l.action] || 'var(--text)'};font-weight:600">${actionLabels[l.action] || l.action}</span>`,
+        (l.record_id || '').slice(0, 8) + '...',
+        l.new_data ? JSON.stringify(l.new_data).slice(0, 60) + '...' : '-'
+      ])) : '<p style="color:var(--text3)">لا توجد سجلات</p>';
+    } catch (e) {
+      console.error(e);
+      const msg = e.message && e.message.includes('does not exist')
+        ? '<p style="color:var(--red)">جدول audit_logs غير موجود. شغّل schema.sql في Supabase.</p>'
+        : '<p style="color:var(--red)">خطأ في التحميل</p>';
+      document.getElementById('audit-tbl').innerHTML = msg;
+    }
+  },
+
   async loadMasterData() {
     try {
-      const [sectors, items, workSections, workItems] = await Promise.all([
+      // Fetch sectors & items (always exist)
+      const [sectors, items] = await Promise.all([
         API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
-        API.request('items', 'GET', null, '?select=*&order=name.asc'),
-        API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
-        API.request('work_items', 'GET', null, '?select=*,work_sections(name)&deleted_at=is.null&order=name.asc')
+        API.request('items', 'GET', null, '?select=*&order=name.asc')
       ]);
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
         s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector')
@@ -717,10 +741,19 @@ const App = {
       ])) : '<p style="color:var(--text3)">لا توجد أصناف</p>';
       this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
 
+      // Fetch work sections & items (may fail if schema not run yet)
+      let workSections = [], workItems = [];
+      try {
+        workSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+      } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
+      try {
+        workItems = await API.request('work_items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+      } catch (e) { console.log('[MasterData] work_items not ready:', e.message); }
+
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
       document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
         s.name, s.notes || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection')
-      ])) : '<p style="color:var(--text3)">لا توجد أقسام</p>';
+      ])) : '<p style="color:var(--text3)">لا يوجد أقسام</p>';
       this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
       document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
         i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem')
@@ -761,9 +794,34 @@ const App = {
 
 // ─── CRUD ───
 const Crud = {
+  _currentUserId() { return Auth.user?.id || null; },
+  _currentUserName() { return Auth.user?.displayName || Auth.fromEmail(Auth.user?.email) || 'unknown'; },
+
   async save(table, data, id) {
-    if (id) { await API.request(table, 'PATCH', data, '?id=eq.' + id); return { id, ...data }; }
-    else { return API.request(table, 'POST', data); }
+    const userId = this._currentUserId();
+    const userName = this._currentUserName();
+    if (id) {
+      const payload = { ...data, updated_by: userId };
+      await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+      this._logAudit(table, id, 'UPDATE', null, payload, userId, userName).catch(() => {});
+      return { id, ...payload };
+    } else {
+      const payload = { ...data, created_by: userId };
+      const result = await API.request(table, 'POST', payload);
+      const recordId = Array.isArray(result) ? result[0]?.id : result?.id;
+      this._logAudit(table, recordId, 'INSERT', null, payload, userId, userName).catch(() => {});
+      return result;
+    }
+  },
+
+  async _logAudit(table, recordId, action, oldData, newData, userId, userName) {
+    try {
+      await API.request('audit_logs', 'POST', {
+        table_name: table, record_id: recordId || null, action,
+        old_data: oldData || null, new_data: newData || null,
+        user_id: userId, user_name: userName
+      });
+    } catch (e) { console.log('[Audit] log failed:', e.message); }
   },
 
   _setupClientProjectCascade(overlay, projects, currentClientId, currentProjectId) {
@@ -802,19 +860,25 @@ const Crud = {
 
   async bulkSave(table, rows) {
     if (!rows || rows.length === 0) throw new Error('لا يوجد بيانات');
+    const userId = this._currentUserId();
     const clean = rows.map(r => {
-      const c = {};
+      const c = { created_by: userId };
       for (const [k, v] of Object.entries(r)) {
         if (v !== null && v !== '') c[k] = v;
       }
       return c;
-    }).filter(r => Object.keys(r).length > 0);
+    }).filter(r => Object.keys(r).length > 1);
     if (clean.length === 0) throw new Error('لا يوجد بيانات صالحة');
-    return API.request(table, 'POST', clean);
+    const result = await API.request(table, 'POST', clean);
+    this._logAudit(table, null, 'INSERT', null, { count: clean.length }, this._currentUserId(), this._currentUserName()).catch(() => {});
+    return result;
   },
 
   async softDelete(table, id) {
-    await API.request(table, 'PATCH', { deleted_at: new Date().toISOString() }, '?id=eq.' + id);
+    const userId = this._currentUserId();
+    const userName = this._currentUserName();
+    await API.request(table, 'PATCH', { deleted_at: new Date().toISOString(), updated_by: userId }, '?id=eq.' + id);
+    this._logAudit(table, id, 'DELETE', null, { deleted_at: new Date().toISOString() }, userId, userName).catch(() => {});
   },
 
   // ─── CLIENTS ───
