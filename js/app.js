@@ -68,7 +68,7 @@ const App = {
     if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button></div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectSupervision()">📋 إشراف مشروع</button><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>المصروفات حسب النوع</h3><div id="office-by-sector">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
@@ -162,7 +162,7 @@ const App = {
     try {
       const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
       document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'الإجراءات'], data.map(t => {
-        const badgeColor = ['project_deposit','owner_deposit','income','deposit'].includes(t.type) ? 'green' : 'red';
+        const badgeColor = ['project_deposit','owner_deposit','supervision','income','deposit'].includes(t.type) ? 'green' : 'red';
         const party = t.employee_name || t.party_name || t.sector_name || '-';
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
@@ -172,8 +172,8 @@ const App = {
   async loadOffice() {
     try {
       const [incomeTxs, expenseTxs, sectors] = await Promise.all([
-        API.request('transactions', 'GET', null, "?select=*&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc"),
-        API.request('transactions', 'GET', null, "?select=*&type=eq.office_expense&deleted_at=is.null&order=created_at.desc"),
+        API.request('transactions', 'GET', null, "?select=*&type=in.(owner_deposit,supervision)&deleted_at=is.null&order=created_at.desc"),
+        API.request('transactions', 'GET', null, "?select=*&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc"),
         API.request('sectors', 'GET', null, '?select=*&order=name.asc')
       ]);
       const income = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
@@ -219,7 +219,7 @@ const App = {
 
   fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ج.م'; },
   fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; },
-  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', supervision: 'إشراف', withdrawal: 'سحب' }; return map[type] || type; }
+  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب' }; return map[type] || type; }
 };
 
 // ─── CRUD ───
@@ -467,6 +467,40 @@ const Crud = {
     });
   },
 
+  addOwnerWithdrawal() {
+    const cols = [
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('🏃 سحب صاحب المكتب', cols, async (rows) => {
+      const enriched = rows.map(r => ({ type: 'withdrawal', amount: r.amount, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} سحب`);
+      App.loadTransactions();
+    });
+  },
+
+  async addProjectSupervision() {
+    const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const cols = [
+      { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { key: 'amount', label: 'نسبة الإشراف', type: 'number', req: true },
+      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('📋 إشراف مشروع', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const project = projects.find(p => p.id === r.project_id);
+        return { type: 'supervision', amount: r.amount, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+      });
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} إشراف`);
+      App.loadTransactions();
+    });
+  },
+
   async editTx(id) {
     const txRows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id);
     if (!txRows.length) return;
@@ -524,13 +558,28 @@ const Crud = {
         await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions();
       });
+    } else if (tx.type === 'supervision') {
+      const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
+      const fields = [
+        { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
+        { name: 'amount', label: 'نسبة الإشراف', type: 'number', req: true },
+        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'description', label: 'الوصف', type: 'textarea' }
+      ];
+      UI.openModal('تعديل إشراف مشروع', `<form>${UI.form(fields, { ...tx, project_id: tx.project_id || '' })}</form>`, async (form) => {
+        const fd = new FormData(form);
+        const project = projects.find(p => p.id === fd.get('project_id'));
+        await this.save('transactions', { type: 'supervision', amount: +fd.get('amount') || 0, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        UI.toast('تم التحديث'); App.loadTransactions();
+      });
     } else {
       const fields = [
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      UI.openModal('تعديل توريد', `<form>${UI.form(fields, tx)}</form>`, async (form) => {
+      const title = tx.type === 'withdrawal' ? 'تعديل سحب صاحب المكتب' : 'تعديل توريد';
+      UI.openModal(title, `<form>${UI.form(fields, tx)}</form>`, async (form) => {
         const fd = new FormData(form);
         await this.save('transactions', { amount: +fd.get('amount') || 0, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions();
