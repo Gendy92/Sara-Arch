@@ -147,7 +147,10 @@ const App = {
   async loadClients() {
     try {
       const data = await API.request('clients', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('clients-tbl').innerHTML = data.length ? this.table(['الاسم', 'الهاتف', 'البريد', 'الإجراءات'], data.map(c => [c.name, c.phone || '-', c.email || '-', UI.actions(c.id, 'Crud.editClient', 'Crud.delClient')])) : '<p style="color:var(--text3)">لا يوجد عملاء</p>';
+      document.getElementById('clients-tbl').innerHTML = data.length ? this.table(['الاسم', 'الهاتف', 'البريد', 'الإجراءات'], data.map(c => {
+        const actions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient') + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
+        return [c.name, c.phone || '-', c.email || '-', actions];
+      })) : '<p style="color:var(--text3)">لا يوجد عملاء</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -210,7 +213,7 @@ const App = {
         if (supAmt <= 0) return null;
         return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` };
       }).filter(Boolean);
-      const allTxs = [...incomeTxs, ...expenseTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const allTxs = [...incomeTxs, ...expenseTxs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => [this.fmtDate(t.created_at), this.fmtTxType(t.type), this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
@@ -400,9 +403,45 @@ const Crud = {
     const totalIn = ledger.reduce((s, r) => s + r.in, 0);
     const totalOut = ledger.reduce((s, r) => s + r.out, 0);
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
-    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%</div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'الرصيد', 'البيان'], rows)}`;
+    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
     UI.openModal('كشف حساب المشروع', html, null);
   },
+
+  async clientStatement(id) {
+    const [clientRows, projects, deposits, expenses] = await Promise.all([
+      API.request('clients', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('projects', 'GET', null, `?select=id,name,supervision_percentage&client_id=eq.${id}&deleted_at=is.null`),
+      API.request('transactions', 'GET', null, `?select=project_id,amount,date,description&type=eq.project_deposit&deleted_at=is.null&order=date.asc`),
+      API.request('transactions', 'GET', null, `?select=project_id,amount,date,description&type=eq.project_expense&deleted_at=is.null&order=date.asc`)
+    ]);
+    if (!clientRows.length) return;
+    const client = clientRows[0];
+    const projIds = projects.map(p => p.id);
+    const clientDeposits = deposits.filter(t => projIds.includes(t.project_id));
+    const clientExpenses = expenses.filter(t => projIds.includes(t.project_id));
+    const expByProject = {};
+    clientExpenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+    let totalSup = 0;
+    projects.forEach(p => { totalSup += (expByProject[p.id] || 0) * (p.supervision_percentage || 0) / 100; });
+    const totalDep = clientDeposits.reduce((s, t) => s + (+t.amount || 0), 0);
+    const totalExp = clientExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
+    const balance = totalDep - totalExp - totalSup;
+    const ledger = [];
+    clientDeposits.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: t.description || '-' }));
+    clientExpenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
+    if (totalSup > 0) {
+      ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: totalSup, desc: `إجمالي إشراف المشاريع` });
+    }
+    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+    let running = 0;
+    const rows = ledger.map(r => {
+      running += r.in - r.out;
+      return [App.fmtDate(r.date), r.type, App.fmtMoney(r.in), App.fmtMoney(r.out), App.fmtMoney(running), r.desc];
+    });
+    rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalDep)}</strong>`, `<strong>${App.fmtMoney(totalExp + totalSup)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
+    const html = `<div style="margin-bottom:16px"><strong>العميل:</strong> ${client.name}<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalDep)}<br><strong>إجمالي المصروفات:</strong> ${App.fmtMoney(totalExp)}<br><strong>إجمالي الإشراف:</strong> ${App.fmtMoney(totalSup)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
+    UI.openModal('كشف حساب العميل', html, null);
+  }
 
   delProject(id) {
     UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
