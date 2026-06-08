@@ -85,7 +85,7 @@ const App = {
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div>`;
+    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button><div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button><div id="work-items-tbl">جاري التحميل...</div></div></div>`;
     if (screen === 'attendance') return `<div class="page-header"><h1>📅 الحضور والرواتب</h1></div><div class="card" style="margin-bottom:16px"><h3>📝 تسجيل الحضور اليومي</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">التاريخ:</label><input type="date" id="attendance-date" value="${new Date().toISOString().slice(0,10)}" onchange="App.loadAttendanceDay()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><button class="btn btn-primary" onclick="App.saveAttendance()">💾 حفظ الحضور</button></div><div id="attendance-tbl">جاري التحميل...</div></div><div class="card" style="margin-bottom:16px"><h3>💰 كشف الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="payroll-month" onchange="App.loadPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="payroll-year" onchange="App.loadPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generatePayroll()">🔄 توليد الرواتب</button></div><div id="payroll-tbl">جاري التحميل...</div></div>`;
     return '';
   },
@@ -572,9 +572,11 @@ const App = {
 
   async loadMasterData() {
     try {
-      const [sectors, items] = await Promise.all([
+      const [sectors, items, workSections, workItems] = await Promise.all([
         API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
-        API.request('items', 'GET', null, '?select=*&order=name.asc')
+        API.request('items', 'GET', null, '?select=*&order=name.asc'),
+        API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
+        API.request('work_items', 'GET', null, '?select=*,work_sections(name)&deleted_at=is.null&order=name.asc')
       ]);
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
         s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector')
@@ -584,6 +586,16 @@ const App = {
         i.name, i.specification || '-', i.brand || '-', i.unit || 'قطعة', UI.actions(i.id, 'Crud.editItem', 'Crud.delItem')
       ])) : '<p style="color:var(--text3)">لا توجد أصناف</p>';
       this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
+
+      const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
+      document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
+        s.name, s.notes || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection')
+      ])) : '<p style="color:var(--text3)">لا توجد أقسام</p>';
+      this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
+      document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
+        i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem')
+      ])) : '<p style="color:var(--text3)">لا توجد بنود</p>';
+      this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
     } catch (e) { console.error(e); }
   },
 
@@ -1667,6 +1679,85 @@ const Crud = {
     UI.confirm('هل أنت متأكد من تسجيل دفع هذا الراتب؟', async () => {
       await this.save('payroll_records', { status: 'paid' }, id);
       UI.toast('تم تسجيل الدفع'); App.loadPayroll();
+    });
+  },
+
+  // ─── WORK SECTIONS & ITEMS (أقسام وبنود المشاريع) ───
+  addWorkSection() {
+    const cols = [
+      { key: 'name', label: 'اسم القسم *', req: true },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة أقسام المشاريع', cols, async (rows) => {
+      await this.bulkSave('work_sections', rows);
+      UI.toast(`تم حفظ ${rows.length} قسم`);
+      App.loadMasterData();
+    }, {}, {}, 'none');
+  },
+
+  async editWorkSection(id) {
+    const rows = await API.request('work_sections', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'name', label: 'اسم القسم', req: true },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل قسم', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('work_sections', { name: fd.get('name'), notes: fd.get('notes') || null }, id);
+      UI.toast('تم التحديث'); App.loadMasterData();
+    });
+  },
+
+  delWorkSection(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا القسم؟', async () => {
+      await this.softDelete('work_sections', id);
+      UI.toast('تم الحذف'); App.loadMasterData();
+    });
+  },
+
+  async addWorkItem() {
+    const sections = await API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
+    const sectionOpts = sections.map(s => ({ v: s.id, l: s.name }));
+    const cols = [
+      { key: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
+      { key: 'name', label: 'اسم البند *', req: true },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة بنود الأعمال', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const sec = sections.find(s => s.id === r.section_id);
+        return { ...r, section_id: r.section_id || null, section_name: sec ? sec.name : null };
+      });
+      await this.bulkSave('work_items', enriched);
+      UI.toast(`تم حفظ ${rows.length} بند`);
+      App.loadMasterData();
+    }, {}, {}, 'none');
+  },
+
+  async editWorkItem(id) {
+    const [rows, sections] = await Promise.all([
+      API.request('work_items', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...sections.map(s => ({ v: s.id, l: s.name }))] },
+      { name: 'name', label: 'اسم البند', req: true },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل بند', `<form>${UI.form(fields, { ...rows[0], section_id: rows[0].section_id || '' })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const sec = sections.find(s => s.id === fd.get('section_id'));
+      await this.save('work_items', { section_id: fd.get('section_id'), section_name: sec ? sec.name : null, name: fd.get('name'), notes: fd.get('notes') || null }, id);
+      UI.toast('تم التحديث'); App.loadMasterData();
+    });
+  },
+
+  delWorkItem(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا البند؟', async () => {
+      await this.softDelete('work_items', id);
+      UI.toast('تم الحذف'); App.loadMasterData();
     });
   }
 };

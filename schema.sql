@@ -167,6 +167,37 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "authenticated_all" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP TRIGGER IF EXISTS profiles_u ON profiles; CREATE TRIGGER profiles_u BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- Work sections & items for project categorization
+CREATE TABLE IF NOT EXISTS work_sections (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS work_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  section_id UUID REFERENCES work_sections(id),
+  section_name TEXT,
+  name TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+ALTER TABLE work_sections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE work_items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_all" ON work_sections;
+DROP POLICY IF EXISTS "authenticated_all" ON work_items;
+CREATE POLICY "authenticated_all" ON work_sections FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON work_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP TRIGGER IF EXISTS work_sections_u ON work_sections; CREATE TRIGGER work_sections_u BEFORE UPDATE ON work_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS work_items_u ON work_items; CREATE TRIGGER work_items_u BEFORE UPDATE ON work_items FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
 INSERT INTO sectors (name, description) VALUES
   ('رواتب', 'مصروفات الرواتب الشهرية'),
   ('إيجارات', 'إيجارات المكاتب والمستودعات'),
