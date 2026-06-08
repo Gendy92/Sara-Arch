@@ -66,7 +66,7 @@ const App = {
     if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><button class="btn btn-primary" onclick="Crud.addTx()">+ إضافة معاملات</button></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button></div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     return '';
@@ -125,8 +125,8 @@ const App = {
       const projects = await API.request('projects', 'GET', null, '?select=id&deleted_at=is.null');
       const employees = await API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null');
       const txs = await API.request('transactions', 'GET', null, '?select=type,amount&deleted_at=is.null');
-      const income = txs.filter(t => t.type === 'income' || t.type === 'deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      const income = txs.filter(t => ['income','deposit','project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      const exp = txs.filter(t => ['expense','project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
       document.getElementById('kpis').innerHTML = `
         <div class="kpi-card"><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
         <div class="kpi-card"><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
@@ -158,7 +158,11 @@ const App = {
   async loadTransactions() {
     try {
       const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
-      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'الإجراءات'], data.map(t => [this.fmtDate(t.created_at), `<span class="badge badge-${t.type === 'income' || t.type === 'deposit' ? 'green' : 'red'}">${t.type}</span>`, this.fmtMoney(t.amount), t.description || '-', t.party_name || '-', t.project_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'الإجراءات'], data.map(t => {
+        const badgeColor = ['project_deposit','owner_deposit','income','deposit'].includes(t.type) ? 'green' : 'red';
+        const party = t.employee_name || t.party_name || '-';
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+      })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
 
@@ -188,7 +192,8 @@ const App = {
   },
 
   fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ج.م'; },
-  fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; }
+  fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; },
+  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', supervision: 'إشراف', withdrawal: 'سحب' }; return map[type] || type; }
 };
 
 // ─── CRUD ───
@@ -347,8 +352,8 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
   },
 
-  // ─── TRANSACTIONS (linked to Clients & Projects) ───
-  async addTx() {
+  // ─── TRANSACTIONS: 4 Types ───
+  async addProjectDeposit() {
     const [clients, projects] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
@@ -356,62 +361,142 @@ const Crud = {
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
     const cols = [
-      { key: 'type', label: 'النوع *', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
-      { key: 'amount', label: 'المبلغ *', type: 'number', req: true },
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
-    Spreadsheet.open('إضافة معاملات', cols, async (rows) => {
+    Spreadsheet.open('💰 عربون مشروع (من عميل)', cols, async (rows) => {
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
         const project = projects.find(p => p.id === r.project_id);
-        return {
-          type: r.type,
-          amount: r.amount,
-          client_id: r.client_id || null,
-          party_id: r.client_id || null,
-          party_name: client ? client.name : null,
-          party_type: 'client',
-          project_id: r.project_id || null,
-          project_name: project ? project.name : null,
-          date: r.date || new Date().toISOString().slice(0, 10),
-          description: r.description || null
-        };
+        return { type: 'project_deposit', amount: r.amount, client_id: r.client_id, party_id: r.client_id, party_name: client ? client.name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
-      UI.toast(`تم حفظ ${rows.length} معاملة`);
+      UI.toast(`تم حفظ ${rows.length} عربون`);
+      App.loadTransactions();
+    });
+  },
+
+  async addProjectExpense() {
+    const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const cols = [
+      { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('🔨 مصروف مشروع', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const project = projects.find(p => p.id === r.project_id);
+        return { type: 'project_expense', amount: r.amount, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+      });
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} مصروف`);
+      App.loadTransactions();
+    });
+  },
+
+  async addOfficeExpense() {
+    const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+    const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
+    const cols = [
+      { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('🏢 مصروف مكتبي (موظف)', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const emp = employees.find(e => e.id === r.employee_id);
+        return { type: 'office_expense', amount: r.amount, employee_id: r.employee_id, employee_name: emp ? emp.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+      });
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} مصروف مكتبي`);
+      App.loadTransactions();
+    });
+  },
+
+  addOwnerDeposit() {
+    const cols = [
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('👤 توريد صاحب المكتب', cols, async (rows) => {
+      const enriched = rows.map(r => ({ type: 'owner_deposit', amount: r.amount, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} توريد`);
       App.loadTransactions();
     });
   },
 
   async editTx(id) {
-    const [txRows, clients, projects] = await Promise.all([
-      API.request('transactions', 'GET', null, '?select=*&id=eq.' + id),
-      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
-    ]);
+    const txRows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id);
     if (!txRows.length) return;
     const tx = txRows[0];
-    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
-    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
-    const fields = [
-      { name: 'type', label: 'النوع', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
-      { name: 'amount', label: 'المبلغ', type: 'number', req: true },
-      { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
-      { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
-      { name: 'date', label: 'التاريخ', type: 'date' },
-      { name: 'description', label: 'الوصف', type: 'textarea' }
-    ];
-    const values = { ...tx, client_id: tx.party_id || '', project_id: tx.project_id || '' };
-    UI.openModal('تعديل معاملة', `<form>${UI.form(fields, values)}</form>`, async (form) => {
-      const fd = new FormData(form);
-      const client = clients.find(c => c.id === fd.get('client_id'));
-      const project = projects.find(p => p.id === fd.get('project_id'));
-      await this.save('transactions', { type: fd.get('type'), amount: +fd.get('amount') || 0, client_id: fd.get('client_id') || null, party_id: fd.get('client_id') || null, party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id') || null, project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-      UI.toast('تم التحديث'); App.loadTransactions();
-    });
+
+    if (tx.type === 'project_deposit') {
+      const [clients, projects] = await Promise.all([
+        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+        API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      ]);
+      const fields = [
+        { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
+        { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
+        { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'description', label: 'الوصف', type: 'textarea' }
+      ];
+      UI.openModal('تعديل عربون مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '' })}</form>`, async (form) => {
+        const fd = new FormData(form);
+        const client = clients.find(c => c.id === fd.get('client_id'));
+        const project = projects.find(p => p.id === fd.get('project_id'));
+        await this.save('transactions', { type: 'project_deposit', amount: +fd.get('amount') || 0, client_id: fd.get('client_id'), party_id: fd.get('client_id'), party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        UI.toast('تم التحديث'); App.loadTransactions();
+      });
+    } else if (tx.type === 'project_expense') {
+      const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
+      const fields = [
+        { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
+        { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'description', label: 'الوصف', type: 'textarea' }
+      ];
+      UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, project_id: tx.project_id || '' })}</form>`, async (form) => {
+        const fd = new FormData(form);
+        const project = projects.find(p => p.id === fd.get('project_id'));
+        await this.save('transactions', { type: 'project_expense', amount: +fd.get('amount') || 0, client_id: project ? project.client_id : null, party_id: project ? project.client_id : null, party_name: project ? project.client_name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        UI.toast('تم التحديث'); App.loadTransactions();
+      });
+    } else if (tx.type === 'office_expense') {
+      const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+      const fields = [
+        { name: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...employees.map(e => ({ v: e.id, l: e.name }))] },
+        { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'description', label: 'الوصف', type: 'textarea' }
+      ];
+      UI.openModal('تعديل مصروف مكتبي', `<form>${UI.form(fields, { ...tx, employee_id: tx.employee_id || '' })}</form>`, async (form) => {
+        const fd = new FormData(form);
+        const emp = employees.find(e => e.id === fd.get('employee_id'));
+        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        UI.toast('تم التحديث'); App.loadTransactions();
+      });
+    } else {
+      const fields = [
+        { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'description', label: 'الوصف', type: 'textarea' }
+      ];
+      UI.openModal('تعديل توريد', `<form>${UI.form(fields, tx)}</form>`, async (form) => {
+        const fd = new FormData(form);
+        await this.save('transactions', { amount: +fd.get('amount') || 0, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        UI.toast('تم التحديث'); App.loadTransactions();
+      });
+    }
   },
 
   delTx(id) {

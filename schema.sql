@@ -7,16 +7,22 @@ CREATE TABLE IF NOT EXISTS employees (id UUID PRIMARY KEY DEFAULT uuid_generate_
 CREATE TABLE IF NOT EXISTS vendors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,contact_person TEXT,phone TEXT,email TEXT,address TEXT,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS items (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,specification TEXT,brand TEXT,unit TEXT DEFAULT 'قطعة',notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS sectors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,description TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
-CREATE TABLE IF NOT EXISTS transactions (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),type TEXT NOT NULL CHECK (type IN ('income','expense','deposit','withdrawal','supervision','office_expense')),amount NUMERIC NOT NULL DEFAULT 0,description TEXT,client_id UUID REFERENCES clients(id),party_id UUID,party_name TEXT,party_type TEXT,project_id UUID REFERENCES projects(id),project_name TEXT,date DATE DEFAULT CURRENT_DATE,created_by UUID,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS transactions (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),type TEXT NOT NULL CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision')),amount NUMERIC NOT NULL DEFAULT 0,description TEXT,client_id UUID REFERENCES clients(id),party_id UUID,party_name TEXT,party_type TEXT,project_id UUID REFERENCES projects(id),project_name TEXT,employee_id UUID REFERENCES employees(id),employee_name TEXT,date DATE DEFAULT CURRENT_DATE,created_by UUID,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS procurements (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),project_id UUID REFERENCES projects(id),project_name TEXT,vendor_id UUID REFERENCES vendors(id),vendor_name TEXT,item_id UUID REFERENCES items(id),item_name TEXT,quantity NUMERIC DEFAULT 1,unit_price NUMERIC DEFAULT 0,total_price NUMERIC GENERATED ALWAYS AS (quantity * unit_price) STORED,expense_type TEXT DEFAULT 'أخرى',date DATE DEFAULT CURRENT_DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS employee_transactions (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),employee_id UUID REFERENCES employees(id),employee_name TEXT,type TEXT NOT NULL CHECK (type IN ('advance','penalty','bonus','other')),amount NUMERIC NOT NULL DEFAULT 0,date DATE DEFAULT CURRENT_DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS employee_salary_history (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),employee_id UUID REFERENCES employees(id),employee_name TEXT,old_salary NUMERIC,new_salary NUMERIC,effective_date DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS custody_records (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),employee_id UUID REFERENCES employees(id),employee_name TEXT,client_id UUID REFERENCES clients(id),client_name TEXT,project_id UUID REFERENCES projects(id),project_name TEXT,amount NUMERIC DEFAULT 0,status TEXT DEFAULT 'active' CHECK (status IN ('active','settled','partial')),date DATE DEFAULT CURRENT_DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 
--- Migrations: enforce required relationships
+-- Migrations: projects still require client
 DO $$ BEGIN ALTER TABLE projects ALTER COLUMN client_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE transactions ALTER COLUMN client_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
-DO $$ BEGIN ALTER TABLE transactions ALTER COLUMN project_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+
+-- Migrations: 4-type transaction model
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS employee_name TEXT;
+ALTER TABLE transactions ALTER COLUMN client_id DROP NOT NULL;
+ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL;
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision'));
 
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
