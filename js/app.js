@@ -69,7 +69,7 @@ const App = {
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
       <button data-nav="master" class="nav-item ${this.screen === 'master' ? 'active' : ''}"><span>📋</span> البيانات الأساسية</button>
-      ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button>` : ''}
+      ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button><button data-nav="backup" class="nav-item ${this.screen === 'backup' ? 'active' : ''}"><span>💾</span> النسخ الاحتياطي</button>` : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
   },
 
@@ -82,6 +82,7 @@ const App = {
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button><div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button><div id="work-items-tbl">جاري التحميل...</div></div></div>`;
     return '';
     return '';
@@ -634,6 +635,51 @@ const App = {
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
+  },
+
+  async loadBackup() {
+    try {
+      const last = localStorage.getItem('sara_last_backup');
+      document.getElementById('backup-last').innerHTML = last
+        ? `آخر نسخة يدوية: <strong>${new Date(last).toLocaleString('ar-EG')}</strong>`
+        : 'لم يتم عمل نسخة يدوية بعد';
+      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles'];
+      const statusHtml = `<ul style="list-style:none;padding:0;font-size:13px;color:var(--text2)">${tables.map(t => `<li style="padding:4px 0;border-bottom:1px solid var(--border)">📁 ${t}.json</li>`).join('')}</ul><p style="font-size:12px;color:var(--text3);margin-top:8px">الجداول المدرجة: ${tables.length}</p>`;
+      document.getElementById('backup-status').innerHTML = statusHtml;
+    } catch (e) { console.error(e); document.getElementById('backup-status').innerHTML = '<p style="color:var(--red)">خطأ في التحميل</p>'; }
+  },
+
+  async downloadLocalBackup() {
+    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles'];
+    const progress = document.getElementById('backup-progress');
+    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
+    const zip = new JSZip();
+    const folder = zip.folder('Sara_Backup_' + new Date().toISOString().slice(0,10));
+    let ok = 0, fail = 0;
+    for (const table of tables) {
+      try {
+        const data = await API.request(table, 'GET', null, '?select=*');
+        folder.file(`${table}.json`, JSON.stringify(data, null, 2));
+        ok++;
+        progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok}/${tables.length} جداول...</p>`;
+      } catch (e) {
+        folder.file(`${table}_ERROR.txt`, String(e.message || e));
+        fail++;
+      }
+    }
+    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري ضغط الملف...</p>';
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Sara_Backup_${new Date().toISOString().slice(0,10)}_${Date.now()}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    localStorage.setItem('sara_last_backup', new Date().toISOString());
+    progress.innerHTML = `<p style="color:var(--green)">✅ تم التحميل بنجاح (${ok} جدول، ${fail > 0 ? fail + ' خطأ' : 'بدون أخطاء'})</p>`;
+    this.loadBackup();
   },
 
   async loadMasterData() {
