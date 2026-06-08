@@ -69,7 +69,7 @@ const App = {
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>المصروفات حسب النوع</h3><div id="office-by-sector">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📋 إشراف المشاريع</h3><div id="office-sup-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📉 المصروفات</h3><div id="office-exp-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📈 توريدات صاحب المكتب</h3><div id="owner-deposit-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     return '';
@@ -200,10 +200,9 @@ const App = {
 
   async loadOffice() {
     try {
-      const [incomeTxs, expenseTxs, sectors, projects, projectExpenses] = await Promise.all([
+      const [incomeTxs, expenseTxs, projects, projectExpenses] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc"),
         API.request('transactions', 'GET', null, "?select=*&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc"),
-        API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
         API.request('projects', 'GET', null, '?select=id,name,created_at,value,supervision_percentage&deleted_at=is.null'),
         API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
       ]);
@@ -218,22 +217,29 @@ const App = {
         <div class="kpi-card"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
         <div class="kpi-card"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إشراف المشاريع (محسوب)</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(calcSupervision)}</div></div>`;
-      const bySector = {};
-      expenseTxs.forEach(t => { const name = t.sector_name || 'غير مصنف'; bySector[name] = (bySector[name] || 0) + (+t.amount || 0); });
-      const sectorRows = Object.entries(bySector).map(([name, amount]) => [name, this.fmtMoney(amount)]);
-      document.getElementById('office-by-sector').innerHTML = sectorRows.length ? this.table(['النوع', 'المبلغ'], sectorRows) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
+      // 1. Supervision (top revenue)
       const supRows = projects.map(p => {
         const exp = expByProject[p.id] || 0;
         const supAmt = exp * (p.supervision_percentage || 0) / 100;
         if (supAmt <= 0) return null;
-        return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` };
+        return [p.name, this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt)];
       }).filter(Boolean);
-      const allTxs = [...incomeTxs, ...expenseTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], allTxs.map(t => {
-        const badgeColor = ['owner_deposit','supervision'].includes(t.type) ? 'green' : 'red';
-        const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', actions];
-      })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      document.getElementById('office-sup-tbl').innerHTML = supRows.length ? this.table(['المشروع', 'مصروفات المشروع', 'نسبة الإشراف', 'مبلغ الإشراف'], supRows) : '<p style="color:var(--text3)">لا يوجد إشراف</p>';
+      // 2. Expenses (middle)
+      const bySector = {};
+      expenseTxs.filter(t => t.type === 'office_expense').forEach(t => { const name = t.sector_name || 'غير مصنف'; bySector[name] = (bySector[name] || 0) + (+t.amount || 0); });
+      const sectorRows = Object.entries(bySector).map(([name, amount]) => [name, this.fmtMoney(amount)]);
+      const expenseHtml = sectorRows.length ? `<div style="margin-bottom:12px"><strong>حسب التصنيف:</strong></div>${this.table(['التصنيف', 'المبلغ'], sectorRows)}` : '';
+      const withdrawalTxs = expenseTxs.filter(t => t.type === 'withdrawal');
+      const withdrawalRows = withdrawalTxs.map(t => [this.fmtDate(t.created_at), this.fmtMoney(t.amount), t.description || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')]);
+      const expenseTxRows = expenseTxs.filter(t => t.type === 'office_expense').map(t => [this.fmtDate(t.created_at), this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')]);
+      let expensesHtml = expenseHtml;
+      if (expenseTxRows.length) expensesHtml += `<div style="margin-top:12px"><strong>تفاصيل المصروفات:</strong></div>${this.table(['التاريخ', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], expenseTxRows)}`;
+      if (withdrawalRows.length) expensesHtml += `<div style="margin-top:12px"><strong>سحوبات صاحب المكتب:</strong></div>${this.table(['التاريخ', 'المبلغ', 'البيان', 'الإجراءات'], withdrawalRows)}`;
+      document.getElementById('office-exp-tbl').innerHTML = expensesHtml || '<p style="color:var(--text3)">لا توجد مصروفات</p>';
+      // 3. Owner deposits (bottom revenue)
+      const depositRows = incomeTxs.map(t => [this.fmtDate(t.created_at), this.fmtMoney(t.amount), t.description || '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')]);
+      document.getElementById('owner-deposit-tbl').innerHTML = depositRows.length ? this.table(['التاريخ', 'المبلغ', 'البيان', 'الإجراءات'], depositRows) : '<p style="color:var(--text3)">لا توجد توريدات</p>';
     } catch (e) { console.error(e); }
   },
 
