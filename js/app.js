@@ -173,12 +173,26 @@ const App = {
 
   async loadTransactions() {
     try {
-      const data = await API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50");
-      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], data.map(t => {
-        const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
+      const [data, projects, projectExpenses] = await Promise.all([
+        API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50"),
+        API.request('projects', 'GET', null, '?select=id,name,created_at,supervision_percentage&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+      ]);
+      const expByProject = {};
+      projectExpenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const supRows = projects.map(p => {
+        const exp = expByProject[p.id] || 0;
+        const supAmt = exp * (p.supervision_percentage || 0) / 100;
+        if (supAmt <= 0) return null;
+        return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` };
+      }).filter(Boolean);
+      const allTxs = [...data, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
+        const badgeColor = ['project_deposit','supervision'].includes(t.type) ? 'green' : 'red';
         const party = t.employee_name || t.party_name || t.sector_name || '-';
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
