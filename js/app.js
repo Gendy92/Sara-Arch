@@ -213,11 +213,9 @@ const App = {
       const totalIncome = txIncome + calcSupervision;
       const expense = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
       document.getElementById('office-kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">إشراف المشاريع</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(calcSupervision)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">توريدات صاحب المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(txIncome)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي الإيرادات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>`;
+        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إشراف: ${this.fmtMoney(calcSupervision)} &nbsp;|&nbsp; توريدات: ${this.fmtMoney(txIncome)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>`;
       const supRows = projects.map(p => {
         const exp = expByProject[p.id] || 0;
         const supAmt = exp * (p.supervision_percentage || 0) / 100;
