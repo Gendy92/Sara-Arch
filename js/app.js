@@ -72,10 +72,10 @@ const App = {
   },
 
   pageContent(screen) {
-    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 الإيرادات vs المصروفات — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
     if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 وارد vs مصروف — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
@@ -131,49 +131,21 @@ const App = {
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      const [clients, projects, employees, txs, projData] = await Promise.all([
+      const [clients, projects, employees, txs] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id&deleted_at=is.null'),
-        API.request('projects', 'GET', null, '?select=id,supervision_percentage&deleted_at=is.null'),
+        API.request('projects', 'GET', null, '?select=id,status&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=type,amount,date,created_at,project_id&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+        API.request('transactions', 'GET', null, '?select=type,amount&deleted_at=is.null')
       ]);
-      const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-      const expByProject = {};
-      projData.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
-      const supervision = projects.reduce((s, p) => s + ((expByProject[p.id] || 0) * (p.supervision_percentage || 0) / 100), 0);
-      const balance = deposits - expenses - supervision;
+      const activeProjects = projects.filter(p => p.status === 'active').length;
+      const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      const totalExp = txs.filter(t => ['project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
       document.getElementById('kpis').innerHTML = `
         <div class="kpi-card"><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
         <div class="kpi-card"><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
+        <div class="kpi-card"><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
         <div class="kpi-card"><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي الوارد</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
-        <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
-      // Monthly chart (project only)
-      const months = [];
-      const now = new Date();
-      for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleDateString('ar-EG', {month:'short'}) }); }
-      const monthData = {};
-      months.forEach(m => monthData[m.key] = { deposits: 0, expenses: 0 });
-      txs.filter(t => ['project_deposit','project_expense'].includes(t.type)).forEach(t => {
-        const d = new Date(t.date || t.created_at);
-        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        if (monthData[key]) {
-          if (t.type === 'project_deposit') monthData[key].deposits += (+t.amount || 0);
-          if (t.type === 'project_expense') monthData[key].expenses += (+t.amount || 0);
-        }
-      });
-      const maxVal = Math.max(...Object.values(monthData).map(m => Math.max(m.deposits, m.expenses)), 1);
-      const chartHtml = `<div class="chart-container">${months.map(m => {
-        const d = monthData[m.key];
-        const depH = Math.round((d.deposits / maxVal) * 140);
-        const expH = Math.round((d.expenses / maxVal) * 140);
-        return `<div class="chart-bar"><div class="chart-bar-value" style="font-size:10px;color:var(--green)">${d.deposits > 0 ? (d.deposits/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-fill" style="height:${depH}px;background:linear-gradient(to top,rgba(125,187,138,0.3),rgba(125,187,138,0.7))"></div><div class="chart-bar-fill" style="height:${expH}px;background:linear-gradient(to top,rgba(200,126,122,0.3),rgba(200,126,122,0.7));margin-top:2px"></div><div class="chart-bar-value" style="font-size:10px;color:var(--red)">${d.expenses > 0 ? (d.expenses/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-label">${m.label}</div></div>`;
-      }).join('')}</div><div class="chart-legend"><span><i style="background:var(--green)"></i> وارد</span><span><i style="background:var(--red)"></i> مصروف</span></div>`;
-      document.getElementById('monthly-chart').innerHTML = chartHtml;
+        <div class="kpi-card"><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
@@ -210,15 +182,51 @@ const App = {
 
   async loadTransactions() {
     try {
-      const [data, projects, projectExpenses] = await Promise.all([
+      const [data, projects, projectExpenses, allProjTxs] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50"),
         API.request('projects', 'GET', null, '?select=id,name,created_at,supervision_percentage&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null"),
+        API.request('transactions', 'GET', null, '?select=type,amount,date,created_at&deleted_at=is.null')
       ]);
+      // KPIs
+      const deposits = allProjTxs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
+      const expenses = allProjTxs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
       const expByProject = {};
       projectExpenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const supervision = projects.reduce((s, p) => s + ((expByProject[p.id] || 0) * (p.supervision_percentage || 0) / 100), 0);
+      const balance = deposits - expenses - supervision;
+      document.getElementById('tx-kpis').innerHTML = `
+        <div class="kpi-card"><div class="kpi-label">إجمالي الوارد</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
+      // Monthly chart
+      const months = [];
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleDateString('ar-EG', {month:'short'}) }); }
+      const monthData = {};
+      months.forEach(m => monthData[m.key] = { deposits: 0, expenses: 0 });
+      allProjTxs.filter(t => ['project_deposit','project_expense'].includes(t.type)).forEach(t => {
+        const d = new Date(t.date || t.created_at);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        if (monthData[key]) {
+          if (t.type === 'project_deposit') monthData[key].deposits += (+t.amount || 0);
+          if (t.type === 'project_expense') monthData[key].expenses += (+t.amount || 0);
+        }
+      });
+      const maxVal = Math.max(...Object.values(monthData).map(m => Math.max(m.deposits, m.expenses)), 1);
+      const chartHtml = `<div class="chart-container">${months.map(m => {
+        const d = monthData[m.key];
+        const depH = Math.round((d.deposits / maxVal) * 140);
+        const expH = Math.round((d.expenses / maxVal) * 140);
+        return `<div class="chart-bar"><div class="chart-bar-value" style="font-size:10px;color:var(--green)">${d.deposits > 0 ? (d.deposits/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-fill" style="height:${depH}px;background:linear-gradient(to top,rgba(125,187,138,0.3),rgba(125,187,138,0.7))"></div><div class="chart-bar-fill" style="height:${expH}px;background:linear-gradient(to top,rgba(200,126,122,0.3),rgba(200,126,122,0.7));margin-top:2px"></div><div class="chart-bar-value" style="font-size:10px;color:var(--red)">${d.expenses > 0 ? (d.expenses/1000).toFixed(1)+'k' : ''}</div><div class="chart-bar-label">${m.label}</div></div>`;
+      }).join('')}</div><div class="chart-legend"><span><i style="background:var(--green)"></i> وارد</span><span><i style="background:var(--red)"></i> مصروف</span></div>`;
+      document.getElementById('monthly-chart').innerHTML = chartHtml;
+      // Table
+      const expByProj = {};
+      projectExpenses.forEach(t => { expByProj[t.project_id] = (expByProj[t.project_id] || 0) + (+t.amount || 0); });
       const supRows = projects.map(p => {
-        const exp = expByProject[p.id] || 0;
+        const exp = expByProj[p.id] || 0;
         const supAmt = exp * (p.supervision_percentage || 0) / 100;
         if (supAmt <= 0) return null;
         return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` };
