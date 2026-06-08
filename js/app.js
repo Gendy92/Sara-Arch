@@ -258,7 +258,7 @@ const Crud = {
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const cols = [
       { key: 'name', label: 'اسم المشروع *', req: true },
-      { key: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'value', label: 'القيمة', type: 'number' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
@@ -286,7 +286,7 @@ const Crud = {
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const fields = [
       { name: 'name', label: 'اسم المشروع', req: true },
-      { name: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { name: 'value', label: 'القيمة', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
@@ -358,8 +358,8 @@ const Crud = {
     const cols = [
       { key: 'type', label: 'النوع *', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
       { key: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { key: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
-      { key: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
@@ -399,8 +399,8 @@ const Crud = {
     const fields = [
       { name: 'type', label: 'النوع', type: 'select', req: true, opts: [{ v: 'income', l: 'إيراد' }, { v: 'expense', l: 'مصروف' }, { v: 'deposit', l: 'عربون' }, { v: 'supervision', l: 'إشراف' }, { v: 'office_expense', l: 'مصروف مكتبي' }] },
       { name: 'amount', label: 'المبلغ', type: 'number', req: true },
-      { name: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
-      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'description', label: 'الوصف', type: 'textarea' }
     ];

@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS employee_transactions (id UUID PRIMARY KEY DEFAULT uu
 CREATE TABLE IF NOT EXISTS employee_salary_history (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),employee_id UUID REFERENCES employees(id),employee_name TEXT,old_salary NUMERIC,new_salary NUMERIC,effective_date DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS custody_records (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),employee_id UUID REFERENCES employees(id),employee_name TEXT,client_id UUID REFERENCES clients(id),client_name TEXT,project_id UUID REFERENCES projects(id),project_name TEXT,amount NUMERIC DEFAULT 0,status TEXT DEFAULT 'active' CHECK (status IN ('active','settled','partial')),date DATE DEFAULT CURRENT_DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 
+-- Migrations: enforce required relationships
+DO $$ BEGIN ALTER TABLE projects ALTER COLUMN client_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE transactions ALTER COLUMN client_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE transactions ALTER COLUMN project_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;

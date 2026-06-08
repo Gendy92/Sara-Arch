@@ -71,15 +71,18 @@ const Spreadsheet = {
     UI.openModal(title, content, null);
 
     const modalBody = document.querySelector('.modal-body');
+    const spreadsheetDiv = modalBody.querySelector('.spreadsheet');
+    spreadsheetDiv._columns = columns;
+
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
     saveBtn.style.cssText = 'margin-top:16px;width:100%';
     saveBtn.textContent = '💾 حفظ الكل';
     saveBtn.onclick = async () => {
-      const rows = this.getData(modalBody);
-      if (rows.length === 0) { UI.toast('لا يوجد بيانات للحفظ', 'error'); return; }
-      saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ...';
       try {
+        const rows = this.getData(spreadsheetDiv);
+        if (rows.length === 0) { UI.toast('لا يوجد بيانات للحفظ', 'error'); return; }
+        saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ...';
         await onSave(rows);
         UI.closeModal();
       } catch (err) {
@@ -92,7 +95,7 @@ const Spreadsheet = {
   },
 
   render(columns) {
-    const headerCells = columns.map(c => `<th>${c.label}</th>`).join('');
+    const headerCells = columns.map(c => `<th>${c.label}${c.req ? ' <span style="color:#e53935">*</span>' : ''}</th>`).join('');
     const inputCells = columns.map(c => {
       if (c.type === 'select') {
         return `<td><select data-key="${c.key}">${c.opts.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select></td>`;
@@ -135,6 +138,8 @@ const Spreadsheet = {
   },
 
   getData(container) {
+    const columns = container._columns || [];
+    const requiredKeys = columns.filter(c => c.req).map(c => c.key);
     const rows = [];
     container.querySelectorAll('tbody tr').forEach(tr => {
       const row = {}; let hasData = false;
@@ -147,7 +152,14 @@ const Spreadsheet = {
         } else { val = null; }
         row[key] = val;
       });
-      if (hasData) rows.push(row);
+      if (hasData) {
+        const missing = requiredKeys.filter(k => !row[k]);
+        if (missing.length > 0) {
+          const missingLabels = columns.filter(c => missing.includes(c.key)).map(c => c.label.replace(/\*/g,'').trim());
+          throw new Error('الحقول المطلوبة: ' + missingLabels.join(', '));
+        }
+        rows.push(row);
+      }
     });
     return rows;
   }
