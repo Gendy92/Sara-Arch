@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS clients (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,phone TEXT,email TEXT,address TEXT,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS projects (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,client_id UUID REFERENCES clients(id),client_name TEXT,address TEXT,value NUMERIC DEFAULT 0,supervision_percentage NUMERIC DEFAULT 0,status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','cancelled','on_hold')),start_date DATE,end_date DATE,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS employees (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,job_title TEXT,salary NUMERIC DEFAULT 0,phone TEXT,email TEXT,hire_date DATE,is_active BOOLEAN DEFAULT true,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
-CREATE TABLE IF NOT EXISTS vendors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,contact_person TEXT,phone TEXT,email TEXT,address TEXT,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS vendors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,contact_person TEXT,phone TEXT,email TEXT,address TEXT,sector TEXT,notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS items (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,specification TEXT,brand TEXT,unit TEXT DEFAULT 'قطعة',notes TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS sectors (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),name TEXT NOT NULL,description TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS transactions (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),type TEXT NOT NULL CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision')),amount NUMERIC NOT NULL DEFAULT 0,description TEXT,client_id UUID REFERENCES clients(id),party_id UUID,party_name TEXT,party_type TEXT,project_id UUID REFERENCES projects(id),project_name TEXT,employee_id UUID REFERENCES employees(id),employee_name TEXT,sector_id UUID REFERENCES sectors(id),sector_name TEXT,date DATE DEFAULT CURRENT_DATE,created_by UUID,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
@@ -19,6 +19,9 @@ DO $$ BEGIN ALTER TABLE projects ALTER COLUMN client_id SET NOT NULL; EXCEPTION 
 -- Migration: add address and supervision to projects
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS supervision_percentage NUMERIC DEFAULT 0;
+
+-- Migration: add sector to vendors
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS sector TEXT;
 
 -- Migrations: 4-type transaction model
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);

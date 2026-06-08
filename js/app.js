@@ -210,9 +210,9 @@ const App = {
   async loadVendors() {
     try {
       const data = await API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'الشخص المسؤول', 'الهاتف', 'البريد', 'الإجراءات'], data.map(v => {
+      document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor') + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`;
-        return [v.name, v.contact_person || '-', v.phone || '-', v.email || '-', actions];
+        return [v.name, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
     } catch (e) { console.error(e); }
   },
@@ -546,8 +546,10 @@ const Crud = {
 
   // ─── VENDORS ───
   addVendor() {
+    const sectorOpts = [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }];
     const cols = [
       { key: 'name', label: 'اسم المورد *', req: true },
+      { key: 'sector', label: 'التخصص', type: 'select', opts: sectorOpts },
       { key: 'contact_person', label: 'الشخص المسؤول' },
       { key: 'phone', label: 'الهاتف' },
       { key: 'email', label: 'البريد' },
@@ -566,6 +568,7 @@ const Crud = {
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم المورد', req: true },
+      { name: 'sector', label: 'التخصص', type: 'select', opts: [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }] },
       { name: 'contact_person', label: 'الشخص المسؤول' },
       { name: 'phone', label: 'الهاتف' },
       { name: 'email', label: 'البريد' },
@@ -574,7 +577,7 @@ const Crud = {
     ];
     UI.openModal('تعديل مورد', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('vendors', { name: fd.get('name'), contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
+      await this.save('vendors', { name: fd.get('name'), sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadVendors();
     });
   },
