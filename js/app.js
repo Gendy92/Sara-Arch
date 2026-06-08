@@ -146,7 +146,7 @@ const App = {
     try {
       const [clients, projects, employees, txs] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-        API.request('projects', 'GET', null, '?select=id,status,client_id,supervision_percentage,design_percentage&deleted_at=is.null'),
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
         API.request('transactions', 'GET', null, '?select=type,amount,client_id,project_id&deleted_at=is.null')
       ]);
@@ -274,7 +274,7 @@ const App = {
     try {
       const [data, projects, projectExpenses, allProjTxs] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50"),
-        API.request('projects', 'GET', null, '?select=id,name,created_at,supervision_percentage,design_percentage&deleted_at=is.null'),
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null"),
         API.request('transactions', 'GET', null, '?select=type,amount,date,created_at&deleted_at=is.null')
       ]);
@@ -350,7 +350,7 @@ const App = {
       const [incomeTxs, expenseTxs, projects, projectExpenses] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc"),
         API.request('transactions', 'GET', null, "?select=*&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc"),
-        API.request('projects', 'GET', null, '?select=id,name,created_at,value,supervision_percentage,design_percentage&deleted_at=is.null'),
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
       ]);
       const txIncome = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
@@ -1163,7 +1163,7 @@ const Crud = {
   async clientStatement(id) {
     const [clientRows, projects, deposits, expenses] = await Promise.all([
       API.request('clients', 'GET', null, `?select=*&id=eq.${id}`),
-      API.request('projects', 'GET', null, `?select=id,name,supervision_percentage,design_percentage&client_id=eq.${id}&deleted_at=is.null`),
+      API.request('projects', 'GET', null, `?select=*&client_id=eq.${id}&deleted_at=is.null`),
       API.request('transactions', 'GET', null, `?select=project_id,amount,date,description&type=eq.project_deposit&deleted_at=is.null&order=date.asc`),
       API.request('transactions', 'GET', null, `?select=project_id,amount,date,description&type=eq.project_expense&deleted_at=is.null&order=date.asc`)
     ]);
