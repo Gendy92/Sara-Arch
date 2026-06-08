@@ -90,7 +90,7 @@ const App = {
     if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl">جاري التحميل...</div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div>`;
     if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1></div><div class="card"><div id="permissions-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl">جاري التحميل...</div></div></div>`;
+    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl">جاري التحميل...</div></div></div>${Auth.can('master', 'add') ? `<div class="card" style="margin-top:16px"><h3>📤 رفع أقسام وبنود من Excel</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">الملف يجب أن يحتوي على عمودين على الأقل: القسم والبند. يمكن إضافة عمود ملاحظات اختياري.</p><input type="file" id="work-sections-items-file" accept=".xlsx,.xls,.csv" onchange="App.parseWorkSectionsItemsFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:320px"><div id="work-sections-items-preview" style="margin-top:16px">لم يتم اختيار ملف</div></div>` : ''}<div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl">جاري التحميل...</div></div></div>`;
     return '';
     return '';
   },
@@ -877,6 +877,153 @@ const App = {
       ])) : '<p style="color:var(--text3)">لا توجد بنود</p>';
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
     } catch (e) { console.error(e); }
+  },
+
+  // ─── WORK SECTIONS & ITEMS EXCEL UPLOAD ───
+  async parseWorkSectionsItemsFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (typeof XLSX === 'undefined') {
+      UI.toast('مكتبة Excel لم يتم تحميلها — تأكد من اتصال الإنترنت', 'error');
+      return;
+    }
+    const preview = document.getElementById('work-sections-items-preview');
+    preview.innerHTML = '<p style="color:var(--text3)">جاري قراءة الملف...</p>';
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(new Uint8Array(e.target.result));
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+      if (!json.length || json.length < 2) {
+        preview.innerHTML = '<p style="color:var(--red)">الملف فارغ أو غير صالح</p>';
+        return;
+      }
+      const headers = (json[0] || []).map(h => String(h || '').trim());
+      const lowerHeaders = headers.map(h => h.toLowerCase());
+      const findCol = patterns => {
+        for (let i = 0; i < lowerHeaders.length; i++) {
+          if (!lowerHeaders[i]) continue;
+          for (const p of patterns) { if (lowerHeaders[i].includes(p)) return i; }
+        }
+        return -1;
+      };
+      const colSection = findCol(['section', 'قسم', 'القسم', 'department', 'category', 'تصنيف']);
+      const colItem = findCol(['item', 'بند', 'البند', 'name', 'الاسم', 'الأسم', 'work', 'عمل']);
+      const colNotes = findCol(['notes', 'ملاحظات', 'ملاحظه', 'note', 'وصف', 'description']);
+
+      if (colSection < 0 || colItem < 0) {
+        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على الأعمدة المطلوبة. العناوين المكتشفة: ${headers.join(' | ')}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود القسم + عمود البند (اختياري: ملاحظات)</p>`;
+        return;
+      }
+
+      // Fetch existing sections to match by name
+      let existingSections = [];
+      try {
+        existingSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+      } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
+      const sectionByName = {};
+      existingSections.forEach(s => { sectionByName[String(s.name || '').trim().toLowerCase()] = s; });
+
+      const parsed = [];
+      const sectionsToCreate = new Map();
+      for (let i = 1; i < json.length; i++) {
+        const row = json[i];
+        if (!Array.isArray(row) || row.length <= Math.max(colSection, colItem)) continue;
+        const rawSection = String(row[colSection] || '').trim();
+        const rawItem = String(row[colItem] || '').trim();
+        if (!rawSection || !rawItem) continue;
+        const rawNotes = colNotes >= 0 && colNotes < row.length ? String(row[colNotes] || '').trim() : '';
+        const sectionKey = rawSection.toLowerCase();
+        let sectionId = sectionByName[sectionKey]?.id || null;
+        let sectionExists = !!sectionId;
+        if (!sectionExists && !sectionsToCreate.has(sectionKey)) {
+          sectionsToCreate.set(sectionKey, { name: rawSection, notes: rawNotes });
+        }
+        parsed.push({ rawSection, rawItem, rawNotes, sectionKey, sectionExists, sectionId });
+      }
+
+      // Build preview
+      const rows = parsed.map((p, idx) => [
+        idx + 1, p.rawSection, p.rawItem, p.rawNotes || '-',
+        p.sectionExists ? '<span style="color:var(--green)">موجود</span>' : '<span style="color:var(--gold)">سيتم إنشاؤه</span>'
+      ]);
+      const summary = `<div style="margin-bottom:12px;font-size:13px">
+        <span style="color:var(--gold)">أقسام جديدة: ${sectionsToCreate.size}</span> &nbsp;|&nbsp;
+        <span style="color:var(--blue)">بنود: ${parsed.length}</span>
+      </div>`;
+      const saveBtn = parsed.length
+        ? `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="App.saveWorkSectionsItems()">💾 حفظ الأقسام والبنود</button></div>`
+        : '';
+      const table = rows.length ? App.table(['#', 'القسم', 'البند', 'ملاحظات', 'حالة القسم'], rows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
+      preview.innerHTML = saveBtn + summary + table;
+      preview.dataset.parsed = JSON.stringify(parsed);
+      preview.dataset.sectionsToCreate = JSON.stringify(Array.from(sectionsToCreate.entries()));
+    } catch (e) {
+      console.error(e);
+      preview.innerHTML = '<p style="color:var(--red)">خطأ في قراءة الملف: ' + (e.message || '') + '</p>';
+    }
+  },
+
+  async saveWorkSectionsItems() {
+    const preview = document.getElementById('work-sections-items-preview');
+    const parsed = JSON.parse(preview.dataset.parsed || '[]');
+    if (!parsed.length) { UI.toast('لا يوجد بيانات للحفظ', 'error'); return; }
+    try {
+      // Fetch existing sections again (in case user created some manually)
+      let existingSections = [];
+      try {
+        existingSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+      } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
+      const sectionByName = {};
+      existingSections.forEach(s => { sectionByName[String(s.name || '').trim().toLowerCase()] = s; });
+
+      // Create missing sections
+      const sectionsToCreate = JSON.parse(preview.dataset.sectionsToCreate || '[]');
+      for (const [, sectionData] of sectionsToCreate) {
+        const key = String(sectionData.name || '').trim().toLowerCase();
+        if (sectionByName[key]) continue;
+        try {
+          const created = await API.request('work_sections', 'POST', sectionData);
+          const newSection = Array.isArray(created) ? created[0] : created;
+          sectionByName[key] = newSection;
+        } catch (e) {
+          console.log('[MasterData] failed to create section:', e.message);
+        }
+      }
+
+      // Create items (deduplicate by section+item name)
+      const seenItems = new Set();
+      let createdCount = 0;
+      for (const p of parsed) {
+        const section = sectionByName[p.sectionKey];
+        if (!section) continue;
+        const itemKey = `${p.sectionKey}::${p.rawItem.trim().toLowerCase()}`;
+        if (seenItems.has(itemKey)) continue;
+        seenItems.add(itemKey);
+        try {
+          await API.request('work_items', 'POST', {
+            section_id: section.id,
+            section_name: section.name,
+            name: p.rawItem,
+            notes: p.rawNotes || null
+          });
+          createdCount++;
+        } catch (e) {
+          console.log('[MasterData] failed to create item:', e.message);
+        }
+      }
+      UI.toast(`تم حفظ ${sectionsToCreate.length} قسم و ${createdCount} بند`);
+      preview.innerHTML = '<p style="color:var(--green)">✅ تم الحفظ بنجاح</p>';
+      this.loadMasterData();
+    } catch (e) {
+      console.error(e);
+      UI.toast('خطأ في الحفظ: ' + e.message, 'error');
+    }
   },
 
   table(headers, rows) {
