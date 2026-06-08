@@ -173,15 +173,30 @@ const App = {
 
   async loadTransactions() {
     try {
-      const data = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50');
-      document.getElementById('tx-tbl').innerHTML = data.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], data.map(t => {
+      const [data, projects, projectExpenses] = await Promise.all([
+        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=50'),
+        API.request('projects', 'GET', null, '?select=id,name,created_at,supervision_percentage&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+      ]);
+      const expByProject = {};
+      projectExpenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const supRows = projects.map(p => {
+        const exp = expByProject[p.id] || 0;
+        const supAmt = exp * (p.supervision_percentage || 0) / 100;
+        if (supAmt <= 0) return null;
+        return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` };
+      }).filter(Boolean);
+      const allTxs = [...data, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = ['project_deposit','owner_deposit','supervision','income','deposit'].includes(t.type) ? 'green' : 'red';
         const party = t.employee_name || t.party_name || t.sector_name || '-';
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
+
 
   async loadOffice() {
     try {
@@ -214,7 +229,7 @@ const App = {
         if (supAmt <= 0) return null;
         return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` };
       }).filter(Boolean);
-      const allTxs = [...incomeTxs, ...expenseTxs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const allTxs = [...incomeTxs, ...expenseTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => [this.fmtDate(t.created_at), this.fmtTxType(t.type), this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
@@ -374,7 +389,7 @@ const Crud = {
     UI.openModal('تعديل مشروع', `<form>${UI.form(fields, values)}</form>`, async (form) => {
       const fd = new FormData(form);
       const client = clients.find(c => c.id === fd.get('client_id'));
-      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
+      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, supervision_percentage: +fd.get('supervision_percentage') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadProjects();
     });
   },
@@ -395,9 +410,7 @@ const Crud = {
       ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: (t.description || 'عربون من العميل') + (pm ? ` (${pm})` : '') });
     });
     expenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
-    if (supervisionAmount > 0) {
-      ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: supervisionAmount, desc: `إشراف ${project.name} (${project.supervision_percentage || 0}%)` });
-    }
+    ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: supervisionAmount, desc: `إشراف ${project.name} (${project.supervision_percentage || 0}%)` });
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
     let balance = 0;
     const rows = ledger.map(r => {
@@ -436,9 +449,7 @@ const Crud = {
       ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: (t.description || '-') + (pm ? ` (${pm})` : '') });
     });
     clientExpenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
-    if (totalSup > 0) {
-      ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: totalSup, desc: `إجمالي إشراف المشاريع` });
-    }
+    ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: totalSup, desc: `إجمالي إشراف المشاريع` });
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
     let running = 0;
     const rows = ledger.map(r => {
