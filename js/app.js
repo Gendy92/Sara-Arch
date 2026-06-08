@@ -737,8 +737,14 @@ const Crud = {
     ];
     UI.openModal('إضافة مصروف عهدة', `<form>${UI.form(fields, {})}</form>`, async (form) => {
       const fd = new FormData(form);
-      await this.save('custody_expenses', { custody_id: custodyId, amount: +fd.get('amount') || 0, description: fd.get('description'), date: fd.get('date') || new Date().toISOString().slice(0, 10) });
-      UI.toast('تم تسجيل المصروف'); Crud.employeeCustody(empId);
+      try {
+        await this.save('custody_expenses', { custody_id: custodyId, amount: +fd.get('amount') || 0, description: fd.get('description'), date: fd.get('date') || new Date().toISOString().slice(0, 10) });
+        UI.toast('تم تسجيل المصروف'); Crud.employeeCustody(empId);
+      } catch (e) {
+        console.error('[addCustodyExpense]', e);
+        UI.toast('فشل حفظ المصروف — جدول custody_expenses ممكن ميكونش موجود في قاعدة البيانات. شغل schema.sql في Supabase.', 'error');
+        throw e;
+      }
     });
   },
 
@@ -761,8 +767,14 @@ const Crud = {
       UI.openModal('تسجيل مرتد عهدة', `<form>${UI.form(fields, {})}</form>`, async (form) => {
         const fd = new FormData(form);
         const newReturned = currentReturned + (+fd.get('amount') || 0);
-        await this.save('custody_records', { returned_amount: newReturned }, custodyId);
-        UI.toast('تم تسجيل المرتد'); Crud.employeeCustody(empId);
+        try {
+          await this.save('custody_records', { returned_amount: newReturned }, custodyId);
+          UI.toast('تم تسجيل المرتد'); Crud.employeeCustody(empId);
+        } catch (e) {
+          console.error('[returnCustody save]', e);
+          UI.toast('فشل حفظ المرتد — عمود returned_amount ممكن ميكونش موجود. شغل schema.sql في Supabase.', 'error');
+          throw e;
+        }
       });
     } catch (e) {
       console.error('[returnCustody] Error:', e);
@@ -777,7 +789,7 @@ const Crud = {
         UI.toast('تمت التسوية'); App.loadEmployees(); Crud.employeeCustody(empId);
       } catch (e) {
         console.error('[settleCustody] Error:', e);
-        UI.toast('خطأ في تسوية العهدة', 'error');
+        UI.toast('خطأ في تسوية العهدة — ' + (e.message || ''), 'error');
       }
     });
   },
