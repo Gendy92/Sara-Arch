@@ -59,6 +59,7 @@ ALTER TABLE procurements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_salary_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custody_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custody_expenses ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -73,6 +74,7 @@ BEGIN
   DROP POLICY IF EXISTS "authenticated_all" ON employee_transactions;
   DROP POLICY IF EXISTS "authenticated_all" ON employee_salary_history;
   DROP POLICY IF EXISTS "authenticated_all" ON custody_records;
+  DROP POLICY IF EXISTS "authenticated_all" ON custody_expenses;
 END $$;
 
 CREATE POLICY "authenticated_all" ON clients FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -86,6 +88,7 @@ CREATE POLICY "authenticated_all" ON procurements FOR ALL TO authenticated USING
 CREATE POLICY "authenticated_all" ON employee_transactions FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON employee_salary_history FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "authenticated_all" ON custody_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON custody_expenses FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION update_updated_at() RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$ LANGUAGE plpgsql;
 
@@ -99,6 +102,7 @@ DROP TRIGGER IF EXISTS transactions_u ON transactions; CREATE TRIGGER transactio
 DROP TRIGGER IF EXISTS procurements_u ON procurements; CREATE TRIGGER procurements_u BEFORE UPDATE ON procurements FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS employee_transactions_u ON employee_transactions; CREATE TRIGGER employee_transactions_u BEFORE UPDATE ON employee_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS custody_records_u ON custody_records; CREATE TRIGGER custody_records_u BEFORE UPDATE ON custody_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS custody_expenses_u ON custody_expenses; CREATE TRIGGER custody_expenses_u BEFORE UPDATE ON custody_expenses FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Profiles table (stores Arabic names reliably outside auth metadata)
 CREATE TABLE IF NOT EXISTS profiles (

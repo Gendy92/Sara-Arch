@@ -685,38 +685,48 @@ const Crud = {
   },
 
   async employeeCustody(empId) {
-    const [empRows, custodyRecs] = await Promise.all([
-      API.request('employees', 'GET', null, `?select=*&id=eq.${empId}`),
-      API.request('custody_records', 'GET', null, `?select=*&employee_id=eq.${empId}&deleted_at=is.null&order=date.desc`)
-    ]);
-    if (!empRows.length) return;
-    const emp = empRows[0];
-    // Fetch expenses for all custody records
-    const custodyIds = custodyRecs.map(c => c.id);
-    let allExpenses = [];
-    if (custodyIds.length) {
-      allExpenses = await API.request('custody_expenses', 'GET', null, `?select=*&custody_id=in.(${custodyIds.join(',')})&deleted_at=is.null&order=date.asc`);
+    try {
+      const [empRows, custodyRecs] = await Promise.all([
+        API.request('employees', 'GET', null, `?select=*&id=eq.${empId}`),
+        API.request('custody_records', 'GET', null, `?select=*&employee_id=eq.${empId}&deleted_at=is.null&order=date.desc`)
+      ]);
+      if (!empRows.length) return;
+      const emp = empRows[0];
+      // Fetch expenses for all custody records
+      const custodyIds = custodyRecs.map(c => c.id);
+      let allExpenses = [];
+      if (custodyIds.length) {
+        try {
+          allExpenses = await API.request('custody_expenses', 'GET', null, `?select=*&custody_id=in.(${custodyIds.join(',')})&deleted_at=is.null&order=date.asc`);
+        } catch (e) {
+          console.error('[Custody] Failed to load expenses:', e);
+          UI.toast('تنبيه: تعذر تحميل مصروفات العهدة', 'error');
+        }
+      }
+      const expByCustody = {};
+      allExpenses.forEach(e => { expByCustody[e.custody_id] = (expByCustody[e.custody_id] || 0) + (+e.amount || 0); });
+      const activeTotal = custodyRecs.filter(c => c.status === 'active').reduce((s, c) => s + (+c.amount || 0), 0);
+      const settledTotal = custodyRecs.filter(c => c.status === 'settled').reduce((s, c) => s + (+c.amount || 0), 0);
+      // Build custody cards
+      let custodyHtml = '';
+      custodyRecs.forEach(c => {
+        const given = +c.amount || 0;
+        const spent = expByCustody[c.id] || 0;
+        const returned = +c.returned_amount || 0;
+        const remaining = given - spent - returned;
+        const statusBadge = c.status === 'active' ? '<span class="badge badge-green">نشطة</span>' : '<span class="badge badge-gray">مقفلة</span>';
+        const expenses = allExpenses.filter(e => e.custody_id === c.id);
+        let expRows = expenses.map(e => [App.fmtDate(e.date), e.description || '-', App.fmtMoney(e.amount)]);
+        expRows.push(['', '<strong>المتبقي</strong>', `<strong style="color:${remaining >= 0 ? 'var(--green)' : 'var(--red)'}">${App.fmtMoney(remaining)}</strong>`]);
+        const canSettle = c.status === 'active';
+        custodyHtml += `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div><strong>عهدة ${App.fmtDate(c.date)}</strong> — ${c.project_name || '-'} ${statusBadge}</div><div style="display:flex;gap:6px">${canSettle ? `<button class="btn btn-sm btn-secondary" onclick="Crud.addCustodyExpense('${c.id}', '${empId}')">+ مصروف</button><button class="btn btn-sm btn-secondary" onclick="Crud.returnCustody('${c.id}', '${empId}')">+ مرتد</button><button class="btn btn-sm btn-primary" onclick="Crud.settleCustody('${c.id}', '${empId}')">تسوية</button>` : ''}</div></div><div style="font-size:12px;color:var(--text2);margin-bottom:8px">سلمت: ${App.fmtMoney(given)} | صرفت: ${App.fmtMoney(spent)} | مرتد: ${App.fmtMoney(returned)} | متبقي: <strong style="color:${remaining >= 0 ? 'var(--green)' : 'var(--red)'}">${App.fmtMoney(remaining)}</strong></div>${App.table(['التاريخ', 'البيان', 'المبلغ'], expRows)}</div>`;
+      });
+      const html = `<div style="margin-bottom:16px"><strong>الموظف:</strong> ${emp.name}<br><strong>الوظيفة:</strong> ${emp.job_title || '-'}<br><strong>العهدة النشطة:</strong> <span style="color:var(--green)">${App.fmtMoney(activeTotal)}</span><br><strong>العهدة المقفلة:</strong> ${App.fmtMoney(settledTotal)}</div><div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addCustody('${emp.id}', '${emp.name}')">+ تسليم عهدة جديدة</button></div>${custodyHtml || '<p style="color:var(--text3)">لا توجد سجلات عهدة</p>'}`;
+      UI.openModal('سجل العهدة — ' + emp.name, html, null);
+    } catch (e) {
+      console.error('[employeeCustody] Error:', e);
+      UI.toast('خطأ في تحميل سجل العهدة: ' + (e.message || ''), 'error');
     }
-    const expByCustody = {};
-    allExpenses.forEach(e => { expByCustody[e.custody_id] = (expByCustody[e.custody_id] || 0) + (+e.amount || 0); });
-    const activeTotal = custodyRecs.filter(c => c.status === 'active').reduce((s, c) => s + (+c.amount || 0), 0);
-    const settledTotal = custodyRecs.filter(c => c.status === 'settled').reduce((s, c) => s + (+c.amount || 0), 0);
-    // Build custody cards
-    let custodyHtml = '';
-    custodyRecs.forEach(c => {
-      const given = +c.amount || 0;
-      const spent = expByCustody[c.id] || 0;
-      const returned = +c.returned_amount || 0;
-      const remaining = given - spent - returned;
-      const statusBadge = c.status === 'active' ? '<span class="badge badge-green">نشطة</span>' : '<span class="badge badge-gray">مقفلة</span>';
-      const expenses = allExpenses.filter(e => e.custody_id === c.id);
-      let expRows = expenses.map(e => [App.fmtDate(e.date), e.description || '-', App.fmtMoney(e.amount)]);
-      expRows.push(['', '<strong>المتبقي</strong>', `<strong style="color:${remaining >= 0 ? 'var(--green)' : 'var(--red)'}">${App.fmtMoney(remaining)}</strong>`]);
-      const canSettle = c.status === 'active';
-      custodyHtml += `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div><strong>عهدة ${App.fmtDate(c.date)}</strong> — ${c.project_name || '-'} ${statusBadge}</div><div style="display:flex;gap:6px">${canSettle ? `<button class="btn btn-sm btn-secondary" onclick="Crud.addCustodyExpense('${c.id}', '${empId}')">+ مصروف</button><button class="btn btn-sm btn-secondary" onclick="Crud.returnCustody('${c.id}', '${empId}')">+ مرتد</button><button class="btn btn-sm btn-primary" onclick="Crud.settleCustody('${c.id}', '${empId}')">تسوية</button>` : ''}</div></div><div style="font-size:12px;color:var(--text2);margin-bottom:8px">سلمت: ${App.fmtMoney(given)} | صرفت: ${App.fmtMoney(spent)} | مرتد: ${App.fmtMoney(returned)} | متبقي: <strong style="color:${remaining >= 0 ? 'var(--green)' : 'var(--red)'}">${App.fmtMoney(remaining)}</strong></div>${App.table(['التاريخ', 'البيان', 'المبلغ'], expRows)}</div>`;
-    });
-    const html = `<div style="margin-bottom:16px"><strong>الموظف:</strong> ${emp.name}<br><strong>الوظيفة:</strong> ${emp.job_title || '-'}<br><strong>العهدة النشطة:</strong> <span style="color:var(--green)">${App.fmtMoney(activeTotal)}</span><br><strong>العهدة المقفلة:</strong> ${App.fmtMoney(settledTotal)}</div><div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addCustody('${emp.id}', '${emp.name}')">+ تسليم عهدة جديدة</button></div>${custodyHtml || '<p style="color:var(--text3)">لا توجد سجلات عهدة</p>'}`;
-    UI.openModal('سجل العهدة — ' + emp.name, html, null);
   },
 
   async addCustodyExpense(custodyId, empId) {
@@ -733,29 +743,42 @@ const Crud = {
   },
 
   async returnCustody(custodyId, empId) {
-    const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${custodyId}`);
-    if (!custodyRows.length) return;
-    const c = custodyRows[0];
-    const expenses = await API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`);
-    const totalExp = expenses.reduce((s, e) => s + (+e.amount || 0), 0);
-    const currentReturned = +c.returned_amount || 0;
-    const remaining = (+c.amount || 0) - totalExp - currentReturned;
-    const fields = [
-      { name: 'amount', label: `المبلغ المرتد (المتبقي: ${App.fmtMoney(remaining)})`, type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' }
-    ];
-    UI.openModal('تسجيل مرتد عهدة', `<form>${UI.form(fields, {})}</form>`, async (form) => {
-      const fd = new FormData(form);
-      const newReturned = currentReturned + (+fd.get('amount') || 0);
-      await this.save('custody_records', { returned_amount: newReturned }, custodyId);
-      UI.toast('تم تسجيل المرتد'); Crud.employeeCustody(empId);
-    });
+    try {
+      const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${custodyId}`);
+      if (!custodyRows.length) return;
+      const c = custodyRows[0];
+      let expenses = [];
+      try {
+        expenses = await API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`);
+      } catch (e) { console.error('[returnCustody] Failed to load expenses:', e); }
+      const totalExp = expenses.reduce((s, e) => s + (+e.amount || 0), 0);
+      const currentReturned = +c.returned_amount || 0;
+      const remaining = (+c.amount || 0) - totalExp - currentReturned;
+      const fields = [
+        { name: 'amount', label: `المبلغ المرتد (المتبقي: ${App.fmtMoney(remaining)})`, type: 'number', req: true },
+        { name: 'date', label: 'التاريخ', type: 'date' }
+      ];
+      UI.openModal('تسجيل مرتد عهدة', `<form>${UI.form(fields, {})}</form>`, async (form) => {
+        const fd = new FormData(form);
+        const newReturned = currentReturned + (+fd.get('amount') || 0);
+        await this.save('custody_records', { returned_amount: newReturned }, custodyId);
+        UI.toast('تم تسجيل المرتد'); Crud.employeeCustody(empId);
+      });
+    } catch (e) {
+      console.error('[returnCustody] Error:', e);
+      UI.toast('خطأ في تحميل بيانات العهدة', 'error');
+    }
   },
 
   async settleCustody(id, empId) {
     UI.confirm('هل أنت متأكد من تسوية هذه العهدة؟', async () => {
-      await this.save('custody_records', { status: 'settled' }, id);
-      UI.toast('تمت التسوية'); App.loadEmployees(); Crud.employeeCustody(empId);
+      try {
+        await this.save('custody_records', { status: 'settled' }, id);
+        UI.toast('تمت التسوية'); App.loadEmployees(); Crud.employeeCustody(empId);
+      } catch (e) {
+        console.error('[settleCustody] Error:', e);
+        UI.toast('خطأ في تسوية العهدة', 'error');
+      }
     });
   },
 
