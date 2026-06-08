@@ -49,7 +49,6 @@ const App = {
 
     if (screen === 'dashboard') await this.loadDashboard();
     if (screen === 'clients') await this.loadClients();
-    if (screen === 'projects') await this.loadProjects();
     if (screen === 'vendors') await this.loadVendors();
     if (screen === 'transactions') await this.loadTransactions();
     if (screen === 'office') await this.loadOffice();
@@ -64,7 +63,7 @@ const App = {
     return `<div class="app-layout"><aside class="sidebar" id="sidebar"><div class="sidebar-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h2>سارة أبو العلا</h2><p>النظام المالي والمحاسبي</p></div><nav class="sidebar-nav">
       <button data-nav="dashboard" class="nav-item ${this.screen === 'dashboard' ? 'active' : ''}"><span>📊</span> الرئيسية</button>
       <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء</button>
-      <button data-nav="projects" class="nav-item ${this.screen === 'projects' ? 'active' : ''}"><span>📁</span> المشاريع</button>
+
       <button data-nav="vendors" class="nav-item ${this.screen === 'vendors' ? 'active' : ''}"><span>🚚</span> الموردين</button>
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
@@ -75,8 +74,8 @@ const App = {
 
   pageContent(screen) {
     if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
-    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عملاء</button></div><div class="card"><div id="clients-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'projects') return `<div class="page-header"><h1>📁 المشاريع</h1><button class="btn btn-primary" onclick="Crud.addProject()">+ إضافة مشاريع</button></div><div class="card"><div id="projects-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1><button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button></div><div id="clients-list">جاري التحميل...</div>`;
+    if (screen === 'projects') { this.go('clients'); return ''; }
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 وارد vs مصروف — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
@@ -182,11 +181,44 @@ const App = {
 
   async loadClients() {
     try {
-      const data = await API.request('clients', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('clients-tbl').innerHTML = data.length ? this.table(['الاسم', 'الهاتف', 'البريد', 'الإجراءات'], data.map(c => {
-        const actions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient') + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
-        return [c.name, c.phone || '-', c.email || '-', actions];
-      })) : '<p style="color:var(--text3)">لا يوجد عملاء</p>';
+      const [clients, projects, expenses] = await Promise.all([
+        API.request('clients', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_expense&deleted_at=is.null")
+      ]);
+      const expByProject = {};
+      expenses.forEach(t => { expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0); });
+      const projByClient = {};
+      projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
+
+      if (!clients.length) {
+        document.getElementById('clients-list').innerHTML = '<p style="color:var(--text3)">لا يوجد عملاء</p>';
+        return;
+      }
+
+      const html = clients.map(c => {
+        const cProjects = projByClient[c.id] || [];
+        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient') + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
+        const projRows = cProjects.map(p => {
+          const exp = expByProject[p.id] || 0;
+          const supAmt = exp * (p.supervision_percentage || 0) / 100;
+          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button>`;
+          return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+        });
+        const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'نسبة الإشراف', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
+        return `<div class="card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+            <div>
+              <h3 style="margin-bottom:4px">${c.name}</h3>
+              <div style="font-size:12px;color:var(--text2)">${c.phone || '-'} · ${c.email || '-'} · ${c.address || '-'}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
+          </div>
+          <div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud.addProject('${c.id}')">+ إضافة مشروع</button></div>
+          ${projTable}
+        </div>`;
+      }).join('');
+      document.getElementById('clients-list').innerHTML = html;
     } catch (e) { console.error(e); }
   },
 
@@ -435,7 +467,7 @@ const Crud = {
   },
 
   // ─── PROJECTS (linked to Clients) ───
-  async addProject() {
+  async addProject(clientId) {
     const clients = await API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const cols = [
@@ -449,6 +481,7 @@ const Crud = {
       { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
       { key: 'notes', label: 'ملاحظات' }
     ];
+    const defaults = clientId ? { client_id: clientId, status: 'active' } : { status: 'active' };
     Spreadsheet.open('إضافة مشاريع', cols, async (rows) => {
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
@@ -456,8 +489,8 @@ const Crud = {
       });
       await this.bulkSave('projects', enriched);
       UI.toast(`تم حفظ ${rows.length} مشروع`);
-      App.loadProjects();
-    });
+      App.loadClients();
+    }, defaults);
   },
 
   async editProject(id) {
@@ -484,7 +517,7 @@ const Crud = {
       const fd = new FormData(form);
       const client = clients.find(c => c.id === fd.get('client_id'));
       await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, supervision_percentage: +fd.get('supervision_percentage') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
-      UI.toast('تم التحديث'); App.loadProjects();
+      UI.toast('تم التحديث'); App.loadClients();
     });
   },
 
@@ -556,7 +589,7 @@ const Crud = {
   },
 
   delProject(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadProjects(); });
+    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadClients(); });
   },
 
   // ─── VENDORS ───

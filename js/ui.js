@@ -66,8 +66,8 @@ const UI = {
 
 // ─── EXCEL-LIKE SPREADSHEET COMPONENT ───
 const Spreadsheet = {
-  open(title, columns, onSave) {
-    const content = this.render(columns);
+  open(title, columns, onSave, defaults = {}) {
+    const content = this.render(columns, defaults);
     UI.openModal(title, content, null);
 
     const modalBody = document.querySelector('.modal-body');
@@ -94,14 +94,16 @@ const Spreadsheet = {
     modalBody.appendChild(saveBtn);
   },
 
-  render(columns) {
+  render(columns, defaults = {}) {
     const headerCells = columns.map(c => `<th>${c.label}${c.req ? ' <span style="color:#e53935">*</span>' : ''}</th>`).join('');
     const inputCells = columns.map(c => {
+      const def = defaults[c.key];
       if (c.type === 'select') {
-        return `<td><select data-key="${c.key}">${c.opts.map(o => `<option value="${o.v}">${o.l}</option>`).join('')}</select></td>`;
+        return `<td><select data-key="${c.key}">${c.opts.map(o => `<option value="${o.v}" ${def !== undefined && o.v == def ? 'selected' : ''}>${o.l}</option>`).join('')}</select></td>`;
       }
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
-      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${c.label.replace(/\*/g,'').trim()}" /></td>`;
+      const valAttr = def !== undefined ? `value="${def}"` : '';
+      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${c.label.replace(/\*/g,'').trim()}" ${valAttr} /></td>`;
     }).join('');
 
     return `<div class="spreadsheet">
