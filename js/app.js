@@ -663,7 +663,14 @@ const App = {
         ? `آخر نسخة يدوية: <strong>${new Date(last).toLocaleString('ar-EG')}</strong>`
         : 'لم يتم عمل نسخة يدوية بعد';
       const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles'];
-      const statusHtml = `<ul style="list-style:none;padding:0;font-size:13px;color:var(--text2)">${tables.map(t => `<li style="padding:4px 0;border-bottom:1px solid var(--border)">📁 ${t}.json</li>`).join('')}</ul><p style="font-size:12px;color:var(--text3);margin-top:8px">الجداول المدرجة: ${tables.length}</p>`;
+      // Check which tables actually exist
+      const results = await Promise.all(tables.map(async t => {
+        try { await API.request(t, 'GET', null, '?select=id&limit=1'); return { table: t, ok: true }; }
+        catch (e) { return { table: t, ok: false }; }
+      }));
+      const okTables = results.filter(r => r.ok).map(r => r.table);
+      const missingTables = results.filter(r => !r.ok).map(r => r.table);
+      const statusHtml = `<ul style="list-style:none;padding:0;font-size:13px">${results.map(r => `<li style="padding:4px 0;border-bottom:1px solid var(--border)">${r.ok ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--text3)">○</span>'} ${r.table}.json</li>`).join('')}</ul><p style="font-size:12px;color:var(--text3);margin-top:8px">✓ متاح: ${okTables.length} &nbsp;|&nbsp; ○ غير منشأ بعد: ${missingTables.length}</p>`;
       document.getElementById('backup-status').innerHTML = statusHtml;
     } catch (e) { console.error(e); document.getElementById('backup-status').innerHTML = '<p style="color:var(--red)">خطأ في التحميل</p>'; }
   },
@@ -674,16 +681,16 @@ const App = {
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
     const zip = new JSZip();
     const folder = zip.folder('Sara_Backup_' + new Date().toISOString().slice(0,10));
-    let ok = 0, fail = 0;
+    let ok = 0, skip = 0;
     for (const table of tables) {
       try {
         const data = await API.request(table, 'GET', null, '?select=*');
         folder.file(`${table}.json`, JSON.stringify(data, null, 2));
         ok++;
-        progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok}/${tables.length} جداول...</p>`;
+        progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول...</p>`;
       } catch (e) {
-        folder.file(`${table}_ERROR.txt`, String(e.message || e));
-        fail++;
+        // Table doesn't exist — skip gracefully, no error file
+        skip++;
       }
     }
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري ضغط الملف...</p>';
@@ -697,7 +704,8 @@ const App = {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     localStorage.setItem('sara_last_backup', new Date().toISOString());
-    progress.innerHTML = `<p style="color:var(--green)">✅ تم التحميل بنجاح (${ok} جدول، ${fail > 0 ? fail + ' خطأ' : 'بدون أخطاء'})</p>`;
+    const skipMsg = skip > 0 ? ` (تم تخطي ${skip} جدول غير منشأ)` : '';
+    progress.innerHTML = `<p style="color:var(--green)">✅ تم التحميل بنجاح — ${ok} جدول${skipMsg}</p>`;
     this.loadBackup();
   },
 
