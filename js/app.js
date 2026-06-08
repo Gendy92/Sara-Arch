@@ -8,11 +8,46 @@ const App = {
     try {
       await Auth.init();
       this.bindNav();
-      if (Auth.isLoggedIn()) await this.go('dashboard');
-      else this.renderLogin();
+      if (Auth.isLoggedIn()) {
+        this.startIdleTimer();
+        await this.go('dashboard');
+      } else {
+        this.renderLogin();
+      }
     } catch (e) {
       this.showError('فشل تحميل التطبيق: ' + e.message);
     }
+  },
+
+  startIdleTimer() {
+    const IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+    this.stopIdleTimer();
+    this._idleEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click', 'keydown'];
+    this._idleResetHandler = () => this.resetIdleTimer(IDLE_TIMEOUT);
+    this._idleEvents.forEach(e => document.addEventListener(e, this._idleResetHandler, { passive: true }));
+    this._idleTimer = setTimeout(() => this.onIdleTimeout(), IDLE_TIMEOUT);
+  },
+
+  resetIdleTimer(timeout) {
+    if (this._idleTimer) clearTimeout(this._idleTimer);
+    this._idleTimer = setTimeout(() => this.onIdleTimeout(), timeout);
+  },
+
+  stopIdleTimer() {
+    if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = null; }
+    if (this._idleEvents && this._idleResetHandler) {
+      this._idleEvents.forEach(e => document.removeEventListener(e, this._idleResetHandler, { passive: true }));
+    }
+    this._idleEvents = null;
+    this._idleResetHandler = null;
+  },
+
+  onIdleTimeout() {
+    if (!Auth.isLoggedIn()) return;
+    this.stopIdleTimer();
+    Auth.logout();
+    UI.toast('تم تسجيل الخروج تلقائيًا بسبب عدم النشاط لمدة 10 دقائق', 'error');
+    this.renderLogin();
   },
 
   bindNav() {
@@ -109,6 +144,7 @@ const App = {
     btn.disabled = true; btn.textContent = 'جاري الدخول...';
     try {
       await Auth.login(fd.get('username'), fd.get('password'));
+      this.startIdleTimer();
       await this.go('dashboard');
     } catch (e) {
       alert('خطأ في الدخول: ' + e.message);
@@ -133,6 +169,7 @@ const App = {
 
   doLogout() {
     if (!confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
+    this.stopIdleTimer();
     Auth.logout();
     this.renderLogin();
   },
