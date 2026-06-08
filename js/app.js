@@ -416,6 +416,40 @@ const Crud = {
     else { return API.request(table, 'POST', data); }
   },
 
+  _setupClientProjectCascade(overlay, projects, currentClientId, currentProjectId) {
+    const form = overlay.querySelector('form');
+    if (!form) return;
+    const clientSel = form.querySelector('[name="client_id"]');
+    const projSel = form.querySelector('[name="project_id"]');
+    if (!clientSel || !projSel) return;
+
+    // Store full options
+    const allProjOpts = Array.from(projSel.options).map(o => ({ v: o.value, l: o.textContent }));
+
+    const filterProjects = (clientId) => {
+      if (!clientId) {
+        projSel.innerHTML = '<option value="">-- اختر مشروع --</option>';
+        projSel.disabled = true;
+        return;
+      }
+      const filtered = projects.filter(p => p.client_id === clientId);
+      projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      projSel.disabled = false;
+    };
+
+    // Initial state
+    if (currentClientId) {
+      filterProjects(currentClientId);
+      if (currentProjectId) projSel.value = currentProjectId;
+    } else {
+      projSel.disabled = true;
+    }
+
+    clientSel.addEventListener('change', () => {
+      filterProjects(clientSel.value);
+    });
+  },
+
   async bulkSave(table, rows) {
     if (!rows || rows.length === 0) throw new Error('لا يوجد بيانات');
     const clean = rows.map(r => {
@@ -746,25 +780,26 @@ const Crud = {
   // ─── CUSTODY (العهدة) ───
   async addCustody(empId, empName) {
     const [projects, clients] = await Promise.all([
-      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id&deleted_at=is.null&order=name.asc'),
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const fields = [
       { name: 'amount', label: 'مبلغ العهدة', type: 'number', req: true },
-      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { name: 'client_id', label: 'العميل', type: 'select', opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
-    UI.openModal('تسليم عهدة مالية', `<form>${UI.form(fields, {})}</form>`, async (form) => {
+    const overlay = UI.openModal('تسليم عهدة مالية', `<form>${UI.form(fields, {})}</form>`, async (form) => {
       const fd = new FormData(form);
       const project = projects.find(p => p.id === fd.get('project_id'));
       const client = clients.find(c => c.id === fd.get('client_id'));
       await this.save('custody_records', { employee_id: empId, employee_name: empName, amount: +fd.get('amount') || 0, project_id: fd.get('project_id') || null, project_name: project ? project.name : null, client_id: fd.get('client_id') || null, client_name: client ? client.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null, status: 'active' });
       UI.toast('تم تسليم العهدة'); App.loadEmployees(); Crud.employeeCustody(empId);
     });
+    this._setupClientProjectCascade(overlay, projects, null, null);
   },
 
   async employeeCustody(empId) {
@@ -881,7 +916,7 @@ const Crud = {
   async addProjectDeposit() {
     const [clients, projects] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('projects', 'GET', null, '?select=id,name,client_id&deleted_at=is.null&order=name.asc')
     ]);
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
@@ -902,7 +937,7 @@ const Crud = {
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} عربون`);
       App.loadTransactions(); App.loadOffice();
-    });
+    }, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects } });
   },
 
   async addProjectExpense() {
@@ -933,7 +968,7 @@ const Crud = {
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف`);
       App.loadTransactions(); App.loadOffice();
-    });
+    }, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects } });
   },
 
   async addOfficeExpense() {
@@ -1018,7 +1053,7 @@ const Crud = {
     if (tx.type === 'project_deposit') {
       const [clients, projects] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-        API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+        API.request('projects', 'GET', null, '?select=id,name,client_id&deleted_at=is.null&order=name.asc')
       ]);
       const fields = [
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
@@ -1028,13 +1063,14 @@ const Crud = {
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      UI.openModal('تعديل عربون مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '' })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل عربون مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '' })}</form>`, async (form) => {
         const fd = new FormData(form);
         const client = clients.find(c => c.id === fd.get('client_id'));
         const project = projects.find(p => p.id === fd.get('project_id'));
         await this.save('transactions', { type: 'project_deposit', amount: +fd.get('amount') || 0, client_id: fd.get('client_id'), party_id: fd.get('client_id'), party_name: client ? client.name : null, party_type: 'client', project_id: fd.get('project_id'), project_name: project ? project.name : null, payment_method: fd.get('payment_method') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
+      this._setupClientProjectCascade(overlay, projects, tx.client_id, tx.project_id);
     } else if (tx.type === 'project_expense') {
       const [clients, projects, vendors] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
@@ -1049,7 +1085,7 @@ const Crud = {
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '' })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '' })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
@@ -1058,6 +1094,7 @@ const Crud = {
         await this.save('transactions', { type: 'project_expense', amount: +fd.get('amount') || 0, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
+      this._setupClientProjectCascade(overlay, projects, tx.client_id, tx.project_id);
     } else if (tx.type === 'office_expense') {
       const [employees, sectors] = await Promise.all([
         API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),

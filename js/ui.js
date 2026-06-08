@@ -66,13 +66,14 @@ const UI = {
 
 // ─── EXCEL-LIKE SPREADSHEET COMPONENT ───
 const Spreadsheet = {
-  open(title, columns, onSave, defaults = {}) {
-    const content = this.render(columns, defaults);
+  open(title, columns, onSave, defaults = {}, cascade = {}) {
+    const content = this.render(columns, defaults, cascade);
     UI.openModal(title, content, null);
 
     const modalBody = document.querySelector('.modal-body');
     const spreadsheetDiv = modalBody.querySelector('.spreadsheet');
     spreadsheetDiv._columns = columns;
+    spreadsheetDiv._cascade = cascade;
 
     // Excel toolbar
     this.addExcelToolbar(modalBody, columns, spreadsheetDiv);
@@ -97,12 +98,23 @@ const Spreadsheet = {
     modalBody.appendChild(saveBtn);
   },
 
-  render(columns, defaults = {}) {
+  render(columns, defaults = {}, cascade = {}) {
     const headerCells = columns.map(c => `<th>${c.label}${c.req ? ' <span style="color:#e53935">*</span>' : ''}</th>`).join('');
+    const hasCascade = cascade && cascade.clientProject;
     const inputCells = columns.map(c => {
       const def = defaults[c.key];
+      const cascadeAttr = (hasCascade && c.key === cascade.clientProject.clientKey) ? ` onchange="Spreadsheet.handleClientProjectCascade(this)"` : '';
+      const disabledAttr = (hasCascade && c.key === cascade.clientProject.projectKey && !def) ? ' disabled' : '';
       if (c.type === 'select') {
-        return `<td><select data-key="${c.key}">${c.opts.map(o => `<option value="${o.v}" ${def !== undefined && o.v == def ? 'selected' : ''}>${o.l}</option>`).join('')}</select></td>`;
+        let optsHtml = c.opts.map(o => `<option value="${o.v}" ${def !== undefined && o.v == def ? 'selected' : ''}>${o.l}</option>`).join('');
+        if (hasCascade && c.key === cascade.clientProject.projectKey && def) {
+          const projData = cascade.clientProject.projects;
+          const clientId = def[cascade.clientProject.clientKey] || defaults[cascade.clientProject.clientKey];
+          if (clientId) {
+            optsHtml = c.opts.filter(o => !o.v || (projData.find(p => p.id === o.v && p.client_id === clientId))).map(o => `<option value="${o.v}">${o.l}</option>`).join('');
+          }
+        }
+        return `<td><select data-key="${c.key}"${cascadeAttr}${disabledAttr}>${optsHtml}</select></td>`;
       }
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
       const valAttr = def !== undefined ? `value="${def}"` : '';
@@ -253,9 +265,36 @@ const Spreadsheet = {
     const tbody = spreadsheet.querySelector('tbody');
     const firstRow = tbody.querySelector('tr');
     const newRow = firstRow.cloneNode(true);
-    newRow.querySelectorAll('input, select').forEach(el => el.value = '');
+    newRow.querySelectorAll('input, select').forEach(el => { el.value = ''; el.disabled = false; });
+    // Re-attach cascade listener if needed
+    const cascade = spreadsheet._cascade;
+    if (cascade && cascade.clientProject) {
+      const clientSel = newRow.querySelector(`select[data-key="${cascade.clientProject.clientKey}"]`);
+      const projSel = newRow.querySelector(`select[data-key="${cascade.clientProject.projectKey}"]`);
+      if (clientSel) clientSel.onchange = function() { Spreadsheet.handleClientProjectCascade(this); };
+      if (projSel) projSel.disabled = true;
+    }
     newRow.querySelector('.row-num').textContent = tbody.children.length + 1;
     tbody.appendChild(newRow);
+  },
+
+  handleClientProjectCascade(el) {
+    const row = el.closest('tr');
+    const spreadsheet = el.closest('.spreadsheet');
+    const cascade = spreadsheet._cascade;
+    if (!cascade || !cascade.clientProject) return;
+    const { clientKey, projectKey, projects } = cascade.clientProject;
+    const projSel = row.querySelector(`select[data-key="${projectKey}"]`);
+    if (!projSel) return;
+    const clientId = el.value;
+    if (!clientId) {
+      projSel.innerHTML = '<option value="">-- اختر مشروع --</option>';
+      projSel.disabled = true;
+      return;
+    }
+    const filtered = projects.filter(p => p.client_id === clientId);
+    projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    projSel.disabled = false;
   },
 
   removeRow(btn) {
