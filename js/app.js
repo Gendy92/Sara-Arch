@@ -54,6 +54,7 @@ const App = {
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
     if (screen === 'users') await this.loadUsers();
+    if (screen === 'master') await this.loadMasterData();
   },
 
   layout(content) {
@@ -68,6 +69,7 @@ const App = {
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
+      <button data-nav="master" class="nav-item ${this.screen === 'master' ? 'active' : ''}"><span>📋</span> البيانات الأساسية</button>
       ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button>` : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
   },
@@ -81,6 +83,7 @@ const App = {
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div>`;
     return '';
   },
 
@@ -404,6 +407,23 @@ const App = {
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
+  },
+
+  async loadMasterData() {
+    try {
+      const [sectors, items] = await Promise.all([
+        API.request('sectors', 'GET', null, '?select=*&order=name.asc'),
+        API.request('items', 'GET', null, '?select=*&order=name.asc')
+      ]);
+      document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
+        s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector')
+      ])) : '<p style="color:var(--text3)">لا توجد تصنيفات</p>';
+      this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...');
+      document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'الماركة', 'الوحدة', 'الإجراءات'], items.map(i => [
+        i.name, i.specification || '-', i.brand || '-', i.unit || 'قطعة', UI.actions(i.id, 'Crud.editItem', 'Crud.delItem')
+      ])) : '<p style="color:var(--text3)">لا توجد أصناف</p>';
+      this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
+    } catch (e) { console.error(e); }
   },
 
   table(headers, rows) {
@@ -1320,6 +1340,79 @@ const Crud = {
         await API.request('profiles', 'POST', { id, name: fd.get('name'), role: fd.get('role') });
       }
       UI.toast('تم التحديث'); App.loadUsers();
+    });
+  },
+
+  // ─── MASTER DATA: SECTORS & ITEMS ───
+  addSector() {
+    const cols = [
+      { key: 'name', label: 'اسم التصنيف *', req: true },
+      { key: 'description', label: 'الوصف' }
+    ];
+    Spreadsheet.open('إضافة تصنيفات', cols, async (rows) => {
+      await this.bulkSave('sectors', rows);
+      UI.toast(`تم حفظ ${rows.length} تصنيف`);
+      App.loadMasterData();
+    }, {}, {}, 'none');
+  },
+
+  async editSector(id) {
+    const rows = await API.request('sectors', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'name', label: 'اسم التصنيف', req: true },
+      { name: 'description', label: 'الوصف', type: 'textarea' }
+    ];
+    UI.openModal('تعديل تصنيف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('sectors', { name: fd.get('name'), description: fd.get('description') || null }, id);
+      UI.toast('تم التحديث'); App.loadMasterData();
+    });
+  },
+
+  delSector(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا التصنيف؟', async () => {
+      await this.softDelete('sectors', id);
+      UI.toast('تم الحذف'); App.loadMasterData();
+    });
+  },
+
+  addItem() {
+    const cols = [
+      { key: 'name', label: 'اسم الصنف *', req: true },
+      { key: 'specification', label: 'المواصفات' },
+      { key: 'brand', label: 'الماركة' },
+      { key: 'unit', label: 'الوحدة' },
+      { key: 'notes', label: 'ملاحظات' }
+    ];
+    Spreadsheet.open('إضافة أصناف', cols, async (rows) => {
+      await this.bulkSave('items', rows);
+      UI.toast(`تم حفظ ${rows.length} صنف`);
+      App.loadMasterData();
+    }, {}, {}, 'none');
+  },
+
+  async editItem(id) {
+    const rows = await API.request('items', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'name', label: 'اسم الصنف', req: true },
+      { name: 'specification', label: 'المواصفات', type: 'textarea' },
+      { name: 'brand', label: 'الماركة' },
+      { name: 'unit', label: 'الوحدة' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل صنف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('items', { name: fd.get('name'), specification: fd.get('specification') || null, brand: fd.get('brand') || null, unit: fd.get('unit') || null, notes: fd.get('notes') || null }, id);
+      UI.toast('تم التحديث'); App.loadMasterData();
+    });
+  },
+
+  delItem(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا الصنف؟', async () => {
+      await this.softDelete('items', id);
+      UI.toast('تم الحذف'); App.loadMasterData();
     });
   }
 };
