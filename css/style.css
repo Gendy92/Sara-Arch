@@ -147,11 +147,38 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .splash-screen span{color:var(--text3);font-size:13px;letter-spacing:2px;text-transform:uppercase}
 @keyframes pulse{0%,100%{opacity:0.85}50%{opacity:1}}
 
+/* ─── HAMBURGER ─── */
+.hamburger{display:none;position:fixed;top:16px;right:16px;z-index:200;width:44px;height:44px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;box-shadow:var(--shadow-sm)}
+.hamburger span{display:block;width:20px;height:2px;background:var(--gold);border-radius:2px;transition:.25s}
+.hamburger:active{transform:scale(0.95)}
+
+/* ─── CHARTS ─── */
+.chart-container{display:flex;align-items:flex-end;gap:8px;height:180px;padding:16px 8px 0;border-top:1px solid var(--border);margin-top:12px}
+.chart-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:32px}
+.chart-bar-fill{width:100%;border-radius:6px 6px 0 0;min-height:4px;transition:.4s}
+.chart-bar-label{font-size:10px;color:var(--text3);white-space:nowrap}
+.chart-bar-value{font-size:11px;color:var(--text);font-weight:600}
+.chart-legend{display:flex;gap:16px;justify-content:center;margin-top:12px;font-size:12px;color:var(--text2)}
+.chart-legend span{display:flex;align-items:center;gap:6px}
+.chart-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* ─── PRINT / PDF ─── */
+@media print{
+  .sidebar,.hamburger,.page-header button,.btn,.table-actions{display:none!important}
+  .main-content{margin-right:0;padding:20px}
+  body{background:#fff;color:#000}
+  .card{background:#fff;border:1px solid #ccc;box-shadow:none}
+  .data-table th,.data-table td{border-bottom:1px solid #ccc;color:#000}
+  .modal-overlay{position:static;background:none;backdrop-filter:none;padding:0}
+  .modal{box-shadow:none;border:1px solid #ccc;max-width:100%}
+}
+
 /* ─── RESPONSIVE ─── */
 @media(max-width:768px){
+  .hamburger{display:flex}
   .sidebar{transform:translateX(100%);transition:transform .3s}
   .sidebar.open{transform:translateX(0)}
-  .main-content{margin-right:0;padding:20px}
+  .main-content{margin-right:0;padding:20px;padding-top:72px}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
   .form-grid{grid-template-columns:1fr}
   .modal{border-radius:var(--radius) var(--radius) 0 0;margin-top:auto;max-width:100%}
