@@ -223,6 +223,7 @@ const App = {
         </div>`;
       }).join('');
       document.getElementById('clients-list').innerHTML = html;
+      this.attachSearch('clients-list', '🔍 بحث في العملاء أو المشاريع...');
     } catch (e) { console.error(e); }
   },
 
@@ -250,6 +251,7 @@ const App = {
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor') + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`;
         return [v.name, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
+      this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
     } catch (e) { console.error(e); }
   },
 
@@ -318,6 +320,7 @@ const App = {
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      this.attachSearch('tx-tbl', '🔍 بحث في المعاملات...');
     } catch (e) { console.error(e); }
   },
 
@@ -352,6 +355,7 @@ const App = {
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
     } catch (e) { console.error(e); }
   },
 
@@ -368,6 +372,7 @@ const App = {
         const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp') + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button>`;
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
       })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
+      this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
     } catch (e) { console.error(e); }
   },
 
@@ -397,11 +402,33 @@ const App = {
         this.fmtDate(u.created_at),
         `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
+      this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
   },
 
   table(headers, rows) {
     return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  },
+
+  attachSearch(containerId, placeholder = '🔍 بحث...') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (container.dataset.searchAttached) return;
+    container.dataset.searchAttached = 'true';
+    const searchId = containerId + '-search';
+    const searchHtml = `<div class="table-search" style="margin-bottom:12px"><input type="text" id="${searchId}" placeholder="${placeholder}" style="width:100%;max-width:320px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'" /></div>`;
+    container.insertAdjacentHTML('beforebegin', searchHtml);
+    document.getElementById(searchId).addEventListener('input', (e) => {
+      const term = e.target.value.trim().toLowerCase();
+      const table = container.querySelector('.data-table');
+      if (table) {
+        table.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(term) ? '' : 'none'; });
+      }
+      const cards = container.querySelectorAll('.card');
+      if (cards.length) {
+        cards.forEach(card => { card.style.display = card.textContent.toLowerCase().includes(term) ? '' : 'none'; });
+      }
+    });
   },
 
   fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ج.م'; },
