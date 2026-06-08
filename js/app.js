@@ -53,8 +53,6 @@ const App = {
     if (screen === 'transactions') await this.loadTransactions();
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
-    if (screen === 'attendance') await this.loadAttendance();
-    if (screen === 'users') await this.loadUsers();
     if (screen === 'master') await this.loadMasterData();
   },
 
@@ -70,7 +68,6 @@ const App = {
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
       <button data-nav="office" class="nav-item ${this.screen === 'office' ? 'active' : ''}"><span>🏢</span> المكتب</button>
       <button data-nav="employees" class="nav-item ${this.screen === 'employees' ? 'active' : ''}"><span>🧑‍💼</span> الموظفين</button>
-      <button data-nav="attendance" class="nav-item ${this.screen === 'attendance' ? 'active' : ''}"><span>📅</span> الحضور والرواتب</button>
       <button data-nav="master" class="nav-item ${this.screen === 'master' ? 'active' : ''}"><span>📋</span> البيانات الأساسية</button>
       ${isAdmin ? `<button data-nav="users" class="nav-item ${this.screen === 'users' ? 'active' : ''}"><span>🔐</span> المستخدمين</button>` : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
@@ -83,10 +80,10 @@ const App = {
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 المعاملات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>📈 وارد vs مصروف — آخر 6 أشهر</h3><div id="monthly-chart">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1><button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button></div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button><div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button><div id="items-tbl">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button><div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3><button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button><div id="work-items-tbl">جاري التحميل...</div></div></div>`;
-    if (screen === 'attendance') return `<div class="page-header"><h1>📅 الحضور والرواتب</h1></div><div class="card" style="margin-bottom:16px"><h3>📝 تسجيل الحضور اليومي</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">التاريخ:</label><input type="date" id="attendance-date" value="${new Date().toISOString().slice(0,10)}" onchange="App.loadAttendanceDay()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><button class="btn btn-primary" onclick="App.saveAttendance()">💾 حفظ الحضور</button></div><div id="attendance-tbl">جاري التحميل...</div></div><div class="card" style="margin-bottom:16px"><h3>💰 كشف الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="payroll-month" onchange="App.loadPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="payroll-year" onchange="App.loadPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generatePayroll()">🔄 توليد الرواتب</button></div><div id="payroll-tbl">جاري التحميل...</div></div>`;
+    return '';
     return '';
   },
 
@@ -379,89 +376,158 @@ const App = {
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
       })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
+      await this.loadEmpPayroll();
     } catch (e) { console.error(e); }
   },
 
-  async loadAttendance() {
-    await this.loadAttendanceDay();
-    await this.loadPayroll();
-  },
-
-  async loadAttendanceDay() {
+  // ─── FINGERPRINT FILE UPLOAD ───
+  async parseFingerprintFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const preview = document.getElementById('fingerprint-preview');
+    preview.innerHTML = '<p style="color:var(--text3)">جاري قراءة الملف...</p>';
     try {
-      const dateInput = document.getElementById('attendance-date');
-      const date = dateInput ? dateInput.value : new Date().toISOString().slice(0, 10);
-      const [employees, attendance] = await Promise.all([
-        API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-        API.request('attendance_records', 'GET', null, `?select=*&date=eq.${date}&deleted_at=is.null`)
-      ]);
-      const attMap = Object.fromEntries(attendance.map(a => [a.employee_id, a]));
-      const statusOpts = [
-        { v: 'present', l: 'حاضر' },
-        { v: 'absent', l: 'غائب' },
-        { v: 'late', l: 'متأخر' },
-        { v: 'half_day', l: 'نصف يوم' },
-        { v: 'leave', l: 'إجازة' }
-      ];
-      if (!employees.length) {
-        document.getElementById('attendance-tbl').innerHTML = '<p style="color:var(--text3)">لا يوجد موظفين نشطين</p>';
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(new Uint8Array(e.target.result));
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+      if (!json.length || json.length < 2) {
+        preview.innerHTML = '<p style="color:var(--red)">الملف فارغ أو غير صالح</p>';
         return;
       }
-      const rows = employees.map(e => {
-        const att = attMap[e.id];
-        const status = att ? att.status : 'present';
-        const checkIn = att ? (att.check_in || '') : '';
-        const checkOut = att ? (att.check_out || '') : '';
-        const notes = att ? (att.notes || '') : '';
-        const attId = att ? att.id : '';
-        return `
-          <tr data-emp-id="${e.id}" data-att-id="${attId}">
-            <td style="font-weight:600">${e.name}</td>
-            <td><select class="att-status" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px">
-              ${statusOpts.map(o => `<option value="${o.v}" ${status === o.v ? 'selected' : ''}>${o.l}</option>`).join('')}
-            </select></td>
-            <td><input type="time" class="att-in" value="${checkIn}" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px"></td>
-            <td><input type="time" class="att-out" value="${checkOut}" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px"></td>
-            <td><input type="text" class="att-notes" value="${notes}" placeholder="ملاحظات" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;width:140px"></td>
-          </tr>`;
-      }).join('');
-      document.getElementById('attendance-tbl').innerHTML = `<div class="table-responsive"><table class="data-table"><thead><tr><th>الموظف</th><th>الحالة</th><th>دخول</th><th>خروج</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-    } catch (e) { console.error(e); document.getElementById('attendance-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل البيانات</p>'; }
+      const headers = json[0].map(h => String(h || '').trim());
+      const lowerHeaders = headers.map(h => h.toLowerCase());
+      // Auto-detect columns
+      const findCol = patterns => {
+        for (let i = 0; i < lowerHeaders.length; i++) {
+          for (const p of patterns) { if (lowerHeaders[i].includes(p)) return i; }
+        }
+        return -1;
+      };
+      const colName = findCol(['name', 'employee', 'user', 'الاسم', 'الموظف', 'emp', 'العامل']);
+      const colDate = findCol(['date', 'day', 'التاريخ', 'يوم']);
+      const colIn = findCol(['in', 'check in', 'time in', 'الدخول', 'حضور', 'login', 'entry', 'وقت']);
+      const colOut = findCol(['out', 'check out', 'time out', 'الخروج', 'انصراف', 'logout', 'exit']);
+
+      if (colName < 0 || colDate < 0) {
+        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على الأعمدة المطلوبة. العناوين المكتشفة: ${headers.join(' | ')}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود الاسم + عمود التاريخ (اختياري: دخول/خروج)</p>`;
+        return;
+      }
+
+      const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+      const empByName = {};
+      employees.forEach(e => { empByName[e.name.trim().toLowerCase()] = e; });
+
+      const parsed = [];
+      for (let i = 1; i < json.length; i++) {
+        const row = json[i];
+        if (!row[colName]) continue;
+        const rawName = String(row[colName]).trim();
+        const rawDate = colDate >= 0 ? row[colDate] : null;
+        const rawIn = colIn >= 0 ? row[colIn] : null;
+        const rawOut = colOut >= 0 ? row[colOut] : null;
+
+        // Parse date
+        let dateStr = null;
+        if (rawDate) {
+          if (typeof rawDate === 'object' && rawDate instanceof Date) {
+            dateStr = rawDate.toISOString().slice(0, 10);
+          } else {
+            const s = String(rawDate).trim();
+            // Try common formats: 2026-05-19, 19/05/2026, 19-05-2026
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) dateStr = s;
+            else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(s)) {
+              const [d, m, y] = s.split(/[\/\-]/);
+              dateStr = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+            }
+          }
+        }
+
+        // Find employee
+        const searchName = rawName.toLowerCase();
+        let emp = empByName[searchName];
+        if (!emp) {
+          // Try partial match
+          emp = employees.find(e => searchName.includes(e.name.trim().toLowerCase()) || e.name.trim().toLowerCase().includes(searchName));
+        }
+
+        // Determine status
+        let status = 'present';
+        let checkIn = rawIn ? String(rawIn).trim() : null;
+        let checkOut = rawOut ? String(rawOut).trim() : null;
+        if (!checkIn && !checkOut) status = 'absent';
+        else if (checkIn && !checkOut) status = 'half_day';
+        else if (checkIn) {
+          const inTime = checkIn.replace(/[^0-9:]/g, '');
+          if (inTime > '09:15') status = 'late';
+        }
+
+        parsed.push({
+          rawName, employee_id: emp ? emp.id : null, employee_name: emp ? emp.name : rawName,
+          date: dateStr, status, check_in: checkIn, check_out: checkOut, matched: !!emp
+        });
+      }
+
+      // Build preview table
+      const fpMonth = +document.getElementById('fp-month').value;
+      const fpYear = +document.getElementById('fp-year').value;
+      const rows = parsed.map((p, idx) => [
+        idx + 1, p.rawName, p.matched ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>',
+        p.date || '-', p.status === 'present' ? 'حاضر' : p.status === 'absent' ? 'غائب' : p.status === 'late' ? 'متأخر' : p.status === 'half_day' ? 'نصف يوم' : p.status,
+        p.check_in || '-', p.check_out || '-'
+      ]);
+      const unmatched = parsed.filter(p => !p.matched).length;
+      const summary = `<div style="margin-bottom:12px;font-size:13px"><span style="color:var(--green)">✓ متطابق: ${parsed.length - unmatched}</span> &nbsp;|&nbsp; <span style="color:var(--red)">✗ غير متطابق: ${unmatched}</span> &nbsp;|&nbsp; إجمالي: ${parsed.length}</div>`;
+      const saveBtn = `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="App.saveFingerprintAttendance()">💾 حفظ الحضور في قاعدة البيانات</button></div>`;
+      const table = rows.length ? App.table(['#', 'الاسم في الملف', 'تطابق', 'التاريخ', 'الحالة', 'دخول', 'خروج'], rows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
+      preview.innerHTML = saveBtn + summary + table;
+      preview.dataset.parsed = JSON.stringify(parsed);
+      preview.dataset.month = fpMonth;
+      preview.dataset.year = fpYear;
+    } catch (e) {
+      console.error(e);
+      preview.innerHTML = '<p style="color:var(--red)">خطأ في قراءة الملف: ' + (e.message || '') + '</p>';
+    }
   },
 
-  async saveAttendance() {
+  async saveFingerprintAttendance() {
+    const preview = document.getElementById('fingerprint-preview');
+    const parsed = JSON.parse(preview.dataset.parsed || '[]');
+    if (!parsed.length) { UI.toast('لا يوجد بيانات للحفظ', 'error'); return; }
+    const month = +preview.dataset.month;
+    const year = +preview.dataset.year;
+    const records = parsed.filter(p => p.employee_id && p.date).map(p => ({
+      employee_id: p.employee_id, employee_name: p.employee_name,
+      date: p.date, status: p.status, check_in: p.check_in, check_out: p.check_out
+    }));
+    if (!records.length) { UI.toast('لا توجد سجلات صالحة للحفظ', 'error'); return; }
     try {
-      const date = document.getElementById('attendance-date').value;
-      const rows = document.querySelectorAll('#attendance-tbl tbody tr');
-      const toInsert = [];
-      const toUpdate = [];
-      rows.forEach(tr => {
-        const empId = tr.dataset.empId;
-        const attId = tr.dataset.attId;
-        const status = tr.querySelector('.att-status').value;
-        const checkIn = tr.querySelector('.att-in').value || null;
-        const checkOut = tr.querySelector('.att-out').value || null;
-        const notes = tr.querySelector('.att-notes').value || null;
-        const empName = tr.querySelector('td').textContent;
-        const data = { employee_id: empId, employee_name: empName, date, status, check_in: checkIn, check_out: checkOut, notes };
-        if (attId) toUpdate.push({ id: attId, data });
-        else toInsert.push(data);
-      });
-      for (const u of toUpdate) {
-        await API.request('attendance_records', 'PATCH', u.data, '?id=eq.' + u.id);
+      // Upsert: delete old records for same month first, then insert new
+      const start = `${year}-${String(month).padStart(2,'0')}-01`;
+      const end = `${year}-${String(month).padStart(2,'0')}-31`;
+      const existing = await API.request('attendance_records', 'GET', null, `?select=id&date=gte.${start}&date=lte.${end}&deleted_at=is.null`);
+      // Soft delete old
+      for (const ex of existing) {
+        await API.request('attendance_records', 'PATCH', { deleted_at: new Date().toISOString() }, '?id=eq.' + ex.id);
       }
-      if (toInsert.length) {
-        await API.request('attendance_records', 'POST', toInsert);
+      // Insert in batches of 50
+      for (let i = 0; i < records.length; i += 50) {
+        await API.request('attendance_records', 'POST', records.slice(i, i + 50));
       }
-      UI.toast(`تم حفظ ${rows.length} سجل حضور`);
-      this.loadAttendanceDay();
+      UI.toast(`تم حفظ ${records.length} سجل حضور`);
+      preview.innerHTML = '<p style="color:var(--green)">✅ تم الحفظ بنجاح</p>';
     } catch (e) { console.error(e); UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
   },
 
-  async loadPayroll() {
+  async loadEmpPayroll() {
     try {
-      const month = +document.getElementById('payroll-month').value;
-      const year = +document.getElementById('payroll-year').value;
+      const month = +document.getElementById('emp-payroll-month').value;
+      const year = +document.getElementById('emp-payroll-year').value;
       const [employees, payrolls] = await Promise.all([
         API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
         API.request('payroll_records', 'GET', null, `?month=eq.${month}&year=eq.${year}&deleted_at=is.null`)
@@ -481,14 +547,14 @@ const App = {
             : `<button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`;
         return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), statusBadge(p.status), actions];
       });
-      document.getElementById('payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
-    } catch (e) { console.error(e); document.getElementById('payroll-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل البيانات</p>'; }
+      document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
+    } catch (e) { console.error(e); document.getElementById('emp-payroll-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل البيانات</p>'; }
   },
 
-  async generatePayroll() {
+  async generateEmpPayroll() {
     try {
-      const month = +document.getElementById('payroll-month').value;
-      const year = +document.getElementById('payroll-year').value;
+      const month = +document.getElementById('emp-payroll-month').value;
+      const year = +document.getElementById('emp-payroll-year').value;
       const [employees, attendance, empTxs] = await Promise.all([
         API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
         API.request('attendance_records', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null`),
@@ -536,7 +602,7 @@ const App = {
         }
       }
       UI.toast(`تم توليد رواتب ${records.length} موظف`);
-      this.loadPayroll();
+      this.loadEmpPayroll();
     } catch (e) { console.error(e); UI.toast('خطأ في توليد الرواتب: ' + e.message, 'error'); }
   },
 
@@ -1664,21 +1730,21 @@ const Crud = {
         base_salary: base, days_present: +fd.get('days_present') || 0, days_absent: +fd.get('days_absent') || 0,
         days_late: +fd.get('days_late') || 0, deductions, bonuses, penalties, net_salary: net, notes: fd.get('notes') || null
       }, id);
-      UI.toast('تم التحديث'); App.loadPayroll();
+      UI.toast('تم التحديث'); App.loadEmpPayroll();
     });
   },
 
   async approvePayroll(id) {
     UI.confirm('هل أنت متأكد من اعتماد هذا الراتب؟', async () => {
       await this.save('payroll_records', { status: 'approved' }, id);
-      UI.toast('تم الاعتماد'); App.loadPayroll();
+      UI.toast('تم الاعتماد'); App.loadEmpPayroll();
     });
   },
 
   async payPayroll(id) {
     UI.confirm('هل أنت متأكد من تسجيل دفع هذا الراتب؟', async () => {
       await this.save('payroll_records', { status: 'paid' }, id);
-      UI.toast('تم تسجيل الدفع'); App.loadPayroll();
+      UI.toast('تم تسجيل الدفع'); App.loadEmpPayroll();
     });
   },
 
