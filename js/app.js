@@ -62,7 +62,7 @@ const App = {
     const isAdmin = user.user_metadata?.role === 'admin';
     return `<div class="app-layout"><aside class="sidebar" id="sidebar"><div class="sidebar-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h2>سارة أبو العلا</h2><p>النظام المالي والمحاسبي</p></div><nav class="sidebar-nav">
       <button data-nav="dashboard" class="nav-item ${this.screen === 'dashboard' ? 'active' : ''}"><span>📊</span> الرئيسية</button>
-      <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء</button>
+      <button data-nav="clients" class="nav-item ${this.screen === 'clients' ? 'active' : ''}"><span>👥</span> العملاء والمشاريع</button>
 
       <button data-nav="vendors" class="nav-item ${this.screen === 'vendors' ? 'active' : ''}"><span>🚚</span> الموردين</button>
       <button data-nav="transactions" class="nav-item ${this.screen === 'transactions' ? 'active' : ''}"><span>💰</span> المعاملات</button>
@@ -578,7 +578,8 @@ const Crud = {
 
     const kpi = (label, value, color) => `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center"><div style="font-size:11px;color:var(--text3);margin-bottom:6px">${label}</div><div style="font-size:20px;font-weight:700;color:${color}">${App.fmtMoney(value)}</div></div>`;
 
-    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%</div>
+    const isCompleted = project.status === 'completed';
+    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>حالة المشروع:</strong> <span class="badge badge-${isCompleted ? 'green' : 'gray'}">${isCompleted ? 'منتهي' : 'قيد التنفيذ'}</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('ميزانية المشروع', budget, 'var(--text)')}
       ${kpi('الوارد من العميل', totalDep, 'var(--green)')}
@@ -589,8 +590,12 @@ const Crud = {
     </div>
     ${bar('نسبة الصرف من الميزانية', totalExp, budget, totalExp > budget ? 'var(--red)' : 'var(--green)')}
     <div style="margin-top:16px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px;color:var(--text2)">
-      ${remainingBudget > 0 ? `✅ المتبقي من الميزانية: <strong>${App.fmtMoney(remainingBudget)}</strong> — ممكن يتصرف على المشروع` : remainingBudget < 0 ? `⚠️ تجاوز الميزانية بـ <strong>${App.fmtMoney(Math.abs(remainingBudget))}</strong>` : '✅ الميزانية مستنفدة بالكامل'}
-      <br>${clientBalance > 0 ? `💰 للعميل رصيد مسترد: <strong>${App.fmtMoney(clientBalance)}</strong>` : clientBalance < 0 ? `📥 العميل مديون بـ <strong>${App.fmtMoney(Math.abs(clientBalance))}</strong>` : '✅ الرصيد صفر'}
+      ${isCompleted
+        ? (remainingBudget > 0 ? `✅ المتبقي من الميزانية: <strong>${App.fmtMoney(remainingBudget)}</strong>` : remainingBudget < 0 ? `⚠️ تجاوز الميزانية بـ <strong>${App.fmtMoney(Math.abs(remainingBudget))}</strong>` : '✅ الميزانية مستنفدة بالكامل')
+          + '<br>'
+          + (clientBalance > 0 ? `💰 للعميل رصيد مسترد: <strong>${App.fmtMoney(clientBalance)}</strong>` : clientBalance < 0 ? `📥 العميل مديون بـ <strong>${App.fmtMoney(Math.abs(clientBalance))}</strong>` : '✅ الرصيد صفر')
+        : `🔧 المشروع قيد التنفيذ — الرصيد الحالي: <strong>${App.fmtMoney(clientBalance)}</strong><br>💡 التسوية النهائية (استرداد / مديونية) تظهر بعد إغلاق المشروع`
+      }
     </div>
     <div style="margin-top:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
     UI.openModal('📊 ميزانية المشروع — ' + project.name, html, null);
