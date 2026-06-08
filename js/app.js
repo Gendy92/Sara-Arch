@@ -188,7 +188,7 @@ const App = {
       }).filter(Boolean);
       const allTxs = [...data, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
-        const badgeColor = ['project_deposit','supervision'].includes(t.type) ? 'green' : 'red';
+        const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         const party = t.employee_name || t.party_name || t.sector_name || '-';
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
@@ -229,7 +229,10 @@ const App = {
         return { created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` };
       }).filter(Boolean);
       const allTxs = [...incomeTxs, ...expenseTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => [this.fmtDate(t.created_at), this.fmtTxType(t.type), this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'], allTxs.map(t => {
+        const badgeColor = ['owner_deposit','supervision'].includes(t.type) ? 'green' : 'red';
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-'];
+      })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
     } catch (e) { console.error(e); }
   },
 
