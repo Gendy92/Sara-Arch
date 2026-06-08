@@ -6,33 +6,32 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>مكتب سارة أبو العلا - النظام المالي</title>
-<link rel="stylesheet" href="css/style.css?v=27">
+<title>Sara Abo Elelaa — Financial System</title>
+<link rel="stylesheet" href="css/style.css?v=28">
 </head>
 <body>
 <div id="app">
-  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#6b7591;font-family:'Segoe UI',Tahoma,Arial,sans-serif">
-    <div style="width:60px;height:60px;border:3px solid #2a3045;border-top-color:#0d7377;border-radius:50%;animation:spin 1s linear infinite"></div>
+  <div class="splash-screen">
+    <img src="logo.png" alt="Sara Abo Elelaa">
     <span>جاري تحميل النظام...</span>
   </div>
 </div>
-<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
-<script src="js/config.js?v=27"></script>
-<script src="js/api.js?v=27"></script>
-<script src="js/auth.js?v=27"></script>
-<script src="js/ui.js?v=27"></script>
-<script src="js/app.js?v=27"></script>
+<script src="js/config.js?v=28"></script>
+<script src="js/api.js?v=28"></script>
+<script src="js/auth.js?v=28"></script>
+<script src="js/ui.js?v=28"></script>
+<script src="js/app.js?v=28"></script>
 <script>
 try {
   App.start();
 } catch (e) {
   document.getElementById('app').innerHTML =
-    '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center">' +
+    '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center;background:#0a0a0c">' +
     '<div style="font-size:48px">⚠️</div>' +
-    '<h2 style="color:#e53935">حدث خطأ في التحميل</h2>' +
-    '<p style="color:#6b7591;max-width:400px">' + e.message + '</p>' +
-    '<button onclick="location.reload()" style="padding:10px 24px;background:#0d7377;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit">إعادة المحاولة</button></div>';
+    '<h2 style="color:#d4726e">حدث خطأ في التحميل</h2>' +
+    '<p style="color:#6b6560;max-width:400px">' + e.message + '</p>' +
+    '<button onclick="location.reload()" style="padding:10px 24px;background:linear-gradient(135deg,#b8a07a,#c9b08a);color:#0a0a0c;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:600">إعادة المحاولة</button></div>';
 }
 </script>
 </body>
