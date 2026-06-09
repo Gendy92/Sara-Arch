@@ -275,7 +275,7 @@ const App = {
       procs.forEach(p => {
         const isNew = p.payment_term !== undefined && p.payment_term !== null;
         merchandiseByVendor[p.vendor_id] = (merchandiseByVendor[p.vendor_id] || 0) + (+p.total_price || 0);
-        merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + (isNew ? (+p.paid_amount || 0) : 0);
+        merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + (isNew ? (+p.paid_amount || 0) : (+p.total_price || 0));
       });
       const vendorBalances = vendors.map(v => {
         const serviceCost = serviceCostByVendor[v.id] || 0;
@@ -299,7 +299,11 @@ const App = {
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
       document.getElementById('active-proj').innerHTML = active.length ? this.table(['المشروع', 'العميل', 'الحالة'], active.map(p => [p.name, p.client_name || '-', '<span class="badge badge-green">نشط</span>'])) : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadDashboard()">🔄 إعادة المحاولة</button>`;
+      document.getElementById('kpi-grid').innerHTML = err;
+    }
   },
 
   async loadClients() {
@@ -356,7 +360,10 @@ const App = {
       }).join('');
       document.getElementById('clients-list').innerHTML = html;
       this.attachSearch('clients-list', '🔍 بحث في العملاء أو المشاريع...');
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('clients-list').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل العملاء</p><button class="btn btn-secondary" onclick="App.loadClients()">🔄 إعادة المحاولة</button>`;
+    }
   },
 
   async loadProjects() {
@@ -382,7 +389,10 @@ const App = {
         const actions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button>`;
         return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, actions];
       })) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('projects-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المشاريع</p><button class="btn btn-secondary" onclick="App.loadProjects()">🔄 إعادة المحاولة</button>`;
+    }
   },
 
   async loadVendors() {
@@ -394,7 +404,10 @@ const App = {
         return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('vendors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموردين</p><button class="btn btn-secondary" onclick="App.loadVendors()">🔄 إعادة المحاولة</button>`;
+    }
   },
 
   async loadTransactions() {
@@ -486,7 +499,11 @@ const App = {
         return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, itemLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('tx-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المعاملات</p><button class="btn btn-secondary" onclick="App.loadTransactions()">🔄 إعادة المحاولة</button>`;
+      document.getElementById('tx-expenses-tbl').innerHTML = '';
+    }
   },
 
 
@@ -535,7 +552,10 @@ const App = {
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('office-kpis').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل بيانات المكتب</p><button class="btn btn-secondary" onclick="App.loadOffice()">🔄 إعادة المحاولة</button>`;
+    }
   },
 
   async loadEmployees() {
@@ -553,7 +573,10 @@ const App = {
       })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
       await this.loadEmpPayroll();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('emp-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموظفين</p><button class="btn btn-secondary" onclick="App.loadEmployees()">🔄 إعادة المحاولة</button>`;
+    }
   },
 
   // ─── FINGERPRINT FILE UPLOAD ───
@@ -794,7 +817,7 @@ const App = {
           if (e.message && e.message.includes('23505')) {
             const existing = await API.request('payroll_records', 'GET', null, `?employee_id=eq.${r.employee_id}&month=eq.${month}&year=eq.${year}&deleted_at=is.null`);
             if (existing.length) {
-              await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary }, `?id=eq.${existing[0].id}`);
+              await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary, status: 'draft' }, `?id=eq.${existing[0].id}`);
             }
           } else { throw e; }
         }
@@ -805,7 +828,36 @@ const App = {
   },
 
   async loadSettings() {
-    // Settings page is static cards; no async data needed.
+    const keyStatus = localStorage.getItem('sara_service_key') ? '✅ مخصص (مخزن محلياً)' : '⚠️ افتراضي — غير آمن';
+    const settingsHtml = `<div class="card" style="margin-top:16px;border:1px solid var(--red)">
+      <h3 style="color:var(--red)">🔐 مفتاح Admin (Service Role)</h3>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">للأمان، ضع مفتاح Service Role هنا بدلاً من تركه في الكود. بعد التدوير في Supabase، الصق المفتاح الجديد:</p>
+      <div class="form-group"><input type="password" id="settings-service-key" placeholder="الصق مفتاح Service Role الجديد" style="width:100%;max-width:400px" /></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="App.saveServiceKey()">💾 حفظ المفتاح</button>
+        <button class="btn btn-red" onclick="App.clearServiceKey()">🗑️ مسح المفتاح</button>
+      </div>
+      <p style="font-size:12px;margin-top:8px">الحالة: <strong>${keyStatus}</strong></p>
+    </div>`;
+    const container = document.querySelector('.main-content');
+    if (container && !document.getElementById('settings-security-card')) {
+      const div = document.createElement('div');
+      div.id = 'settings-security-card';
+      div.innerHTML = settingsHtml;
+      container.appendChild(div);
+    }
+  },
+
+  saveServiceKey() {
+    const key = document.getElementById('settings-service-key')?.value?.trim();
+    if (!key) { UI.toast('الصق المفتاح أولاً', 'error'); return; }
+    localStorage.setItem('sara_service_key', key);
+    UI.toast('تم حفظ المفتاح — أعد تحميل الصفحة', 'success');
+  },
+
+  clearServiceKey() {
+    localStorage.removeItem('sara_service_key');
+    UI.toast('تم مسح المفتاح — أعد تحميل الصفحة', 'success');
   },
 
   async loadUsers() {
@@ -1060,7 +1112,10 @@ const App = {
         i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : '<p style="color:var(--text3)">لا توجد بنود</p>';
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('sectors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات الأساسية</p><button class="btn btn-secondary" onclick="App.loadMasterData()">🔄 إعادة المحاولة</button>`;
+    }
   },
 
   // ─── WORK SECTIONS & ITEMS EXCEL UPLOAD ───
@@ -1297,6 +1352,8 @@ const Crud = {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
     if (id) {
+      let oldData = null;
+      try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id); oldData = existing[0] || null; } catch (e) {}
       let payload = { ...data, updated_by: userId };
       try {
         await API.request(table, 'PATCH', payload, '?id=eq.' + id);
@@ -1315,7 +1372,7 @@ const Crud = {
           }
         } else { throw e; }
       }
-      this._logAudit(table, id, 'UPDATE', null, payload, userId, userName).catch(() => {});
+      this._logAudit(table, id, 'UPDATE', oldData, payload, userId, userName).catch(() => {});
       return { id, ...payload };
     } else {
       let payload = { ...data, created_by: userId };
@@ -1473,7 +1530,9 @@ const Crud = {
         }
       } else { throw e; }
     }
-    this._logAudit(table, id, 'DELETE', null, { deleted_at: new Date().toISOString() }, userId, userName).catch(() => {});
+    let oldData = null;
+    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id); oldData = existing[0] || null; } catch (e) {}
+    this._logAudit(table, id, 'DELETE', oldData, { deleted_at: new Date().toISOString() }, userId, userName).catch(() => {});
   },
 
   // ─── CLIENTS ───
@@ -1486,6 +1545,10 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة عملاء', cols, async (rows) => {
+      const existing = await API.request('clients', 'GET', null, '?select=name&deleted_at=is.null');
+      const existingNames = new Set(existing.map(c => String(c.name || '').trim().toLowerCase()));
+      const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} اسماء موجودة مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
       await this.bulkSave('clients', rows);
       UI.toast(`تم حفظ ${rows.length} عميل`);
       App.loadClients();
@@ -1504,6 +1567,11 @@ const Crud = {
     ];
     UI.openModal('تعديل عميل', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      if (newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase()) {
+        const existing = await API.request('clients', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم العميل موجود مسبقاً', 'error'); return; }
+      }
       await this.save('clients', { name: fd.get('name'), phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadClients();
     });
@@ -1530,6 +1598,9 @@ const Crud = {
     ];
     const defaults = clientId ? { client_id: clientId, status: 'active' } : { status: 'active' };
     Spreadsheet.open('إضافة مشاريع', cols, async (rows) => {
+      const existing = await API.request('projects', 'GET', null, '?select=name,client_id&deleted_at=is.null');
+      const dupes = rows.filter(r => existing.some(p => String(p.name || '').trim().toLowerCase() === String(r.name || '').trim().toLowerCase() && String(p.client_id) === String(r.client_id)));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} مشاريع موجودة مسبقاً لنفس العميل`, 'error'); return; }
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
         return { ...r, client_id: r.client_id || null, client_name: client ? client.name : null };
@@ -1562,6 +1633,14 @@ const Crud = {
     const values = { ...project, client_id: project.client_id || '' };
     UI.openModal('تعديل مشروع', `<form>${UI.form(fields, values)}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      const newClientId = fd.get('client_id');
+      const nameChanged = newName.toLowerCase() !== String(project.name || '').trim().toLowerCase();
+      const clientChanged = String(newClientId) !== String(project.client_id);
+      if (nameChanged || clientChanged) {
+        const existing = await API.request('projects', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&client_id=eq.${newClientId}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم المشروع موجود مسبقاً لهذا العميل', 'error'); return; }
+      }
       const client = clients.find(c => c.id === fd.get('client_id'));
       await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, supervision_percentage: +fd.get('supervision_percentage') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadClients();
@@ -2024,6 +2103,10 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة موردين', cols, async (rows) => {
+      const existing = await API.request('vendors', 'GET', null, '?select=name&deleted_at=is.null');
+      const existingNames = new Set(existing.map(v => String(v.name || '').trim().toLowerCase()));
+      const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} موردين موجودين مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
       try {
         await this.bulkSave('vendors', rows);
       } catch (e) {
@@ -2052,6 +2135,11 @@ const Crud = {
     ];
     UI.openModal('تعديل مورد', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      if (newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase()) {
+        const existing = await API.request('vendors', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم المورد موجود مسبقاً', 'error'); return; }
+      }
       const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
       try {
         await this.save('vendors', data, id);
@@ -2389,10 +2477,12 @@ const Crud = {
       const fd = new FormData(form);
       const project = projects.find(p => p.id === fd.get('project_id'));
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+      const qty = +fd.get('quantity') || 1;
+      const up = +fd.get('unit_price') || 0;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
-        item_name: fd.get('item_name'), quantity: +fd.get('quantity') || 1, unit_price: +fd.get('unit_price') || 0,
+        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price: qty * up,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       });
       UI.toast('تمت الإضافة');
@@ -2424,10 +2514,12 @@ const Crud = {
       const fd = new FormData(form);
       const project = projects.find(pr => pr.id === fd.get('project_id'));
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+      const qty = +fd.get('quantity') || 1;
+      const up = +fd.get('unit_price') || 0;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
-        item_name: fd.get('item_name'), quantity: +fd.get('quantity') || 1, unit_price: +fd.get('unit_price') || 0,
+        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price: qty * up,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       }, id);
       UI.toast('تم التحديث'); App.loadVendors();

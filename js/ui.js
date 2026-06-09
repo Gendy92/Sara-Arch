@@ -54,7 +54,7 @@ const UI = {
       if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" ${f.req ? 'required' : ''}>${v}</textarea></div>`;
       if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><select name="${fieldName}" ${f.req ? 'required' : ''}>${f.opts.map(o => `<option value="${o.v}" ${v == o.v ? 'selected' : ''}>${o.l}</option>`).join('')}</select></div>`;
       if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} /></div>`;
-      if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} step="any" /></div>`;
+      if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} min="0" step="any" /></div>`;
       return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${v}" ${f.req ? 'required' : ''} /></div>`;
     }).join('')}</div><div style="display:flex;gap:8px;margin-top:20px"><button type="submit" class="btn btn-primary">حفظ</button><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button></div>`;
   },
@@ -125,7 +125,8 @@ const Spreadsheet = {
       }
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
       const valAttr = def !== undefined ? `value="${def}"` : '';
-      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${c.label.replace(/\*/g,'').trim()}" ${valAttr} /></td>`;
+      const minAttr = c.type === 'number' ? ' min="0"' : '';
+      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${c.label.replace(/\*/g,'').trim()}" ${valAttr}${minAttr} /></td>`;
     }).join('');
 
     return `<div class="spreadsheet">
