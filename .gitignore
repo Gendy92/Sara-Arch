@@ -1,1 +1,9 @@
 .env
+*.xlsx
+*.xls
+*.pdf
+*.tmp
+*.temp
+~$*
+.DS_Store
+Thumbs.db
