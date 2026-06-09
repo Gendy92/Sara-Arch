@@ -137,7 +137,7 @@ const App = {
   },
 
   pageContent(screen) {
-    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء (غير مسددين / مبالغ زائدة)</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors">جاري التحميل...</div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div>`;
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء النشطين</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors">جاري التحميل...</div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1>${Auth.can('clients', 'add') ? `<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button>` : ''}</div><div id="clients-list">جاري التحميل...</div>`;
     if (screen === 'projects') { this.go('clients'); return ''; }
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 معاملات المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="tab-bar"><button class="tab-btn ${App.txTab==='all'?'active':''}" onclick="App.setTxTab('all')">الكل</button><button class="tab-btn ${App.txTab==='expenses'?'active':''}" onclick="App.setTxTab('expenses')">المصروفات</button></div><div id="tx-all" style="display:${App.txTab==='all'?'block':'none'}"><div class="card"><div id="tx-tbl">جاري التحميل...</div></div></div><div id="tx-expenses" style="display:${App.txTab==='expenses'?'block':'none'}"><div class="card"><div id="tx-expenses-tbl">جاري التحميل...</div></div></div>`;
@@ -237,8 +237,8 @@ const App = {
       projects.forEach(p => { if (!projByClient[p.client_id]) projByClient[p.client_id] = []; projByClient[p.client_id].push(p); });
       const depByClient = {};
       deposits.forEach(t => { depByClient[t.client_id] = (depByClient[t.client_id] || 0) + (+t.amount || 0); });
-      // Show balances for all clients with active projects
-      const activeClientIds = new Set(projects.filter(p => p.status === 'active').map(p => p.client_id));
+      // Show balances for all clients with projects (active or completed)
+      const activeClientIds = new Set(projects.map(p => p.client_id));
       const balanceRows = clients.filter(c => activeClientIds.has(c.id)).map(c => {
         const clientProjects = projByClient[c.id] || [];
         let totalExp = 0;
