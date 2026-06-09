@@ -1099,8 +1099,9 @@ const App = {
       const colItem = findCol(['item', 'بند', 'البند', 'name', 'الاسم', 'الأسم', 'work', 'عمل']);
       const colNotes = findCol(['notes', 'ملاحظات', 'ملاحظه', 'note', 'وصف', 'description']);
 
-      if (colSection < 0 || colItem < 0) {
-        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على الأعمدة المطلوبة. العناوين المكتشفة: ${headers.join(' | ')}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود القسم + عمود البند (اختياري: ملاحظات)</p>`;
+      const sectionsOnly = colSection >= 0 && colItem < 0;
+      if (colSection < 0) {
+        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على عمود القسم. العناوين المكتشفة: ${headers.join(' | ')}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود القسم + عمود البند (اختياري: ملاحظات)</p>`;
         return;
       }
 
@@ -1116,10 +1117,10 @@ const App = {
       const sectionsToCreate = new Map();
       for (let i = 1; i < json.length; i++) {
         const row = json[i];
-        if (!Array.isArray(row) || row.length <= Math.max(colSection, colItem)) continue;
+        if (!Array.isArray(row) || row.length <= colSection) continue;
         const rawSection = String(row[colSection] || '').trim();
-        const rawItem = String(row[colItem] || '').trim();
-        if (!rawSection || !rawItem) continue;
+        const rawItem = sectionsOnly ? null : String(row[colItem] || '').trim();
+        if (!rawSection || (!sectionsOnly && !rawItem)) continue;
         const rawNotes = colNotes >= 0 && colNotes < row.length ? String(row[colNotes] || '').trim() : '';
         const sectionKey = rawSection.toLowerCase();
         let sectionId = sectionByName[sectionKey]?.id || null;
@@ -1127,22 +1128,38 @@ const App = {
         if (!sectionExists && !sectionsToCreate.has(sectionKey)) {
           sectionsToCreate.set(sectionKey, { name: rawSection, notes: rawNotes });
         }
-        parsed.push({ rawSection, rawItem, rawNotes, sectionKey, sectionExists, sectionId });
+        if (sectionsOnly) {
+          parsed.push({ rawSection, rawNotes, sectionKey, sectionExists, sectionId });
+        } else {
+          parsed.push({ rawSection, rawItem, rawNotes, sectionKey, sectionExists, sectionId });
+        }
       }
 
       // Build preview
-      const rows = parsed.map((p, idx) => [
-        idx + 1, p.rawSection, p.rawItem, p.rawNotes || '-',
-        p.sectionExists ? '<span style="color:var(--green)">موجود</span>' : '<span style="color:var(--gold)">سيتم إنشاؤه</span>'
-      ]);
-      const summary = `<div style="margin-bottom:12px;font-size:13px">
-        <span style="color:var(--gold)">أقسام جديدة: ${sectionsToCreate.size}</span> &nbsp;|&nbsp;
-        <span style="color:var(--blue)">بنود: ${parsed.length}</span>
-      </div>`;
+      const rows = sectionsOnly
+        ? parsed.map((p, idx) => [
+            idx + 1, p.rawSection, p.rawNotes || '-',
+            p.sectionExists ? '<span style="color:var(--green)">موجود</span>' : '<span style="color:var(--gold)">سيتم إنشاؤه</span>'
+          ])
+        : parsed.map((p, idx) => [
+            idx + 1, p.rawSection, p.rawItem, p.rawNotes || '-',
+            p.sectionExists ? '<span style="color:var(--green)">موجود</span>' : '<span style="color:var(--gold)">سيتم إنشاؤه</span>'
+          ]);
+      const summary = sectionsOnly
+        ? `<div style="margin-bottom:12px;font-size:13px">
+            <span style="color:var(--gold)">أقسام جديدة: ${sectionsToCreate.size}</span> &nbsp;|&nbsp;
+            <span style="color:var(--text3)">وضع: أقسام فقط</span>
+          </div>`
+        : `<div style="margin-bottom:12px;font-size:13px">
+            <span style="color:var(--gold)">أقسام جديدة: ${sectionsToCreate.size}</span> &nbsp;|&nbsp;
+            <span style="color:var(--blue)">بنود: ${parsed.length}</span>
+          </div>`;
       const saveBtn = parsed.length
-        ? `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="App.saveWorkSectionsItems()">💾 حفظ الأقسام والبنود</button></div>`
+        ? `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="App.saveWorkSectionsItems()">💾 حفظ</button></div>`
         : '';
-      const table = rows.length ? App.table(['#', 'القسم', 'البند', 'ملاحظات', 'حالة القسم'], rows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
+      const table = rows.length
+        ? (sectionsOnly ? App.table(['#', 'القسم', 'ملاحظات', 'الحالة'], rows) : App.table(['#', 'القسم', 'البند', 'ملاحظات', 'الحالة'], rows))
+        : '<p style="color:var(--text3)">لا توجد بيانات</p>';
       preview.innerHTML = saveBtn + summary + table;
       preview.dataset.parsed = JSON.stringify(parsed);
       preview.dataset.sectionsToCreate = JSON.stringify(Array.from(sectionsToCreate.entries()));
@@ -1179,28 +1196,34 @@ const App = {
         }
       }
 
-      // Create items (deduplicate by section+item name)
+      // Create items (deduplicate by section+item name) — skip if sections-only mode
+      const hasItems = parsed.length && parsed[0].rawItem !== undefined && parsed[0].rawItem !== null;
       const seenItems = new Set();
       let createdCount = 0;
-      for (const p of parsed) {
-        const section = sectionByName[p.sectionKey];
-        if (!section) continue;
-        const itemKey = `${p.sectionKey}::${p.rawItem.trim().toLowerCase()}`;
-        if (seenItems.has(itemKey)) continue;
-        seenItems.add(itemKey);
-        try {
-          await API.request('work_items', 'POST', {
-            section_id: section.id,
-            section_name: section.name,
-            name: p.rawItem,
-            notes: p.rawNotes || null
-          });
-          createdCount++;
-        } catch (e) {
-          console.log('[MasterData] failed to create item:', e.message);
+      if (hasItems) {
+        for (const p of parsed) {
+          const section = sectionByName[p.sectionKey];
+          if (!section) continue;
+          const itemKey = `${p.sectionKey}::${p.rawItem.trim().toLowerCase()}`;
+          if (seenItems.has(itemKey)) continue;
+          seenItems.add(itemKey);
+          try {
+            await API.request('work_items', 'POST', {
+              section_id: section.id,
+              section_name: section.name,
+              name: p.rawItem,
+              notes: p.rawNotes || null
+            });
+            createdCount++;
+          } catch (e) {
+            console.log('[MasterData] failed to create item:', e.message);
+          }
         }
       }
-      UI.toast(`تم حفظ ${sectionsToCreate.length} قسم و ${createdCount} بند`);
+      const msg = hasItems
+        ? `تم حفظ ${sectionsToCreate.length} قسم و ${createdCount} بند`
+        : `تم حفظ ${sectionsToCreate.length} قسم`;
+      UI.toast(msg);
       preview.innerHTML = '<p style="color:var(--green)">✅ تم الحفظ بنجاح</p>';
       this.loadMasterData();
     } catch (e) {
