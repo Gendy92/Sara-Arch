@@ -115,7 +115,7 @@ const App = {
   },
 
   pageContent(screen) {
-    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div></div>`;
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء (غير مسددين / مبالغ زائدة)</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors">جاري التحميل...</div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1>${Auth.can('clients', 'add') ? `<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button>` : ''}</div><div id="clients-list">جاري التحميل...</div>`;
     if (screen === 'projects') { this.go('clients'); return ''; }
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 معاملات المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><div id="tx-tbl">جاري التحميل...</div></div>`;
@@ -228,9 +228,23 @@ const App = {
         const dep = depByClient[c.id] || 0;
         const balance = dep - totalExp - totalSup;
         const color = balance >= 0 ? 'var(--green)' : 'var(--red)';
-        return [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`];
-      }).filter(r => r[1] !== '0 ج.م' || r[2] !== '0 ج.م');
-      document.getElementById('customer-balances').innerHTML = balanceRows.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], balanceRows) : '<p style="color:var(--text3)">لا يوجد بيانات مالية</p>';
+        return { name: c.name, dep, totalExp, totalSup, balance, color, html: [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`] };
+      }).filter(r => r.balance !== 0);
+      const sortedBalances = balanceRows.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+      document.getElementById('customer-balances').innerHTML = sortedBalances.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], sortedBalances.map(r => r.html)) : '<p style="color:var(--text3)">لا يوجد عملاء غير مسددين</p>';
+      // Active vendors (vendors with project expenses)
+      const [vendors, vendorTxs] = await Promise.all([
+        API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
+        API.request('transactions', 'GET', null, "?select=vendor_id,amount&type=eq.project_expense&deleted_at=is.null")
+      ]);
+      const vendorTotals = {};
+      vendorTxs.forEach(t => { vendorTotals[t.vendor_id] = (vendorTotals[t.vendor_id] || 0) + (+t.amount || 0); });
+      const activeVendorRows = vendors.filter(v => vendorTotals[v.id] > 0).map(v => {
+        const total = vendorTotals[v.id] || 0;
+        return [v.name, v.vendor_type === 'merchandise' ? 'بضاعة' : 'خدمات', this.fmtMoney(total), `<button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`];
+      });
+      document.getElementById('active-vendors').innerHTML = activeVendorRows.length ? this.table(['المورد', 'النوع', 'إجمالي المدفوعات', 'الإجراءات'], activeVendorRows) : '<p style="color:var(--text3)">لا يوجد موردين نشطين</p>';
+
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
@@ -324,9 +338,10 @@ const App = {
   async loadVendors() {
     try {
       const data = await API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
+      document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
+        const typeBadge = v.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
-        return [v.name, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
+        return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
     } catch (e) { console.error(e); }
@@ -1428,6 +1443,8 @@ const Crud = {
     const projIds = projects.map(p => p.id);
     const clientDeposits = deposits.filter(t => projIds.includes(t.project_id));
     const clientExpenses = expenses.filter(t => projIds.includes(t.project_id));
+    const depByProject = {};
+    clientDeposits.forEach(t => { depByProject[t.project_id] = (depByProject[t.project_id] || 0) + (+t.amount || 0); });
     const expByProject = {};
     const designByProject = {};
     clientExpenses.forEach(t => {
@@ -1437,32 +1454,89 @@ const Crud = {
         designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
       }
     });
-    let totalSup = 0;
-    projects.forEach(p => {
+
+    // Build per-project summary
+    const projectSummary = projects.map(p => {
+      const dep = depByProject[p.id] || 0;
       const exp = expByProject[p.id] || 0;
       const design = designByProject[p.id] || 0;
       const constr = exp - design;
-      totalSup += constr * (p.supervision_percentage || 0) / 100;
+      const sup = constr * (p.supervision_percentage || 0) / 100;
+      const bal = dep - exp - sup;
+      return { ...p, dep, exp, design, constr, sup, bal };
     });
-    const totalDep = clientDeposits.reduce((s, t) => s + (+t.amount || 0), 0);
-    const totalExp = clientExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
-    const balance = totalDep - totalExp - totalSup;
-    const ledger = [];
-    clientDeposits.forEach(t => {
-      const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '';
-      ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: (t.description || '-') + (pm ? ` (${pm})` : '') });
+
+    const totalDep = projectSummary.reduce((s, p) => s + p.dep, 0);
+    const totalExp = projectSummary.reduce((s, p) => s + p.exp, 0);
+    const totalSup = projectSummary.reduce((s, p) => s + p.sup, 0);
+    const totalBalance = totalDep - totalExp - totalSup;
+
+    const card = (title, value, color) => `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center;min-width:120px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">${title}</div><div style="font-size:18px;font-weight:700;color:${color||'var(--text)'}">${value}</div></div>`;
+
+    // Page 1: Summary
+    let html = `<div style="margin-bottom:20px;padding:16px;background:linear-gradient(135deg,var(--bg3),var(--bg));border-radius:var(--radius);border:1px solid var(--border)">
+      <h2 style="color:var(--gold);margin-bottom:8px;font-size:18px">📋 ملخص العميل — ${client.name}</h2>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">${client.phone || ''} · ${client.email || ''} · ${client.address || ''}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        ${card('إجمالي الوارد', App.fmtMoney(totalDep), 'var(--green)')}
+        ${card('إجمالي المصروفات', App.fmtMoney(totalExp), 'var(--red)')}
+        ${card('إجمالي الإشراف', App.fmtMoney(totalSup), 'var(--gold)')}
+        ${card('الرصيد', App.fmtMoney(totalBalance), totalBalance >= 0 ? 'var(--green)' : 'var(--red)')}
+      </div>
+      <h3 style="font-size:14px;color:var(--text2);margin-bottom:8px">📊 ملخص المشاريع</h3>
+      ${App.table(['المشروع', 'الوارد', 'مصروفات', 'تصميم', 'تشطيب', 'إشراف', 'رصيد'], projectSummary.map(p => [
+        p.name, App.fmtMoney(p.dep), App.fmtMoney(p.exp), App.fmtMoney(p.design), App.fmtMoney(p.constr), App.fmtMoney(p.sup), `<span style="color:${p.bal >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${App.fmtMoney(p.bal)}</span>`
+      ]))}
+    </div>`;
+
+    // Each project chapter
+    projectSummary.forEach(p => {
+      const pDeposits = clientDeposits.filter(t => t.project_id === p.id);
+      const pExpenses = clientExpenses.filter(t => t.project_id === p.id);
+      const pDesign = pExpenses.filter(t => t.expense_category === 'design');
+      const pConstr = pExpenses.filter(t => (t.expense_category || 'construction') !== 'design');
+
+      html += `<div style="margin-bottom:20px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+        <h3 style="color:var(--gold);margin-bottom:12px;font-size:16px;border-bottom:1px solid var(--border);padding-bottom:8px">🏗️ ${p.name}</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+          <span style="background:var(--bg);padding:4px 10px;border-radius:var(--radius-sm)">وارد: ${App.fmtMoney(p.dep)}</span>
+          <span style="background:var(--bg);padding:4px 10px;border-radius:var(--radius-sm)">مصروفات: ${App.fmtMoney(p.exp)}</span>
+          <span style="background:var(--bg);padding:4px 10px;border-radius:var(--radius-sm)">إشراف: ${App.fmtMoney(p.sup)}</span>
+          <span style="background:var(--bg);padding:4px 10px;border-radius:var(--radius-sm);color:${p.bal >= 0 ? 'var(--green)' : 'var(--red)'}">رصيد: ${App.fmtMoney(p.bal)}</span>
+        </div>`;
+
+      // Deposits
+      if (pDeposits.length) {
+        html += `<h4 style="font-size:13px;color:var(--text2);margin:8px 0">💰 الوارد</h4>`;
+        html += App.table(['التاريخ', 'المبلغ', 'طريقة الدفع', 'البيان'], pDeposits.map(t => {
+          const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
+          return [App.fmtDate(t.date || t.created_at), App.fmtMoney(t.amount), pm, t.description || 'عربون'];
+        }));
+      }
+
+      // Construction expenses
+      if (pConstr.length) {
+        html += `<h4 style="font-size:13px;color:var(--text2);margin:8px 0">🔨 مصروفات تشطيب</h4>`;
+        html += App.table(['التاريخ', 'المبلغ', 'المورد', 'البيان'], pConstr.map(t => [App.fmtDate(t.date || t.created_at), App.fmtMoney(t.amount), t.vendor_name || '-', t.description || '-']));
+      }
+
+      // Design expenses
+      if (pDesign.length) {
+        html += `<h4 style="font-size:13px;color:var(--text2);margin:8px 0">🎨 مصروفات تصميم</h4>`;
+        html += App.table(['التاريخ', 'المبلغ', 'البيان'], pDesign.map(t => [App.fmtDate(t.date || t.created_at), App.fmtMoney(t.amount), t.description || '-']));
+      }
+
+      // Supervision line
+      html += `<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;font-size:13px">
+        <span>📋 إشراف (${p.supervision_percentage || 0}% على ${App.fmtMoney(p.constr)})</span>
+        <strong style="color:var(--gold)">${App.fmtMoney(p.sup)}</strong>
+      </div>`;
+
+      html += `</div>`;
     });
-    clientExpenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
-    ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: totalSup, desc: `إجمالي إشراف المشاريع` });
-    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
-    let running = 0;
-    const rows = ledger.map(r => {
-      running += r.in - r.out;
-      return [App.fmtDate(r.date), r.type, App.fmtMoney(r.in), App.fmtMoney(r.out), App.fmtMoney(running), r.desc];
-    });
-    rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalDep)}</strong>`, `<strong>${App.fmtMoney(totalExp + totalSup)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
-    const html = `<div style="margin-bottom:16px"><strong>العميل:</strong> ${client.name}<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalDep)}<br><strong>إجمالي المصروفات:</strong> ${App.fmtMoney(totalExp)}<br><strong>إجمالي الإشراف:</strong> ${App.fmtMoney(totalSup)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
-    UI.openModal('كشف حساب العميل', html, null);
+
+    html += `<div style="text-align:center;margin-top:20px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
+    UI.openModal('كشف حساب العميل — ' + client.name, html, null);
   },
 
   delProject(id) {
@@ -1472,8 +1546,10 @@ const Crud = {
   // ─── VENDORS ───
   addVendor() {
     const sectorOpts = [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }];
+    const typeOpts = [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }];
     const cols = [
       { key: 'name', label: 'اسم المورد *', req: true },
+      { key: 'vendor_type', label: 'النوع', type: 'select', opts: typeOpts },
       { key: 'sector', label: 'التخصص', type: 'select', opts: sectorOpts },
       { key: 'contact_person', label: 'الشخص المسؤول' },
       { key: 'phone', label: 'الهاتف' },
@@ -1485,10 +1561,9 @@ const Crud = {
       try {
         await this.bulkSave('vendors', rows);
       } catch (e) {
-        // Fallback: retry without 'sector' if column missing in schema cache
-        if (e.message && e.message.includes('sector')) {
-          const withoutSector = rows.map(r => { const { sector, ...rest } = r; return rest; });
-          await this.bulkSave('vendors', withoutSector);
+        if (e.message && (e.message.includes('sector') || e.message.includes('vendor_type'))) {
+          const fallback = rows.map(r => { const { sector, vendor_type, ...rest } = r; return rest; });
+          await this.bulkSave('vendors', fallback);
         } else { throw e; }
       }
       UI.toast(`تم حفظ ${rows.length} مورد`);
@@ -1501,6 +1576,7 @@ const Crud = {
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم المورد', req: true },
+      { name: 'vendor_type', label: 'النوع', type: 'select', opts: [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }] },
       { name: 'sector', label: 'التخصص', type: 'select', opts: [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }] },
       { name: 'contact_person', label: 'الشخص المسؤول' },
       { name: 'phone', label: 'الهاتف' },
@@ -1510,12 +1586,12 @@ const Crud = {
     ];
     UI.openModal('تعديل مورد', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
-      const data = { name: fd.get('name'), sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
+      const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
       try {
         await this.save('vendors', data, id);
       } catch (e) {
-        if (e.message && e.message.includes('sector')) {
-          const { sector, ...rest } = data;
+        if (e.message && (e.message.includes('sector') || e.message.includes('vendor_type'))) {
+          const { sector, vendor_type, ...rest } = data;
           await this.save('vendors', rest, id);
         } else { throw e; }
       }

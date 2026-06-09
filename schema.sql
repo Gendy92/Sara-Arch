@@ -102,6 +102,11 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS expense_category TEXT DEFAULT 
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_expense_category_check;
 ALTER TABLE transactions ADD CONSTRAINT transactions_expense_category_check CHECK (expense_category IN ('construction','design'));
 
+-- Vendor type (service vs merchandise)
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS vendor_type TEXT DEFAULT 'service';
+ALTER TABLE vendors DROP CONSTRAINT IF EXISTS vendors_vendor_type_check;
+ALTER TABLE vendors ADD CONSTRAINT vendors_vendor_type_check CHECK (vendor_type IN ('service','merchandise'));
+
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
