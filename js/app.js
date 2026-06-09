@@ -440,7 +440,8 @@ const App = {
         if (t.type === 'project_expense') {
           party = t.party_name || '-';
           if (t.vendor_name) party += ' ← ' + t.vendor_name;
-          if (t.expense_category === 'design') party += ' <span class="badge badge-gray" style="font-size:10px">تصميم</span>';
+          if (t.section_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + t.section_name + '</span>';
+          else if (t.expense_category === 'design') party += ' <span class="badge badge-gray" style="font-size:10px">تصميم</span>';
         } else {
           party = t.vendor_name || t.employee_name || t.party_name || t.sector_name || '-';
         }
@@ -464,9 +465,9 @@ const App = {
         const bal = (+t.amount || 0) - paid;
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
-        const catLabel = t.expense_category === 'design' ? 'تصميم' : 'تشطيب';
+        const sectionLabel = t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب');
         const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
-        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', catLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
     } catch (e) { console.error(e); }
@@ -1529,11 +1530,11 @@ const Crud = {
       const bal = (+t.amount || 0) - paid;
       const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
       const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
-      const catLabel = t.expense_category === 'design' ? 'تصميم' : 'تشطيب';
+      const sectionLabel = t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب');
       const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
-      return [idx + 1, t.vendor_name || '-', catLabel, App.fmtMoney(t.amount), pmBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
+      return [idx + 1, t.vendor_name || '-', sectionLabel, App.fmtMoney(t.amount), pmBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
     });
-    const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
+    const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'المورد', 'القسم', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
     const printTitle = `كشف حساب مشروع ${project.name} - ${project.client_name || ''}`;
     const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('${printTitle.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}${expenseDetailHtml}`;
     UI.openModal('كشف حساب المشروع', html, null);
@@ -1798,7 +1799,7 @@ const Crud = {
       const amount = isNew ? (+t.amount || 0) : 0; // old data: pure payment
       const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0); // old data: paid = amount
       const term = t.payment_term || 'settlement'; // old data: treat as settlement
-      const category = t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى'));
+      const category = t.section_name || (t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى')));
       ledger.push({
         date: t.date || t.created_at,
         source: 'transaction',
@@ -1869,7 +1870,7 @@ const Crud = {
     });
     payments.forEach(t => {
       const isNew = t.payment_term !== undefined && t.payment_term !== null;
-      const category = t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى'));
+      const category = t.section_name || (t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى')));
       ledger.push({
         date: t.date || t.created_at, client: t.party_name || t.client_name || '-', project: t.project_name || '-',
         vendor: t.vendor_name || vendor.name, category,
@@ -2233,19 +2234,21 @@ const Crud = {
   },
 
   async addProjectExpense() {
-    const [clients, projects, vendors] = await Promise.all([
+    const [clients, projects, vendors, workSections] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
+    const sectionOpts = workSections.map(s => ({ v: s.id, l: s.name }));
     const cols = [
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
-      { key: 'expense_category', label: 'التصنيف', type: 'select', opts: [{ v: 'construction', l: 'تشطيب' }, { v: 'design', l: 'تصميم' }] },
+      { key: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'paid_amount', label: 'المدفوع', type: 'number' },
@@ -2256,6 +2259,7 @@ const Crud = {
       const enriched = rows.map(r => {
         const project = projects.find(p => p.id === r.project_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
+        const section = workSections.find(s => s.id === r.section_id);
         if (!project) { UI.toast('مشروع غير موجود', 'error'); throw new Error('invalid project'); }
         if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
         let amount = +r.amount || 0;
@@ -2265,13 +2269,16 @@ const Crud = {
         let payment_term = 'immediate';
         if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
         else if (amount > paid_amount) payment_term = 'credit';
-        return { type: 'project_expense', expense_category: r.expense_category || 'construction', payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        // Auto-compute expense_category from section name
+        const sectionName = section ? section.name : '';
+        const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
+        return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       try {
         await this.bulkSave('transactions', enriched);
       } catch (e) {
-        if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
-          const fallback = enriched.map(r => { const { expense_category, payment_term, payment_method, paid_amount, ...rest } = r; return rest; });
+        if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          const fallback = enriched.map(r => { const { expense_category, section_id, section_name, payment_term, payment_method, paid_amount, ...rest } = r; return rest; });
           await this.bulkSave('transactions', fallback);
         } else { throw e; }
       }
@@ -2381,26 +2388,28 @@ const Crud = {
       });
       this._setupClientProjectCascade(overlay, projects, tx.client_id, tx.project_id);
     } else if (tx.type === 'project_expense') {
-      const [clients, projects, vendors] = await Promise.all([
+      const [clients, projects, vendors, workSections] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-        API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+        API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+        API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
       ]);
       const fields = [
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
-        { name: 'expense_category', label: 'التصنيف', type: 'select', opts: [{ v: 'construction', l: 'تشطيب' }, { v: 'design', l: 'تصميم' }] },
+        { name: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'paid_amount', label: 'المدفوع', type: 'number' },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', expense_category: tx.expense_category || 'construction', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+        const section = workSections.find(s => s.id === fd.get('section_id'));
         if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
         if (fd.get('client_id') && project.client_id !== fd.get('client_id')) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
         let amount = +fd.get('amount') || 0;
@@ -2410,10 +2419,13 @@ const Crud = {
         let payment_term = 'immediate';
         if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
         else if (amount > paid_amount) payment_term = 'credit';
+        // Auto-compute expense_category from section name
+        const sectionName = section ? section.name : '';
+        const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
         try {
-          await this.save('transactions', { type: 'project_expense', expense_category: fd.get('expense_category') || 'construction', payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+          await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         } catch (e) {
-          if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
             await this.save('transactions', { type: 'project_expense', amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
           } else { throw e; }
         }

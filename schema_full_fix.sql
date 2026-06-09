@@ -333,6 +333,8 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS employee_name TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_name TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS expense_category TEXT DEFAULT 'construction';
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS section_id UUID REFERENCES work_sections(id);
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS section_name TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_term TEXT DEFAULT 'immediate';
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS paid_amount NUMERIC DEFAULT 0;
 
