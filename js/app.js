@@ -446,14 +446,17 @@ const App = {
         }
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
         const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
-        const pt = t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : (t.type === 'project_deposit' ? pm : '-');
+        let pt = pm;
+        if (t.type === 'project_expense') {
+          pt = t.payment_method ? pm : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
+        }
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', pt, actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
 
       // Expenses-only tab with full details
-      const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+      const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
       const expenseRows = projectExpenses.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
       document.getElementById('tx-expenses-tbl').innerHTML = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
@@ -462,8 +465,8 @@ const App = {
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
         const catLabel = t.expense_category === 'design' ? 'تصميم' : 'تشطيب';
-        const termBadge = t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-';
-        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', catLabel, this.fmtMoney(t.amount), termBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
+        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', catLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
     } catch (e) { console.error(e); }
@@ -1518,8 +1521,8 @@ const Crud = {
     const totalIn = ledger.reduce((s, r) => s + r.in, 0);
     const totalOut = ledger.reduce((s, r) => s + r.out, 0);
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
-    // Expense detail section with payment terms
-    const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+    // Expense detail section with payment method
+    const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
     const expenseDetailRows = expenses.sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).map((t, idx) => {
       const isNew = t.payment_term !== undefined && t.payment_term !== null;
       const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
@@ -1527,8 +1530,8 @@ const Crud = {
       const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
       const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
       const catLabel = t.expense_category === 'design' ? 'تصميم' : 'تشطيب';
-      const termBadge = t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-';
-      return [idx + 1, t.vendor_name || '-', catLabel, App.fmtMoney(t.amount), termBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
+      const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
+      return [idx + 1, t.vendor_name || '-', catLabel, App.fmtMoney(t.amount), pmBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
     });
     const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
     const printTitle = `كشف حساب مشروع ${project.name} - ${project.client_name || ''}`;
@@ -1784,6 +1787,7 @@ const Crud = {
         amount,
         paid,
         term,
+        payment_method: null,
         desc: `شراء: ${p.item_name || '-'} (${p.project_name || '-'})`
       });
     });
@@ -1805,17 +1809,19 @@ const Crud = {
         amount,
         paid,
         term,
+        payment_method: t.payment_method || null,
         desc: t.description || 'دفعة للمورد'
       });
     });
 
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+    const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
     let running = 0;
     const tableRows = ledger.map((r, idx) => {
       const balanceChange = r.amount - r.paid;
       running += balanceChange;
+      const pmBadge = r.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[r.payment_method] || r.payment_method}</span>` : '-';
       return [
         idx + 1,
         r.client,
@@ -1823,7 +1829,7 @@ const Crud = {
         r.vendor,
         r.category,
         App.fmtMoney(r.amount),
-        `<span class="badge badge-${r.term === 'immediate' ? 'green' : r.term === 'credit' ? 'orange' : 'blue'}">${termLabels[r.term] || r.term}</span>`,
+        pmBadge,
         App.fmtMoney(r.paid),
         `<strong style="color:${running >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(running))}</strong>`,
         App.fmtDate(r.date)
@@ -1857,6 +1863,7 @@ const Crud = {
         date: p.date, client: p.client_name || '-', project: p.project_name || '-',
         vendor: vendor.name, category: p.item_name || 'شراء',
         amount: +p.total_price || 0, paid: isNew ? (+p.paid_amount || 0) : 0,
+        payment_method: null,
         term: p.payment_term || 'credit', desc: `شراء: ${p.item_name || '-'}`
       });
     });
@@ -1867,16 +1874,18 @@ const Crud = {
         date: t.date || t.created_at, client: t.party_name || t.client_name || '-', project: t.project_name || '-',
         vendor: t.vendor_name || vendor.name, category,
         amount: isNew ? (+t.amount || 0) : 0, paid: isNew ? (+t.paid_amount || 0) : (+t.amount || 0),
+        payment_method: t.payment_method || null,
         term: t.payment_term || 'settlement', desc: t.description || 'دفعة للمورد'
       });
     });
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+    const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
     let running = 0;
     const rows = ledger.map(r => {
       running += (r.amount - r.paid);
-      return [r.date, r.client, r.project, r.vendor, r.category, r.amount, termLabels[r.term] || r.term, r.paid, running, r.desc];
+      const pm = r.payment_method ? (pmLabels[r.payment_method] || r.payment_method) : '-';
+      return [r.date, r.client, r.project, r.vendor, r.category, r.amount, pm, r.paid, running, r.desc];
     });
 
     const totalAmount = ledger.reduce((s, r) => s + r.amount, 0);
@@ -2237,45 +2246,13 @@ const Crud = {
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'expense_category', label: 'التصنيف', type: 'select', opts: [{ v: 'construction', l: 'تشطيب' }, { v: 'design', l: 'تصميم' }] },
-      { key: 'payment_term', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'immediate', l: 'فوري' }, { v: 'credit', l: 'اجل' }, { v: 'settlement', l: 'تسديد' }] },
+      { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'paid_amount', label: 'المدفوع', type: 'number' },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('🔨 مصروف مشروع', cols, async (rows) => {
-      // Auto-lock paid_amount when payment_term is 'immediate'
-      setTimeout(() => {
-        const modalBody = document.querySelector('.modal-body');
-        if (!modalBody) return;
-        const rows = modalBody.querySelectorAll('tbody tr');
-        rows.forEach(tr => {
-          const termSel = tr.querySelector('select[data-key="payment_term"]');
-          const paidInp = tr.querySelector('input[data-key="paid_amount"]');
-          const amtInp = tr.querySelector('input[data-key="amount"]');
-          if (!termSel || !paidInp || !amtInp) return;
-          const sync = () => {
-            if (termSel.value === 'immediate') {
-              paidInp.value = amtInp.value || 0;
-              paidInp.readOnly = true;
-              paidInp.style.background = 'var(--bg3)';
-              paidInp.style.color = 'var(--text3)';
-            } else if (termSel.value === 'settlement') {
-              paidInp.readOnly = false;
-              paidInp.style.background = '';
-              paidInp.style.color = '';
-              if (+amtInp.value !== 0) amtInp.value = 0;
-            } else {
-              paidInp.readOnly = false;
-              paidInp.style.background = '';
-              paidInp.style.color = '';
-            }
-          };
-          termSel.addEventListener('change', sync);
-          amtInp.addEventListener('input', sync);
-          sync();
-        });
-      }, 150);
       const enriched = rows.map(r => {
         const project = projects.find(p => p.id === r.project_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
@@ -2283,17 +2260,18 @@ const Crud = {
         if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
         let amount = +r.amount || 0;
         let paid_amount = +r.paid_amount || 0;
-        const payment_term = r.payment_term || 'immediate';
-        if (payment_term === 'immediate') paid_amount = amount;
-        else if (payment_term === 'settlement') amount = 0;
-        if (payment_term === 'credit' && paid_amount > amount) paid_amount = amount;
-        return { type: 'project_expense', expense_category: r.expense_category || 'construction', payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        const payment_method = r.payment_method || null;
+        // Auto-compute payment_term for backward compatibility
+        let payment_term = 'immediate';
+        if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
+        else if (amount > paid_amount) payment_term = 'credit';
+        return { type: 'project_expense', expense_category: r.expense_category || 'construction', payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       try {
         await this.bulkSave('transactions', enriched);
       } catch (e) {
-        if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
-          const fallback = enriched.map(r => { const { expense_category, payment_term, paid_amount, ...rest } = r; return rest; });
+        if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          const fallback = enriched.map(r => { const { expense_category, payment_term, payment_method, paid_amount, ...rest } = r; return rest; });
           await this.bulkSave('transactions', fallback);
         } else { throw e; }
       }
@@ -2413,13 +2391,13 @@ const Crud = {
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
         { name: 'expense_category', label: 'التصنيف', type: 'select', opts: [{ v: 'construction', l: 'تشطيب' }, { v: 'design', l: 'تصميم' }] },
-        { name: 'payment_term', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'immediate', l: 'فوري' }, { v: 'credit', l: 'اجل' }, { v: 'settlement', l: 'تسديد' }] },
+        { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'paid_amount', label: 'المدفوع', type: 'number' },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', expense_category: tx.expense_category || 'construction', payment_term: tx.payment_term || 'immediate', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', expense_category: tx.expense_category || 'construction', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
@@ -2427,14 +2405,15 @@ const Crud = {
         if (fd.get('client_id') && project.client_id !== fd.get('client_id')) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
         let amount = +fd.get('amount') || 0;
         let paid_amount = +fd.get('paid_amount') || 0;
-        const payment_term = fd.get('payment_term') || 'immediate';
-        if (payment_term === 'immediate') paid_amount = amount;
-        else if (payment_term === 'settlement') amount = 0;
-        if (payment_term === 'credit' && paid_amount > amount) paid_amount = amount;
+        const payment_method = fd.get('payment_method') || null;
+        // Auto-compute payment_term for backward compatibility
+        let payment_term = 'immediate';
+        if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
+        else if (amount > paid_amount) payment_term = 'credit';
         try {
-          await this.save('transactions', { type: 'project_expense', expense_category: fd.get('expense_category') || 'construction', payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+          await this.save('transactions', { type: 'project_expense', expense_category: fd.get('expense_category') || 'construction', payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         } catch (e) {
-          if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
             await this.save('transactions', { type: 'project_expense', amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
           } else { throw e; }
         }
