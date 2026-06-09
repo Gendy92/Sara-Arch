@@ -57,8 +57,6 @@ const App = {
     window.print();
     setTimeout(() => { document.title = origTitle; }, 1000);
   },
-    this.renderLogin();
-  },
 
   bindNav() {
     document.addEventListener('click', (e) => {
@@ -432,8 +430,10 @@ const App = {
           party = t.vendor_name || t.employee_name || t.party_name || t.sector_name || '-';
         }
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
+        const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+        const pt = t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : (t.type === 'project_deposit' ? pm : '-');
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', t.type === 'project_deposit' ? pm : '-', actions];
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', pt, actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
     } catch (e) { console.error(e); }
@@ -1667,35 +1667,136 @@ const Crud = {
     const [vendorRows, procs, payments] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=*&id=eq.${id}`),
       API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`),
-      API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
+      API.request('transactions', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
     ]);
     if (!vendorRows.length) return;
     const vendor = vendorRows[0];
 
-    // Build combined ledger
+    // Build unified ledger combining procurements + transactions
     const ledger = [];
-    procs.forEach(p => ledger.push({ date: p.date, type: 'purchase', desc: `شراء: ${p.item_name || '-'} (${p.project_name || '-'})`, amount: +p.total_price || 0, qty: p.quantity, unit: p.unit_price }));
-    payments.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'payment', desc: t.description || 'دفعة للمورد', amount: +t.amount || 0 }));
-    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    let running = 0;
-    const rows = ledger.map(r => {
-      if (r.type === 'purchase') running += r.amount;
-      else running -= r.amount;
-      const debit = r.type === 'purchase' ? App.fmtMoney(r.amount) : '-';
-      const credit = r.type === 'payment' ? App.fmtMoney(r.amount) : '-';
-      return [App.fmtDate(r.date), r.desc, debit, credit, `<strong style="color:${running >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(running))}</strong>`, running >= 0 ? 'علينا' : 'له'];
+    // Procurements (purchases)
+    procs.forEach(p => {
+      const isNew = p.payment_term !== undefined && p.payment_term !== null;
+      const amount = +p.total_price || 0;
+      const paid = isNew ? (+p.paid_amount || 0) : 0; // old data: unpaid
+      const term = p.payment_term || 'credit'; // old data: treat as credit
+      ledger.push({
+        date: p.date,
+        source: 'procurement',
+        client: p.client_name || '-',
+        project: p.project_name || '-',
+        vendor: vendor.name,
+        category: p.item_name || 'شراء',
+        amount,
+        paid,
+        term,
+        desc: `شراء: ${p.item_name || '-'} (${p.project_name || '-'})`
+      });
     });
 
-    const totalPurchases = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
-    const totalPayments = payments.reduce((s, t) => s + (+t.amount || 0), 0);
-    const balance = totalPurchases - totalPayments;
+    // Transactions (expenses / payments / settlements)
+    payments.forEach(t => {
+      const isNew = t.payment_term !== undefined && t.payment_term !== null;
+      const amount = isNew ? (+t.amount || 0) : 0; // old data: pure payment
+      const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0); // old data: paid = amount
+      const term = t.payment_term || 'settlement'; // old data: treat as settlement
+      const category = t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى'));
+      ledger.push({
+        date: t.date || t.created_at,
+        source: 'transaction',
+        client: t.party_name || t.client_name || '-',
+        project: t.project_name || '-',
+        vendor: t.vendor_name || vendor.name,
+        category,
+        amount,
+        paid,
+        term,
+        desc: t.description || 'دفعة للمورد'
+      });
+    });
 
-    if (rows.length) rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalPurchases)}</strong>`, `<strong>${App.fmtMoney(totalPayments)}</strong>`, `<strong style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(balance))}</strong>`, balance >= 0 ? 'علينا' : 'له']);
+    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(totalPurchases)}<br><strong>إجمالي المدفوعات:</strong> ${App.fmtMoney(totalPayments)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('كشف حساب المورد ${vendor.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>`;
-    const tableHtml = rows.length ? App.table(['التاريخ', 'البيان', 'مدين (شراء)', 'دائن (دفعة)', 'الرصيد', ''], rows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
+    const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+    let running = 0;
+    const tableRows = ledger.map((r, idx) => {
+      const balanceChange = r.amount - r.paid;
+      running += balanceChange;
+      return [
+        idx + 1,
+        r.client,
+        r.project,
+        r.vendor,
+        r.category,
+        App.fmtMoney(r.amount),
+        `<span class="badge badge-${r.term === 'immediate' ? 'green' : r.term === 'credit' ? 'orange' : 'blue'}">${termLabels[r.term] || r.term}</span>`,
+        App.fmtMoney(r.paid),
+        `<strong style="color:${running >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(running))}</strong>`,
+        App.fmtDate(r.date)
+      ];
+    });
+
+    const totalAmount = ledger.reduce((s, r) => s + r.amount, 0);
+    const totalPaid = ledger.reduce((s, r) => s + r.paid, 0);
+    const balance = totalAmount - totalPaid;
+
+    if (tableRows.length) tableRows.push(['', '', '', '', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalAmount)}</strong>`, '', `<strong>${App.fmtMoney(totalPaid)}</strong>`, `<strong style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(balance))}</strong>`, '']);
+
+    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المبلغ:</strong> ${App.fmtMoney(totalAmount)}<br><strong>إجمالي المدفوع:</strong> ${App.fmtMoney(totalPaid)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div><div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="App.printReport('كشف حساب المورد ${vendor.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button><button class="btn btn-secondary" onclick="Crud.exportVendorLedger('${id}')">📊 تصدير Excel</button></div>`;
+    const tableHtml = tableRows.length ? App.table(['#', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ'], tableRows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
     UI.openModal('📋 كشف حساب المورد — ' + vendor.name, summary + tableHtml, null);
+  },
+
+  async exportVendorLedger(id) {
+    const [vendorRows, procs, payments] = await Promise.all([
+      API.request('vendors', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`),
+      API.request('transactions', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
+    ]);
+    if (!vendorRows.length) return;
+    const vendor = vendorRows[0];
+
+    const ledger = [];
+    procs.forEach(p => {
+      const isNew = p.payment_term !== undefined && p.payment_term !== null;
+      ledger.push({
+        date: p.date, client: p.client_name || '-', project: p.project_name || '-',
+        vendor: vendor.name, category: p.item_name || 'شراء',
+        amount: +p.total_price || 0, paid: isNew ? (+p.paid_amount || 0) : 0,
+        term: p.payment_term || 'credit', desc: `شراء: ${p.item_name || '-'}`
+      });
+    });
+    payments.forEach(t => {
+      const isNew = t.payment_term !== undefined && t.payment_term !== null;
+      const category = t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى'));
+      ledger.push({
+        date: t.date || t.created_at, client: t.party_name || t.client_name || '-', project: t.project_name || '-',
+        vendor: t.vendor_name || vendor.name, category,
+        amount: isNew ? (+t.amount || 0) : 0, paid: isNew ? (+t.paid_amount || 0) : (+t.amount || 0),
+        term: t.payment_term || 'settlement', desc: t.description || 'دفعة للمورد'
+      });
+    });
+    ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+    let running = 0;
+    const rows = ledger.map(r => {
+      running += (r.amount - r.paid);
+      return [r.date, r.client, r.project, r.vendor, r.category, r.amount, termLabels[r.term] || r.term, r.paid, running, r.desc];
+    });
+
+    const totalAmount = ledger.reduce((s, r) => s + r.amount, 0);
+    const totalPaid = ledger.reduce((s, r) => s + r.paid, 0);
+    rows.push(['', '', '', '', 'الإجمالي', totalAmount, '', totalPaid, totalAmount - totalPaid, '']);
+
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['التاريخ', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'البيان'],
+      ...rows
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب المورد');
+    XLSX.writeFile(wb, `كشف-حساب-مورد-${vendor.name}-${new Date().toISOString().slice(0,10)}.xlsx`);
   },
 
   async vendorPurchases(vendorId) {
@@ -2043,7 +2144,9 @@ const Crud = {
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'expense_category', label: 'التصنيف', type: 'select', opts: [{ v: 'construction', l: 'تشطيب' }, { v: 'design', l: 'تصميم' }] },
+      { key: 'payment_term', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'immediate', l: 'فوري' }, { v: 'credit', l: 'اجل' }, { v: 'settlement', l: 'تسديد' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'paid_amount', label: 'المدفوع', type: 'number' },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
@@ -2053,13 +2156,19 @@ const Crud = {
         const vendor = vendors.find(v => v.id === r.vendor_id);
         if (!project) { UI.toast('مشروع غير موجود', 'error'); throw new Error('invalid project'); }
         if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
-        return { type: 'project_expense', expense_category: r.expense_category || 'construction', amount: r.amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        let amount = +r.amount || 0;
+        let paid_amount = +r.paid_amount || 0;
+        const payment_term = r.payment_term || 'immediate';
+        if (payment_term === 'immediate') paid_amount = amount;
+        else if (payment_term === 'settlement') amount = 0;
+        if (payment_term === 'credit' && paid_amount > amount) paid_amount = amount;
+        return { type: 'project_expense', expense_category: r.expense_category || 'construction', payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       try {
         await this.bulkSave('transactions', enriched);
       } catch (e) {
-        if (e.message && (e.message.includes('expense_category') || e.message.includes('42703'))) {
-          const fallback = enriched.map(r => { const { expense_category, ...rest } = r; return rest; });
+        if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          const fallback = enriched.map(r => { const { expense_category, payment_term, paid_amount, ...rest } = r; return rest; });
           await this.bulkSave('transactions', fallback);
         } else { throw e; }
       }
@@ -2179,21 +2288,29 @@ const Crud = {
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
         { name: 'expense_category', label: 'التصنيف', type: 'select', opts: [{ v: 'construction', l: 'تشطيب' }, { v: 'design', l: 'تصميم' }] },
+        { name: 'payment_term', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'immediate', l: 'فوري' }, { v: 'credit', l: 'اجل' }, { v: 'settlement', l: 'تسديد' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'paid_amount', label: 'المدفوع', type: 'number' },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', expense_category: tx.expense_category || 'construction' })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', expense_category: tx.expense_category || 'construction', payment_term: tx.payment_term || 'immediate', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => p.id === fd.get('project_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
         if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
         if (fd.get('client_id') && project.client_id !== fd.get('client_id')) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
+        let amount = +fd.get('amount') || 0;
+        let paid_amount = +fd.get('paid_amount') || 0;
+        const payment_term = fd.get('payment_term') || 'immediate';
+        if (payment_term === 'immediate') paid_amount = amount;
+        else if (payment_term === 'settlement') amount = 0;
+        if (payment_term === 'credit' && paid_amount > amount) paid_amount = amount;
         try {
-          await this.save('transactions', { type: 'project_expense', expense_category: fd.get('expense_category') || 'construction', amount: +fd.get('amount') || 0, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+          await this.save('transactions', { type: 'project_expense', expense_category: fd.get('expense_category') || 'construction', payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         } catch (e) {
-          if (e.message && (e.message.includes('expense_category') || e.message.includes('42703'))) {
-            await this.save('transactions', { type: 'project_expense', amount: +fd.get('amount') || 0, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+          if (e.message && (e.message.includes('expense_category') || e.message.includes('payment_term') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+            await this.save('transactions', { type: 'project_expense', amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
           } else { throw e; }
         }
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();

@@ -333,6 +333,12 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS employee_name TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sector_name TEXT;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS expense_category TEXT DEFAULT 'construction';
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_term TEXT DEFAULT 'immediate';
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS paid_amount NUMERIC DEFAULT 0;
+
+-- Procurements payment tracking
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS payment_term TEXT DEFAULT 'immediate';
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS paid_amount NUMERIC DEFAULT 0;
 
 -- Make nullable (for backward compatibility)
 ALTER TABLE transactions ALTER COLUMN client_id DROP NOT NULL;
