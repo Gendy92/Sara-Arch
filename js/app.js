@@ -1254,35 +1254,67 @@ const Crud = {
   _currentUserId() { return Auth.user?.id || null; },
   _currentUserName() { return Auth.user?.displayName || Auth.fromEmail(Auth.user?.email) || 'unknown'; },
 
+  _extractMissingColumn(msg) {
+    let m = msg.match(/Could not find the '([^']+)'/);
+    if (m) return m[1];
+    m = msg.match(/column "([^"]+)" of relation/);
+    if (m) return m[1];
+    return null;
+  },
+
   _isMissingColumnErr(e) {
     const msg = e?.message || '';
     return msg.includes('PGRST204') || msg.includes('42703') || msg.includes('updated_by') || msg.includes('created_by');
+  },
+
+  _stripMissing(payload, missingKey) {
+    const clean = Array.isArray(payload) ? payload.map(r => { const c = { ...r }; delete c[missingKey]; return c; }) : { ...payload };
+    if (!Array.isArray(payload)) delete clean[missingKey];
+    return clean;
   },
 
   async save(table, data, id) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
     if (id) {
-      const payload = { ...data, updated_by: userId };
+      let payload = { ...data, updated_by: userId };
       try {
         await API.request(table, 'PATCH', payload, '?id=eq.' + id);
       } catch (e) {
         if (this._isMissingColumnErr(e)) {
-          delete payload.updated_by;
-          await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+          const missing = this._extractMissingColumn(e.message);
+          payload = this._stripMissing(payload, missing || 'updated_by');
+          try {
+            await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+          } catch (e2) {
+            if (this._isMissingColumnErr(e2)) {
+              const missing2 = this._extractMissingColumn(e2.message);
+              payload = this._stripMissing(payload, missing2 || 'updated_by');
+              await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+            } else { throw e2; }
+          }
         } else { throw e; }
       }
       this._logAudit(table, id, 'UPDATE', null, payload, userId, userName).catch(() => {});
       return { id, ...payload };
     } else {
-      const payload = { ...data, created_by: userId };
+      let payload = { ...data, created_by: userId };
       let result;
       try {
         result = await API.request(table, 'POST', payload);
       } catch (e) {
         if (this._isMissingColumnErr(e)) {
-          delete payload.created_by;
-          result = await API.request(table, 'POST', payload);
+          const missing = this._extractMissingColumn(e.message);
+          payload = this._stripMissing(payload, missing || 'created_by');
+          try {
+            result = await API.request(table, 'POST', payload);
+          } catch (e2) {
+            if (this._isMissingColumnErr(e2)) {
+              const missing2 = this._extractMissingColumn(e2.message);
+              payload = this._stripMissing(payload, missing2 || 'created_by');
+              result = await API.request(table, 'POST', payload);
+            } else { throw e2; }
+          }
         } else { throw e; }
       }
       const recordId = Array.isArray(result) ? result[0]?.id : result?.id;
@@ -1338,7 +1370,7 @@ const Crud = {
   async bulkSave(table, rows) {
     if (!rows || rows.length === 0) throw new Error('لا يوجد بيانات');
     const userId = this._currentUserId();
-    const clean = rows.map(r => {
+    let clean = rows.map(r => {
       const c = { created_by: userId };
       for (const [k, v] of Object.entries(r)) {
         if (v !== null && v !== '') c[k] = v;
@@ -1351,8 +1383,17 @@ const Crud = {
       result = await API.request(table, 'POST', clean);
     } catch (e) {
       if (this._isMissingColumnErr(e)) {
-        const cleanNoAudit = clean.map(r => { const c = { ...r }; delete c.created_by; return c; });
-        result = await API.request(table, 'POST', cleanNoAudit);
+        const missing = this._extractMissingColumn(e.message);
+        clean = this._stripMissing(clean, missing || 'created_by');
+        try {
+          result = await API.request(table, 'POST', clean);
+        } catch (e2) {
+          if (this._isMissingColumnErr(e2)) {
+            const missing2 = this._extractMissingColumn(e2.message);
+            clean = this._stripMissing(clean, missing2 || 'created_by');
+            result = await API.request(table, 'POST', clean);
+          } else { throw e2; }
+        }
       } else { throw e; }
     }
     this._logAudit(table, null, 'INSERT', null, { count: clean.length }, this._currentUserId(), this._currentUserName()).catch(() => {});
@@ -1362,13 +1403,22 @@ const Crud = {
   async softDelete(table, id) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
-    const payload = { deleted_at: new Date().toISOString(), updated_by: userId };
+    let payload = { deleted_at: new Date().toISOString(), updated_by: userId };
     try {
       await API.request(table, 'PATCH', payload, '?id=eq.' + id);
     } catch (e) {
       if (this._isMissingColumnErr(e)) {
-        delete payload.updated_by;
-        await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+        const missing = this._extractMissingColumn(e.message);
+        payload = this._stripMissing(payload, missing || 'updated_by');
+        try {
+          await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+        } catch (e2) {
+          if (this._isMissingColumnErr(e2)) {
+            const missing2 = this._extractMissingColumn(e2.message);
+            payload = this._stripMissing(payload, missing2 || 'updated_by');
+            await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+          } else { throw e2; }
+        }
       } else { throw e; }
     }
     this._logAudit(table, id, 'DELETE', null, { deleted_at: new Date().toISOString() }, userId, userName).catch(() => {});
@@ -2225,6 +2275,38 @@ const Crud = {
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('🔨 مصروف مشروع', cols, async (rows) => {
+      // Auto-lock paid_amount when payment_term is 'immediate'
+      setTimeout(() => {
+        const modalBody = document.querySelector('.modal-body');
+        if (!modalBody) return;
+        const rows = modalBody.querySelectorAll('tbody tr');
+        rows.forEach(tr => {
+          const termSel = tr.querySelector('select[data-key="payment_term"]');
+          const paidInp = tr.querySelector('input[data-key="paid_amount"]');
+          const amtInp = tr.querySelector('input[data-key="amount"]');
+          if (!termSel || !paidInp || !amtInp) return;
+          const sync = () => {
+            if (termSel.value === 'immediate') {
+              paidInp.value = amtInp.value || 0;
+              paidInp.readOnly = true;
+              paidInp.style.background = 'var(--bg3)';
+              paidInp.style.color = 'var(--text3)';
+            } else if (termSel.value === 'settlement') {
+              paidInp.readOnly = false;
+              paidInp.style.background = '';
+              paidInp.style.color = '';
+              if (+amtInp.value !== 0) amtInp.value = 0;
+            } else {
+              paidInp.readOnly = false;
+              paidInp.style.background = '';
+              paidInp.style.color = '';
+            }
+          };
+          termSel.addEventListener('change', sync);
+          amtInp.addEventListener('input', sync);
+          sync();
+        });
+      }, 150);
       const enriched = rows.map(r => {
         const project = projects.find(p => p.id === r.project_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
