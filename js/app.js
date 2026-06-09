@@ -110,6 +110,14 @@ const App = {
     const name = user.displayName || user.user_metadata?.name || 'المستخدم';
     const isAdmin = user.user_metadata?.role === 'admin';
     const navItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button data-nav="${screen}" class="nav-item ${this.screen === screen ? 'active' : ''}"><span>${icon}</span> ${label}</button>` : '';
+    const bnavItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button class="bottom-nav-item ${this.screen === screen ? 'active' : ''}" onclick="App.go('${screen}')"><span class="bottom-nav-icon">${icon}</span><span class="bottom-nav-label">${label}</span></button>` : '';
+    const bottomNav = `<div class="bottom-nav"><div class="bottom-nav-inner">
+      ${bnavItem('dashboard', '📊', 'الرئيسية')}
+      ${bnavItem('clients', '👥', 'العملاء')}
+      ${bnavItem('transactions', '💰', 'المالية')}
+      ${bnavItem('vendors', '🚚', 'الموردين')}
+      <button class="bottom-nav-item" onclick="App.toggleSidebar()"><span class="bottom-nav-icon">⚙️</span><span class="bottom-nav-label">المزيد</span></button>
+    </div></div>`;
     return `<div class="app-layout"><aside class="sidebar" id="sidebar"><div class="sidebar-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h2>سارة أبو العلا</h2><p>النظام المالي والمحاسبي</p></div><nav class="sidebar-nav">
       ${navItem('dashboard', '📊', 'الرئيسية')}
       ${navItem('clients', '👥', 'العملاء والمشاريع')}
@@ -119,7 +127,7 @@ const App = {
       ${navItem('employees', '🧑‍💼', 'الموظفين')}
       ${navItem('master', '📋', 'البيانات الأساسية')}
       ${isAdmin ? navItem('settings', '⚙️', 'الإعدادات') : ''}
-    </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main></div>`;
+    </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
   },
 
   pageContent(screen) {
@@ -201,11 +209,43 @@ const App = {
       const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
       const totalExp = txs.filter(t => ['project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
       document.getElementById('kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
-        <div class="kpi-card"><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
-        <div class="kpi-card"><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
-        <div class="kpi-card"><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
-        <div class="kpi-card"><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
+        <div class="kpi-card"><div class="kpi-icon">👥</div><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">📁</div><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
+      // Monthly bar chart
+      const months = {};
+      txs.forEach(t => {
+        const m = (t.date || t.created_at || '').slice(0, 7);
+        if (!m) return;
+        if (!months[m]) months[m] = { inc: 0, exp: 0 };
+        if (['project_deposit','owner_deposit'].includes(t.type)) months[m].inc += (+t.amount || 0);
+        else if (['project_expense','office_expense'].includes(t.type)) months[m].exp += (+t.amount || 0);
+      });
+      const monthKeys = Object.keys(months).sort().slice(-6);
+      const maxVal = Math.max(...monthKeys.map(m => Math.max(months[m].inc, months[m].exp)), 1);
+      const chartHtml = monthKeys.length ? `
+        <div class="card"><h3>📈 الحركة الشهرية</h3>
+        <div class="chart-container">
+          ${monthKeys.map(m => {
+            const ih = Math.round((months[m].inc / maxVal) * 140);
+            const eh = Math.round((months[m].exp / maxVal) * 140);
+            return `<div class="chart-bar">
+              <div class="chart-bars">
+                <div style="flex:1;height:${ih}px;background:var(--green);border-radius:4px 4px 0 0;min-height:3px" title="وارد: ${this.fmtMoney(months[m].inc)}"></div>
+                <div style="flex:1;height:${eh}px;background:var(--red);border-radius:4px 4px 0 0;min-height:3px" title="منصرف: ${this.fmtMoney(months[m].exp)}"></div>
+              </div>
+              <span class="chart-bar-label">${m.slice(5)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="chart-legend">
+          <span><i style="background:var(--green)"></i> وارد</span>
+          <span><i style="background:var(--red)"></i> منصرف</span>
+        </div>
+        </div>` : '';
+      if (chartHtml) document.getElementById('kpis').insertAdjacentHTML('afterend', chartHtml);
       // Customer balances
       const deposits = txs.filter(t => t.type === 'project_deposit');
       const expenses = txs.filter(t => t.type === 'project_expense');
