@@ -98,6 +98,9 @@ ALTER TABLE transactions ALTER COLUMN client_id DROP NOT NULL;
 ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL;
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
 ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision'));
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS expense_category TEXT DEFAULT 'construction';
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_expense_category_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_expense_category_check CHECK (expense_category IN ('construction','design'));
 
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
