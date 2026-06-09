@@ -737,10 +737,11 @@ const App = {
     try {
       const month = +document.getElementById('emp-payroll-month').value;
       const year = +document.getElementById('emp-payroll-year').value;
+      const lastDay = new Date(year, month, 0).getDate();
       const [employees, attendance, empTxs] = await Promise.all([
         API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-        API.request('attendance_records', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null`),
-        API.request('employee_transactions', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null`)
+        API.request('attendance_records', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-${lastDay}&deleted_at=is.null`),
+        API.request('employee_transactions', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-${lastDay}&deleted_at=is.null`)
       ]);
       const attByEmp = {};
       attendance.forEach(a => { attByEmp[a.employee_id] = attByEmp[a.employee_id] || []; attByEmp[a.employee_id].push(a); });
@@ -2409,9 +2410,10 @@ const Crud = {
       const now = new Date();
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
+      const lastDay = new Date(year, month, 0).getDate();
       const [empRows, attendance] = await Promise.all([
         API.request('employees', 'GET', null, `?select=*&id=eq.${empId}`),
-        API.request('attendance_records', 'GET', null, `?select=*&employee_id=eq.${empId}&date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-31&deleted_at=is.null&order=date.asc`)
+        API.request('attendance_records', 'GET', null, `?select=*&employee_id=eq.${empId}&date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-${lastDay}&deleted_at=is.null&order=date.asc`)
       ]);
       if (!empRows.length) return;
       const emp = empRows[0];
