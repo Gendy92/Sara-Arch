@@ -8,13 +8,39 @@ const App = {
   txExpenseLimit: 50,
   txExpenseLoaded: [],
 
+  esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  },
+
+  setDateRange(fromId, toId, preset) {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    const d = today.getDate();
+    let from, to;
+    switch (preset) {
+      case 'today': from = to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
+      case 'this_month': from = `${y}-${String(m+1).padStart(2,'0')}-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
+      case 'last_month': from = `${y}-${String(m).padStart(2,'0')}-01`; to = `${y}-${String(m).padStart(2,'0')}-${new Date(y,m,0).getDate()}`; break;
+      case 'this_quarter': const qm = Math.floor(m / 3) * 3; from = `${y}-${String(qm+1).padStart(2,'0')}-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
+      case 'this_year': from = `${y}-01-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
+    }
+    if (from) document.getElementById(fromId).value = from;
+    if (to) document.getElementById(toId).value = to;
+  },
+
   async start() {
+    window.addEventListener('hashchange', () => {
+      const { screen, opts } = this._routeFromHash();
+      if (screen !== this.screen) this.go(screen, opts);
+    });
     try {
       await Auth.init();
       this.bindNav();
       if (Auth.isLoggedIn()) {
         this.startIdleTimer();
-        await this.go('dashboard');
+        const { screen, opts } = this._routeFromHash();
+        await this.go(screen, opts);
       } else {
         this.renderLogin();
       }
@@ -82,7 +108,7 @@ const App = {
     document.getElementById('sidebar')?.classList.remove('open');
   },
 
-  async go(screen) {
+  async go(screen, opts = {}) {
     const isAdmin = Auth.user?.user_metadata?.role === 'admin';
     if (screen !== 'login' && !Auth.isLoggedIn()) { screen = 'login'; }
     if ((screen === 'register' || screen === 'settings' || screen === 'users' || screen === 'permissions' || screen === 'audit' || screen === 'backup') && !isAdmin) { screen = 'dashboard'; }
@@ -98,7 +124,7 @@ const App = {
     if (screen === 'dashboard') await this.loadDashboard();
     if (screen === 'clients') await this.loadClients();
     if (screen === 'vendors') await this.loadVendors();
-    if (screen === 'transactions') { this.txExpenseOffset = 0; this.txExpenseLoaded = []; await this.loadTransactions(); }
+    if (screen === 'transactions') { this.txExpenseOffset = 0; this.txExpenseLoaded = []; if (opts.tab) this.txTab = opts.tab; await this.loadTransactions(); }
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
     if (screen === 'settings') await this.loadSettings();
@@ -107,11 +133,33 @@ const App = {
     if (screen === 'audit') await this.loadAuditLog();
     if (screen === 'backup') await this.loadBackup();
     if (screen === 'master') await this.loadMasterData();
+    if (screen === 'profitloss') await this.loadProfitLoss();
+    if (screen === 'projectprofit') await this.loadProjectProfit();
+
+    // Update URL hash without triggering hashchange
+    const hash = opts.tab ? `#/${screen}?tab=${opts.tab}` : `#/${screen}`;
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, '', hash);
+    }
+  },
+
+  _routeFromHash() {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    if (!hash) return 'dashboard';
+    const [path, query] = hash.split('?');
+    const opts = {};
+    if (query) {
+      query.split('&').forEach(p => {
+        const [k, v] = p.split('=');
+        if (k && v) opts[k] = decodeURIComponent(v);
+      });
+    }
+    return { screen: path || 'dashboard', opts };
   },
 
   setTxTab(tab) {
     this.txTab = tab;
-    this.go('transactions');
+    this.go('transactions', { tab });
   },
 
   layout(content) {
@@ -135,12 +183,14 @@ const App = {
       ${navItem('office', '🏢', 'المكتب')}
       ${navItem('employees', '🧑‍💼', 'الموظفين')}
       ${navItem('master', '📋', 'البيانات الأساسية')}
+      ${navItem('profitloss', '📊', 'بيان الأرباح والخسائر')}
+      ${navItem('projectprofit', '📈', 'ربحية المشاريع')}
       ${isAdmin ? navItem('settings', '⚙️', 'الإعدادات') : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
   },
 
   pageContent(screen) {
-    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="card"><h3>💳 أرصدة العملاء النشطين</h3><div id="customer-balances"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>`;
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="content-grid"><div class="card"><h3>📊 الإيرادات والمصروفات الشهرية</h3><div id="monthly-chart"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="card"><h3>📉 توزيع المصروفات</h3><div id="expense-chart"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div></div><div class="card"><h3>💳 أرصدة العملاء النشطين</h3><div id="customer-balances"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>`;
     if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1>${Auth.can('clients', 'add') ? `<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button>` : ''}</div><div id="clients-list"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>`;
     if (screen === 'projects') { this.go('clients'); return ''; }
     if (screen === 'transactions') return `<div class="page-header"><h1>💰 معاملات المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="tab-bar"><button class="tab-btn ${App.txTab==='all'?'active':''}" onclick="App.setTxTab('all')">الكل</button><button class="tab-btn ${App.txTab==='expenses'?'active':''}" onclick="App.setTxTab('expenses')">المصروفات</button></div><div id="tx-all" style="display:${App.txTab==='all'?'block':'none'}"><div class="card"><div id="tx-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div><div id="tx-expenses" style="display:${App.txTab==='expenses'?'block':'none'}"><div class="card"><div id="tx-expenses-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
@@ -153,6 +203,8 @@ const App = {
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🧹 مسح الكاش</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إذا واجهت مشاكل في تحميل التحديثات الجديدة، اضغط لمسح الكاش وإعادة تحميل التطبيق.</p><div id="cache-clear-msg" style="margin-bottom:12px;font-size:12px;color:var(--text3)">الإصدار المحلي: <strong>${localStorage.getItem('sara_app_version') || '-'}</strong></div><button class="btn btn-secondary" onclick="App.clearAppCache()">🧹 مسح الكاش وإعادة التحميل</button></div></div>`;
     if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1><button class="btn btn-secondary" onclick="App.go('users')">← العودة إلى المستخدمين</button></div><div class="card"><div id="permissions-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>${Auth.can('master', 'add') ? `<div class="card" style="margin-top:16px"><h3>📤 رفع أقسام وبنود من Excel</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">الملف يجب أن يحتوي على عمودين على الأقل: القسم والبند. يمكن إضافة عمود ملاحظات اختياري.</p><input type="file" id="work-sections-items-file" accept=".xlsx,.xls,.csv" onchange="App.parseWorkSectionsItemsFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:320px"><div id="work-sections-items-preview" style="margin-top:16px">لم يتم اختيار ملف</div></div>` : ''}<div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
+    if (screen === 'profitloss') return `<div class="page-header"><h1>📊 بيان الأرباح والخسائر</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">من:</label><input type="date" id="pl-from" onchange="App.loadProfitLoss()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><label style="font-size:13px">إلى:</label><input type="date" id="pl-to" onchange="App.loadProfitLoss()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','this_month');App.loadProfitLoss()">هذا الشهر</button><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','last_month');App.loadProfitLoss()">الشهر الماضي</button><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','this_quarter');App.loadProfitLoss()">هذا الربع</button><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','this_year');App.loadProfitLoss()">هذا العام</button><button class="btn btn-sm btn-primary" onclick="App.exportProfitLossExcel()">📥 Excel</button><button class="btn btn-sm btn-secondary" onclick="App.printReport('بيان-الأرباح-والخسائر')">🖨️ طباعة</button></div><div id="pl-report"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'projectprofit') return `<div class="page-header"><h1>📈 ربحية المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="App.exportProjectProfitExcel()">📥 Excel</button><button class="btn btn-sm btn-secondary" onclick="App.printReport('ربحية-المشاريع')">🖨️ طباعة</button></div></div><div class="card"><div id="project-profit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     return '';
     return '';
   },
@@ -223,7 +275,43 @@ const App = {
         <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
         <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
         <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
-      // Monthly chart removed per user request
+      // ─── Monthly Revenue vs Expenses Chart (last 6 months) ───
+      const months = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(); d.setMonth(d.getMonth() - i);
+        months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleString('ar-EG', { month: 'short' }) });
+      }
+      const monthlyRev = {}; const monthlyExp = {};
+      months.forEach(m => { monthlyRev[m.key] = 0; monthlyExp[m.key] = 0; });
+      txs.forEach(t => {
+        if (!t.date) return;
+        const mk = t.date.slice(0, 7);
+        if (months.some(m => m.key === mk)) {
+          if (['project_deposit','owner_deposit'].includes(t.type)) monthlyRev[mk] += (+t.amount || 0);
+          if (['project_expense','office_expense'].includes(t.type)) monthlyExp[mk] += (+t.amount || 0);
+        }
+      });
+      const maxVal = Math.max(...months.map(m => Math.max(monthlyRev[m.key], monthlyExp[m.key])), 1);
+      const barChartHtml = `<div class="bar-chart">${months.map(m => {
+        const rh = Math.round((monthlyRev[m.key] / maxVal) * 120);
+        const eh = Math.round((monthlyExp[m.key] / maxVal) * 120);
+        return `<div class="bar-chart-group"><div class="bar-chart-bars"><div class="bar-chart-bar revenue" style="height:${rh}px" title="إيرادات: ${this.fmtMoney(monthlyRev[m.key])}"></div><div class="bar-chart-bar expense" style="height:${eh}px" title="مصروفات: ${this.fmtMoney(monthlyExp[m.key])}"></div></div><div class="bar-chart-label">${m.label}</div></div>`;
+      }).join('')}</div><div class="bar-chart-legend"><span><span class="dot" style="background:var(--green)"></span> الإيرادات</span><span><span class="dot" style="background:var(--red)"></span> المصروفات</span></div>`;
+      document.getElementById('monthly-chart').innerHTML = barChartHtml;
+      // ─── Expense Breakdown by Category ───
+      const expByCat = {};
+      txs.filter(t => ['project_expense','office_expense'].includes(t.type)).forEach(t => {
+        const cat = t.expense_category || 'غير مصنف';
+        expByCat[cat] = (expByCat[cat] || 0) + (+t.amount || 0);
+      });
+      const catRows = Object.entries(expByCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      const maxCat = Math.max(...catRows.map(r => r[1]), 1);
+      const catLabels = { design: 'تصميم', construction: 'تنفيذ', materials: 'مواد', permits: 'تراخيص', furniture: 'أثاث', equipment: 'معدات', marketing: 'تسويق', salaries: 'رواتب', rent: 'إيجار', utilities: 'مرافق', other: 'أخرى', office: 'مكتبي' };
+      const hbarHtml = `<div class="hbar-chart">${catRows.map(([cat, amt]) => {
+        const pct = Math.round((amt / maxCat) * 100);
+        return `<div class="hbar-row"><div class="hbar-label">${catLabels[cat] || cat}</div><div class="hbar-track"><div class="hbar-fill" style="width:${pct}%"></div></div><div class="hbar-value">${this.fmtMoney(amt)}</div></div>`;
+      }).join('')}</div>`;
+      document.getElementById('expense-chart').innerHTML = catRows.length ? hbarHtml : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       // Customer balances
       const deposits = txs.filter(t => t.type === 'project_deposit');
       const expenses = txs.filter(t => t.type === 'project_expense');
@@ -332,7 +420,7 @@ const App = {
       projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
 
       if (!clients.length) {
-        document.getElementById('clients-list').innerHTML = '<p style="color:var(--text3)">لا يوجد عملاء</p>';
+        document.getElementById('clients-list').innerHTML = `<p style="color:var(--text3);padding:16px">لا يوجد عملاء</p>${Auth.can('clients','add')?'<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة أول عميل</button>':''}`;
         return;
       }
 
@@ -405,7 +493,7 @@ const App = {
         const typeBadge = v.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
         return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
-      })) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
+      })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
     } catch (e) {
       console.error(e);
@@ -587,7 +675,7 @@ const App = {
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
         const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
-      })) : '<p style="color:var(--text3)">لا يوجد موظفين</p>';
+      })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
       await this.loadEmpPayroll();
     } catch (e) {
@@ -1104,11 +1192,11 @@ const App = {
 
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
         s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
-      ])) : '<p style="color:var(--text3)">لا توجد تصنيفات</p>';
+      ])) : `<p style="color:var(--text3);padding:16px">لا توجد تصنيفات</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addSector()">+ إضافة أول تصنيف</button>':''}`;
       this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...');
       document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'الماركة', 'الوحدة', 'الإجراءات'], items.map(i => [
         i.name, i.specification || '-', i.brand || '-', i.unit || 'قطعة', UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
-      ])) : '<p style="color:var(--text3)">لا توجد أصناف</p>';
+      ])) : `<p style="color:var(--text3);padding:16px">لا توجد أصناف</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addItem()">+ إضافة أول صنف</button>':''}`;
       this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
 
       // Fetch work sections & items (may fail if schema not run yet)
@@ -1123,11 +1211,11 @@ const App = {
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
       document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
         s.name, s.notes || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
-      ])) : '<p style="color:var(--text3)">لا يوجد أقسام</p>';
+      ])) : `<p style="color:var(--text3);padding:16px">لا يوجد أقسام</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkSection()">+ إضافة أول قسم</button>':''}`;
       this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
       document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
         i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
-      ])) : '<p style="color:var(--text3)">لا توجد بنود</p>';
+      ])) : `<p style="color:var(--text3);padding:16px">لا توجد بنود</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkItem()">+ إضافة أول بند</button>':''}`;
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
     } catch (e) {
       console.error(e);
@@ -1332,7 +1420,205 @@ const App = {
 
   fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ج.م'; },
   fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; },
-  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', design: 'تصميم مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب' }; return map[type] || type; }
+  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', design: 'تصميم مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب' }; return map[type] || type; },
+
+  async loadProfitLoss() {
+    try {
+      const fromEl = document.getElementById('pl-from');
+      const toEl = document.getElementById('pl-to');
+      if (fromEl && !fromEl.value) this.setDateRange('pl-from', 'pl-to', 'this_month');
+      const fromVal = document.getElementById('pl-from')?.value || '';
+      const toVal = document.getElementById('pl-to')?.value || '';
+      let qTx = '?select=*&deleted_at=is.null';
+      let qProc = '?select=*&deleted_at=is.null';
+      if (fromVal) { qTx += '&date=gte.' + fromVal; qProc += '&date=gte.' + fromVal; }
+      if (toVal) { qTx += '&date=lte.' + toVal; qProc += '&date=lte.' + toVal; }
+      const [txs, procs] = await Promise.all([
+        API.request('transactions', 'GET', null, qTx),
+        API.request('procurements', 'GET', null, qProc)
+      ]);
+      const revenueTxs = txs.filter(t => t.type === 'project_deposit');
+      const expenseTxs = txs.filter(t => t.type === 'project_expense' || t.type === 'office_expense');
+      const grossRevenue = revenueTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const txExpenses = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const procExpenses = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
+      const totalExpenses = txExpenses + procExpenses;
+      const netProfit = grossRevenue - totalExpenses;
+
+      const revByProject = {};
+      revenueTxs.forEach(t => {
+        const key = t.project_name || 'غير محدد';
+        revByProject[key] = (revByProject[key] || 0) + (+t.amount || 0);
+      });
+      const revRows = Object.entries(revByProject).map(([name, amt]) => [name, this.fmtMoney(amt)]);
+      revRows.push(['<strong>الإجمالي</strong>', `<strong>${this.fmtMoney(grossRevenue)}</strong>`]);
+
+      const expByCat = {};
+      expenseTxs.forEach(t => {
+        let cat = t.expense_category || 'أخرى';
+        if (t.type === 'office_expense') cat = 'مصروفات مكتبية';
+        expByCat[cat] = (expByCat[cat] || 0) + (+t.amount || 0);
+      });
+      procs.forEach(p => {
+        const cat = p.vendor_name || p.expense_type || 'مشتريات';
+        expByCat[cat] = (expByCat[cat] || 0) + (+p.total_price || 0);
+      });
+      const expRows = Object.entries(expByCat).map(([name, amt]) => [name, this.fmtMoney(amt)]);
+      expRows.push(['<strong>الإجمالي</strong>', `<strong>${this.fmtMoney(totalExpenses)}</strong>`]);
+
+      const html = `
+        <div class="kpi-grid" style="margin-bottom:16px">
+          <div class="kpi-card"><div class="kpi-label">إجمالي الإيرادات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(grossRevenue)}</div></div>
+          <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(totalExpenses)}</div></div>
+          <div class="kpi-card"><div class="kpi-label">صافي الربح</div><div class="kpi-value" style="color:${netProfit >= 0 ? 'var(--green)' : 'var(--red)'}">${this.fmtMoney(netProfit)}</div></div>
+        </div>
+        <div class="card" style="margin-bottom:16px"><h3>💰 الإيرادات</h3>${revRows.length > 1 ? this.table(['البيان', 'المبلغ'], revRows) : '<p style="color:var(--text3)">لا توجد إيرادات</p>'}</div>
+        <div class="card"><h3>🔥 المصروفات</h3>${expRows.length > 1 ? this.table(['البيان', 'المبلغ'], expRows) : '<p style="color:var(--text3)">لا توجد مصروفات</p>'}</div>
+      `;
+      document.getElementById('pl-report').innerHTML = html;
+    } catch (e) {
+      console.error(e);
+      document.getElementById('pl-report').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadProfitLoss()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async loadProjectProfit() {
+    try {
+      const [projects, clients, txs, procs] = await Promise.all([
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active'),
+        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null'),
+        API.request('procurements', 'GET', null, '?select=*&deleted_at=is.null')
+      ]);
+      const clientMap = {};
+      clients.forEach(c => { clientMap[c.id] = c.name; });
+      const revByProject = {};
+      const expByProject = {};
+      txs.forEach(t => {
+        if (t.type === 'project_deposit' && t.project_id) revByProject[t.project_id] = (revByProject[t.project_id] || 0) + (+t.amount || 0);
+        if (t.type === 'project_expense' && t.project_id) expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0);
+      });
+      procs.forEach(p => { if (p.project_id) expByProject[p.project_id] = (expByProject[p.project_id] || 0) + (+p.total_price || 0); });
+      let rows = projects.map(p => {
+        const rev = revByProject[p.id] || 0;
+        const exp = expByProject[p.id] || 0;
+        const profit = rev - exp;
+        const margin = rev > 0 ? ((profit / rev) * 100).toFixed(1) : '0.0';
+        const badge = profit >= 0 ? '<span class="badge badge-green">ربح</span>' : '<span class="badge badge-red">خسارة</span>';
+        return {
+          name: p.name,
+          client: clientMap[p.client_id] || '-',
+          rev, exp, profit, margin: parseFloat(margin), badge,
+          html: [p.name, clientMap[p.client_id] || '-', this.fmtMoney(rev), this.fmtMoney(exp), this.fmtMoney(profit), margin + '%', badge]
+        };
+      });
+      rows.sort((a, b) => b.margin - a.margin);
+      document.getElementById('project-profit-tbl').innerHTML = rows.length ? this.table(['المشروع', 'العميل', 'الإيرادات', 'المصروفات', 'الربح', 'نسبة الربح', 'الحالة'], rows.map(r => r.html)) : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
+    } catch (e) {
+      console.error(e);
+      document.getElementById('project-profit-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadProjectProfit()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async exportProfitLossExcel() {
+    try {
+      const fromVal = document.getElementById('pl-from')?.value || '';
+      const toVal = document.getElementById('pl-to')?.value || '';
+      let qTx = '?select=*&deleted_at=is.null';
+      let qProc = '?select=*&deleted_at=is.null';
+      if (fromVal) { qTx += '&date=gte.' + fromVal; qProc += '&date=gte.' + fromVal; }
+      if (toVal) { qTx += '&date=lte.' + toVal; qProc += '&date=lte.' + toVal; }
+      const [txs, procs] = await Promise.all([
+        API.request('transactions', 'GET', null, qTx),
+        API.request('procurements', 'GET', null, qProc)
+      ]);
+      const revenueTxs = txs.filter(t => t.type === 'project_deposit');
+      const expenseTxs = txs.filter(t => t.type === 'project_expense' || t.type === 'office_expense');
+      const grossRevenue = revenueTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const txExpenses = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const procExpenses = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
+      const totalExpenses = txExpenses + procExpenses;
+      const netProfit = grossRevenue - totalExpenses;
+
+      const wsData = [
+        ['بيان الأرباح والخسائر'],
+        ['الفترة:', fromVal || '-', 'إلى:', toVal || '-'],
+        [],
+        ['البيان', 'المبلغ'],
+        ['إجمالي الإيرادات', grossRevenue],
+        ['إجمالي المصروفات', totalExpenses],
+        ['صافي الربح', netProfit],
+        [],
+        ['تفاصيل الإيرادات'],
+        ['البيان', 'المبلغ']
+      ];
+      const revByProject = {};
+      revenueTxs.forEach(t => {
+        const key = t.project_name || 'غير محدد';
+        revByProject[key] = (revByProject[key] || 0) + (+t.amount || 0);
+      });
+      Object.entries(revByProject).forEach(([k, v]) => wsData.push([k, v]));
+      wsData.push([], ['تفاصيل المصروفات'], ['البيان', 'المبلغ']);
+      const expByCat = {};
+      expenseTxs.forEach(t => {
+        let cat = t.expense_category || 'أخرى';
+        if (t.type === 'office_expense') cat = 'مصروفات مكتبية';
+        expByCat[cat] = (expByCat[cat] || 0) + (+t.amount || 0);
+      });
+      procs.forEach(p => {
+        const cat = p.vendor_name || p.expense_type || 'مشتريات';
+        expByCat[cat] = (expByCat[cat] || 0) + (+p.total_price || 0);
+      });
+      Object.entries(expByCat).forEach(([k, v]) => wsData.push([k, v]));
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'P&L');
+      const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+      const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `بيان-الأرباح-والخسائر-${dateStr}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      UI.toast('خطأ في تصدير Excel: ' + e.message, 'error');
+    }
+  },
+
+  async exportProjectProfitExcel() {
+    try {
+      const [projects, clients, txs, procs] = await Promise.all([
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active'),
+        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null'),
+        API.request('procurements', 'GET', null, '?select=*&deleted_at=is.null')
+      ]);
+      const clientMap = {};
+      clients.forEach(c => { clientMap[c.id] = c.name; });
+      const revByProject = {};
+      const expByProject = {};
+      txs.forEach(t => {
+        if (t.type === 'project_deposit' && t.project_id) revByProject[t.project_id] = (revByProject[t.project_id] || 0) + (+t.amount || 0);
+        if (t.type === 'project_expense' && t.project_id) expByProject[t.project_id] = (expByProject[t.project_id] || 0) + (+t.amount || 0);
+      });
+      procs.forEach(p => { if (p.project_id) expByProject[p.project_id] = (expByProject[p.project_id] || 0) + (+p.total_price || 0); });
+      const rows = projects.map(p => {
+        const rev = revByProject[p.id] || 0;
+        const exp = expByProject[p.id] || 0;
+        const profit = rev - exp;
+        const margin = rev > 0 ? ((profit / rev) * 100).toFixed(1) : '0.0';
+        return [p.name, clientMap[p.client_id] || '-', rev, exp, profit, margin + '%', profit >= 0 ? 'ربح' : 'خسارة'];
+      });
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['المشروع', 'العميل', 'الإيرادات', 'المصروفات', 'الربح', 'نسبة الربح', 'الحالة'],
+        ...rows
+      ]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'ربحية المشاريع');
+      XLSX.writeFile(wb, `ربحية-المشاريع-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      UI.toast('خطأ في تصدير Excel: ' + e.message, 'error');
+    }
+  }
 };
 
 // ─── CRUD ───
@@ -1525,9 +1811,26 @@ const Crud = {
     return result;
   },
 
-  async softDelete(table, id) {
+  async softDelete(table, id, cascade = false) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
+    // Cascade soft-delete for clients
+    if (cascade && table === 'clients') {
+      try {
+        const now = new Date().toISOString();
+        const projects = await API.request('projects', 'GET', null, `?select=id&client_id=eq.${id}&deleted_at=is.null`);
+        for (const p of projects) {
+          await this.softDelete('projects', p.id, false);
+        }
+        const txs = await API.request('transactions', 'GET', null, `?select=id&client_id=eq.${id}&deleted_at=is.null`);
+        for (const t of txs) {
+          await this.softDelete('transactions', t.id, false);
+        }
+        UI.toast(`🗑️ تم حذف ${projects.length} مشروع و ${txs.length} معاملة مرتبطة`, 'info');
+      } catch (e) {
+        console.warn('Cascade delete partial failure:', e);
+      }
+    }
     let payload = { deleted_at: new Date().toISOString(), updated_by: userId };
     try {
       await API.request(table, 'PATCH', payload, '?id=eq.' + id);
@@ -1594,7 +1897,7 @@ const Crud = {
   },
 
   delClient(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا العميل؟', async () => { await this.softDelete('clients', id); UI.toast('تم الحذف'); App.loadClients(); });
+    UI.confirm('هل أنت متأكد من حذف هذا العميل؟ سيتم حذف جميع مشاريعه ومعاملاته المرتبطة.', async () => { await this.softDelete('clients', id, true); UI.toast('تم الحذف مع البيانات المرتبطة'); App.loadClients(); });
   },
 
   // ─── PROJECTS (linked to Clients) ───
@@ -1677,12 +1980,18 @@ const Crud = {
 
     const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
       <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="ps-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="ps-to" value="${maxDate}"></div>
         <button class="btn btn-primary" onclick="Crud.renderProjectStatement('${id}')">تطبيق</button>
         <button class="btn btn-secondary" onclick="Crud.printProjectStatement('${id}')">🖨️ طباعة / PDF</button>
         <button class="btn btn-secondary" onclick="Crud.exportProjectStatement('${id}')">📊 تصدير Excel</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('ps-from','ps-to','today')">اليوم</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('ps-from','ps-to','this_month')">هذا الشهر</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('ps-from','ps-to','last_month')">الشهر الماضي</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('ps-from','ps-to','this_year')">هذا العام</button>
       </div>
     </div>`;
 
@@ -1690,7 +1999,7 @@ const Crud = {
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
 
     const html = logoHtml + filterHtml + reportHtml;
-    const overlay = UI.openModal('كشف حساب المشروع — ' + project.name, html, null);
+    const overlay = UI.openModal('كشف حساب المشروع — ' + App.esc(project.name), html, null);
     overlay.dataset.projectId = id;
     overlay.dataset.projectName = project.name;
     overlay.dataset.clientName = project.client_name || '';
@@ -1767,7 +2076,7 @@ const Crud = {
     const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
 
     let html = `<div style="margin-bottom:16px">
-      <strong>المشروع:</strong> ${projectName}<br>
+      <strong>المشروع:</strong> ${App.esc(projectName)}<br>
       <strong>العميل:</strong> ${clientName || '-'}<br>
       <strong>الفترة:</strong> ${fromVal || '—'} → ${toVal || '—'}<br>
       <strong>نسبة الإشراف:</strong> ${supervisionPercentage}%<br>
@@ -1885,7 +2194,7 @@ const Crud = {
       }
     </div>
     <div style="margin-top:16px"><button class="btn btn-secondary" onclick="App.printReport('ميزانية المشروع ${project.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>`;
-    UI.openModal('📊 ميزانية المشروع — ' + project.name, html, null);
+    UI.openModal('📊 ميزانية المشروع — ' + App.esc(project.name), html, null);
   },
 
   // ─── PROJECT TASKS ───
@@ -1912,7 +2221,7 @@ const Crud = {
         UI.actions(t.id, 'Crud.editProjectTask', 'Crud.delProjectTask')
       ]);
       const html = `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addProjectTask('${projectId}')">+ إضافة مهمة</button></div>${tasks.length ? App.table(['المهمة', 'المسؤول', 'الحالة', 'الأولوية', 'تاريخ البدء', 'تاريخ الانتهاء', 'ملاحظات', 'الإجراءات'], taskRows) : '<p style="color:var(--text3)">لا توجد مهام لهذا المشروع</p>'}`;
-      UI.openModal('📋 مهام المشروع — ' + project.name, html, null);
+      UI.openModal('📋 مهام المشروع — ' + App.esc(project.name), html, null);
     } catch (e) {
       console.error(e);
       UI.toast('خطأ في تحميل المهام: ' + e.message, 'error');
@@ -2012,12 +2321,18 @@ const Crud = {
 
     const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
       <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="cs-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="cs-to" value="${maxDate}"></div>
         <button class="btn btn-primary" onclick="Crud.renderClientStatement()">تطبيق</button>
         <button class="btn btn-secondary" onclick="Crud.printClientStatement()">🖨️ طباعة / PDF</button>
         <button class="btn btn-secondary" onclick="Crud.exportClientStatement()">📊 تصدير Excel</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('cs-from','cs-to','today')">اليوم</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('cs-from','cs-to','this_month')">هذا الشهر</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('cs-from','cs-to','last_month')">الشهر الماضي</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('cs-from','cs-to','this_year')">هذا العام</button>
       </div>
     </div>`;
 
@@ -2025,7 +2340,7 @@ const Crud = {
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
 
     const html = logoHtml + filterHtml + reportHtml;
-    const overlay = UI.openModal('كشف حساب العميل — ' + client.name, html, null);
+    const overlay = UI.openModal('كشف حساب العميل — ' + App.esc(client.name), html, null);
     overlay.dataset.clientId = id;
     overlay.dataset.clientName = client.name;
     overlay.dataset.projects = JSON.stringify(projects);
@@ -2088,7 +2403,7 @@ const Crud = {
     const card = (title, value, color) => `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center;min-width:120px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">${title}</div><div style="font-size:18px;font-weight:700;color:${color||'var(--text)'}">${value}</div></div>`;
 
     let html = `<div style="margin-bottom:20px;padding:16px;background:linear-gradient(135deg,var(--bg3),var(--bg));border-radius:var(--radius);border:1px solid var(--border)">
-      <h2 style="color:var(--gold);margin-bottom:8px;font-size:18px">📋 ملخص العميل — ${clientName}</h2>
+      <h2 style="color:var(--gold);margin-bottom:8px;font-size:18px">📋 ملخص العميل — ${App.esc(clientName)}</h2>
       <div style="font-size:13px;color:var(--text2);margin-bottom:16px">الفترة: ${fromVal || '—'} → ${toVal || '—'}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
         ${card('إجمالي الوارد', App.fmtMoney(totalDep), 'var(--green)')}
@@ -2296,12 +2611,18 @@ const Crud = {
 
     const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
       <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="vs-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="vs-to" value="${maxDate}"></div>
         <button class="btn btn-primary" onclick="Crud.renderVendorStatement('${id}')">تطبيق</button>
         <button class="btn btn-secondary" onclick="Crud.printVendorStatement('${id}')">🖨️ طباعة / PDF</button>
         <button class="btn btn-secondary" onclick="Crud.exportVendorStatement('${id}')">📊 تصدير Excel</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vs-from','vs-to','today')">اليوم</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vs-from','vs-to','this_month')">هذا الشهر</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vs-from','vs-to','last_month')">الشهر الماضي</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vs-from','vs-to','this_year')">هذا العام</button>
       </div>
     </div>`;
 
@@ -2309,7 +2630,7 @@ const Crud = {
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
 
     const html = logoHtml + filterHtml + reportHtml;
-    const overlay = UI.openModal('📋 كشف حساب المورد — ' + vendor.name, html, null);
+    const overlay = UI.openModal('📋 كشف حساب المورد — ' + App.esc(vendor.name), html, null);
     overlay.dataset.vendorId = id;
     overlay.dataset.vendorName = vendor.name;
     overlay.dataset.procs = JSON.stringify(procs);
@@ -2386,7 +2707,7 @@ const Crud = {
 
     if (tableRows.length) tableRows.push(['', '', '', '', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalAmount)}</strong>`, '', `<strong>${App.fmtMoney(totalPaid)}</strong>`, `<strong style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(balance))}</strong>`, '']);
 
-    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendorName}<br><strong>الفترة:</strong> ${fromVal || '—'} → ${toVal || '—'}<br><strong>إجمالي المبلغ:</strong> ${App.fmtMoney(totalAmount)}<br><strong>إجمالي المدفوع:</strong> ${App.fmtMoney(totalPaid)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div>`;
+    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${App.esc(vendorName)}<br><strong>الفترة:</strong> ${fromVal || '—'} → ${toVal || '—'}<br><strong>إجمالي المبلغ:</strong> ${App.fmtMoney(totalAmount)}<br><strong>إجمالي المدفوع:</strong> ${App.fmtMoney(totalPaid)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div>`;
     const tableHtml = tableRows.length ? App.table(['#', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ'], tableRows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
 
     const reportEl = document.getElementById(`vendor-statement-report-${id}`);
@@ -2482,12 +2803,18 @@ const Crud = {
 
     const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
       <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="vp-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="vp-to" value="${maxDate}"></div>
         <button class="btn btn-primary" onclick="Crud.renderVendorPurchases('${vendorId}')">تطبيق</button>
         <button class="btn btn-secondary" onclick="Crud.printVendorPurchases('${vendorId}')">🖨️ طباعة / PDF</button>
         <button class="btn btn-secondary" onclick="Crud.exportVendorPurchases('${vendorId}')">📊 تصدير Excel</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vp-from','vp-to','today')">اليوم</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vp-from','vp-to','this_month')">هذا الشهر</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vp-from','vp-to','last_month')">الشهر الماضي</button>
+        <button class="btn btn-sm btn-secondary" onclick="App.setDateRange('vp-from','vp-to','this_year')">هذا العام</button>
       </div>
     </div>`;
 
@@ -2495,7 +2822,7 @@ const Crud = {
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
 
     const html = logoHtml + filterHtml + reportHtml;
-    const overlay = UI.openModal('💰 مشتريات — ' + vendor.name, html, null);
+    const overlay = UI.openModal('💰 مشتريات — ' + App.esc(vendor.name), html, null);
     overlay.dataset.vendorId = vendorId;
     overlay.dataset.vendorName = vendor.name;
     overlay.dataset.procs = JSON.stringify(procs);
@@ -2773,7 +3100,7 @@ const Crud = {
         custodyHtml += `<div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div><strong>عهدة ${App.fmtDate(c.date)}</strong> — ${c.project_name || '-'} ${statusBadge}</div><div style="display:flex;gap:6px">${canSettle ? `<button class="btn btn-sm btn-secondary" onclick="Crud.addCustodyExpense('${c.id}', '${empId}')">+ مصروف</button><button class="btn btn-sm btn-secondary" onclick="Crud.returnCustody('${c.id}', '${empId}')">+ مرتد</button><button class="btn btn-sm btn-primary" onclick="Crud.settleCustody('${c.id}', '${empId}')">تسوية</button>` : ''}</div></div><div style="font-size:12px;color:var(--text2);margin-bottom:8px">سلمت: ${App.fmtMoney(given)} | صرفت: ${App.fmtMoney(spent)} | مرتد: ${App.fmtMoney(returned)} | متبقي: <strong style="color:${remaining >= 0 ? 'var(--green)' : 'var(--red)'}">${App.fmtMoney(remaining)}</strong></div>${App.table(['التاريخ', 'البيان', 'المبلغ'], expRows)}</div>`;
       });
       const html = `<div style="margin-bottom:16px"><strong>الموظف:</strong> ${emp.name}<br><strong>الوظيفة:</strong> ${emp.job_title || '-'}<br><strong>العهدة النشطة:</strong> <span style="color:var(--green)">${App.fmtMoney(activeTotal)}</span><br><strong>العهدة المقفلة:</strong> ${App.fmtMoney(settledTotal)}</div><div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addCustody('${emp.id}', '${emp.name}')">+ تسليم عهدة جديدة</button></div>${custodyHtml || '<p style="color:var(--text3)">لا توجد سجلات عهدة</p>'}`;
-      UI.openModal('سجل العهدة — ' + emp.name, html, null);
+      UI.openModal('سجل العهدة — ' + App.esc(emp.name), html, null);
     } catch (e) {
       console.error('[employeeCustody] Error:', e);
       UI.toast('خطأ في تحميل سجل العهدة: ' + (e.message || ''), 'error');
@@ -2875,7 +3202,7 @@ const Crud = {
         <span style="color:var(--text3)">🏖 إجازة: ${summary.leave}</span>
       </div>
       ${rows.length ? App.table(['التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات'], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور هذا الشهر</p>'}`;
-      UI.openModal('سجل الحضور — ' + emp.name, html, null);
+      UI.openModal('سجل الحضور — ' + App.esc(emp.name), html, null);
     } catch (e) { console.error(e); UI.toast('خطأ في تحميل سجل الحضور', 'error'); }
   },
 
@@ -3299,7 +3626,7 @@ const Crud = {
       { name: 'penalties', label: 'الجزاءات', type: 'number' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
-    UI.openModal('تعديل راتب — ' + p.employee_name, `<form>${UI.form(fields, p)}</form>`, async (form) => {
+    UI.openModal('تعديل راتب — ' + App.esc(p.employee_name), `<form>${UI.form(fields, p)}</form>`, async (form) => {
       const fd = new FormData(form);
       const base = +fd.get('base_salary') || 0;
       const deductions = +fd.get('deductions') || 0;
