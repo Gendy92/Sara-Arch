@@ -1,0 +1,21 @@
+https://gendy92.github.io/Sara-Arch/
+
+https://supabase.com/dashboard/project/tvjkctttcijymqvaetsv/sql/70746deb-7f7e-4fee-86e7-eb511993904b
+https://github.com/Gendy92/Sara-Arch/settings/pages
+
+Amendments on App
+
+Main Window:
+A- make less detailed interface & mention only active customers & active vendors .
+b- More simplified statements ( inputs - outputs = Remaining balance ).
+
+Clients & projects window:
+A- Client downloadable financial statement:
+  1- make each project in separate chapter.
+  2- design layout is great modernize only and make more clear inclusive all entries.
+  3- page1 is project summary for chosen projects only if client statement requested show summary for all projects as-is then details of each in separate chapter.
+
+Vendors
+ 1- Vendor types based on field ( service - merchandise)
+ 2- include dashboard for unsettled vendors balance if <>0
+ 3- link vendors statement to 

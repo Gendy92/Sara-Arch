@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   email TEXT,
   address TEXT,
   sector TEXT,
+  vendor_type TEXT DEFAULT 'service',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -315,6 +316,7 @@ DO $$ BEGIN ALTER TABLE projects ALTER COLUMN client_id SET NOT NULL; EXCEPTION 
 
 -- Vendors
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS sector TEXT;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS vendor_type TEXT DEFAULT 'service';
 
 -- Transactions
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS vendor_id UUID REFERENCES vendors(id);
@@ -365,6 +367,10 @@ ALTER TABLE employee_transactions ADD CONSTRAINT employee_transactions_type_chec
 ALTER TABLE custody_records DROP CONSTRAINT IF EXISTS custody_records_status_check;
 ALTER TABLE custody_records ADD CONSTRAINT custody_records_status_check CHECK (status IN ('active','settled','partial'));
 
+-- Vendors vendor_type constraint
+ALTER TABLE vendors DROP CONSTRAINT IF EXISTS vendors_vendor_type_check;
+ALTER TABLE vendors ADD CONSTRAINT vendors_vendor_type_check CHECK (vendor_type IN ('service','merchandise'));
+
 -- Attendance status constraint
 ALTER TABLE attendance_records DROP CONSTRAINT IF EXISTS attendance_records_status_check;
 ALTER TABLE attendance_records ADD CONSTRAINT attendance_records_status_check CHECK (status IN ('present','absent','late','half_day','leave'));
@@ -402,6 +408,27 @@ DROP TRIGGER IF EXISTS work_sections_u ON work_sections; CREATE TRIGGER work_sec
 DROP TRIGGER IF EXISTS work_items_u ON work_items; CREATE TRIGGER work_items_u BEFORE UPDATE ON work_items FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS profiles_u ON profiles; CREATE TRIGGER profiles_u BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS user_permissions_u ON user_permissions; CREATE TRIGGER user_permissions_u BEFORE UPDATE ON user_permissions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ STEP 5b: Audit Columns (created_by / updated_by)        │
+-- └─────────────────────────────────────────────────────────┘
+
+ALTER TABLE clients       ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE clients       ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE projects      ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE projects      ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE employees     ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE employees     ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE vendors       ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE vendors       ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE transactions  ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE transactions  ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE procurements  ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE procurements  ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE payroll_records     ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE payroll_records     ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE attendance_records  ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE attendance_records  ADD COLUMN IF NOT EXISTS updated_by UUID;
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 6: Row Level Security (RLS)                        │

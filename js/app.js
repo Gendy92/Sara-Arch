@@ -1193,17 +1193,37 @@ const Crud = {
   _currentUserId() { return Auth.user?.id || null; },
   _currentUserName() { return Auth.user?.displayName || Auth.fromEmail(Auth.user?.email) || 'unknown'; },
 
+  _isMissingColumnErr(e) {
+    const msg = e?.message || '';
+    return msg.includes('PGRST204') || msg.includes('42703') || msg.includes('updated_by') || msg.includes('created_by');
+  },
+
   async save(table, data, id) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
     if (id) {
       const payload = { ...data, updated_by: userId };
-      await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+      try {
+        await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+      } catch (e) {
+        if (this._isMissingColumnErr(e)) {
+          delete payload.updated_by;
+          await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+        } else { throw e; }
+      }
       this._logAudit(table, id, 'UPDATE', null, payload, userId, userName).catch(() => {});
       return { id, ...payload };
     } else {
       const payload = { ...data, created_by: userId };
-      const result = await API.request(table, 'POST', payload);
+      let result;
+      try {
+        result = await API.request(table, 'POST', payload);
+      } catch (e) {
+        if (this._isMissingColumnErr(e)) {
+          delete payload.created_by;
+          result = await API.request(table, 'POST', payload);
+        } else { throw e; }
+      }
       const recordId = Array.isArray(result) ? result[0]?.id : result?.id;
       this._logAudit(table, recordId, 'INSERT', null, payload, userId, userName).catch(() => {});
       return result;
@@ -1265,7 +1285,15 @@ const Crud = {
       return c;
     }).filter(r => Object.keys(r).length > 1);
     if (clean.length === 0) throw new Error('لا يوجد بيانات صالحة');
-    const result = await API.request(table, 'POST', clean);
+    let result;
+    try {
+      result = await API.request(table, 'POST', clean);
+    } catch (e) {
+      if (this._isMissingColumnErr(e)) {
+        const cleanNoAudit = clean.map(r => { const c = { ...r }; delete c.created_by; return c; });
+        result = await API.request(table, 'POST', cleanNoAudit);
+      } else { throw e; }
+    }
     this._logAudit(table, null, 'INSERT', null, { count: clean.length }, this._currentUserId(), this._currentUserName()).catch(() => {});
     return result;
   },
@@ -1273,7 +1301,15 @@ const Crud = {
   async softDelete(table, id) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
-    await API.request(table, 'PATCH', { deleted_at: new Date().toISOString(), updated_by: userId }, '?id=eq.' + id);
+    const payload = { deleted_at: new Date().toISOString(), updated_by: userId };
+    try {
+      await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+    } catch (e) {
+      if (this._isMissingColumnErr(e)) {
+        delete payload.updated_by;
+        await API.request(table, 'PATCH', payload, '?id=eq.' + id);
+      } else { throw e; }
+    }
     this._logAudit(table, id, 'DELETE', null, { deleted_at: new Date().toISOString() }, userId, userName).catch(() => {});
   },
 
