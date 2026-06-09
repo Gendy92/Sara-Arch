@@ -181,6 +181,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .bottom-nav-label{font-size:10px;font-weight:600;white-space:nowrap}
 .bottom-nav-item:active{opacity:.7}
 
+/* ─── TABS ─── */
+.tab-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:12px}
+.tab-btn{padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--glass);color:var(--text3);transition:.2s;font-family:inherit}
+.tab-btn:hover{background:rgba(255,255,255,0.06);color:var(--text)}
+.tab-btn.active{background:linear-gradient(135deg,rgba(184,160,122,0.9),rgba(184,160,122,0.6));color:#14161f;border-color:transparent}
+
 /* ─── PRINT / PDF ─── */
 @media print{
   .sidebar,.hamburger,.page-header button,.btn,.table-actions{display:none!important}
