@@ -1499,22 +1499,77 @@ const Crud = {
     ]);
     if (!projectRows.length) return;
     const project = projectRows[0];
-    const totalExpenses = expenses.reduce((s, t) => s + (+t.amount || 0), 0);
-    const designExpenses = expenses.filter(t => t.expense_category === 'design');
+
+    const minDate = deposits.concat(expenses).filter(t => t.date).map(t => t.date).sort()[0] || '';
+    const maxDate = new Date().toISOString().slice(0, 10);
+
+    const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+      <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="ps-from" value="${minDate}"></div>
+        <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="ps-to" value="${maxDate}"></div>
+        <button class="btn btn-primary" onclick="App.renderProjectStatement('${id}')">تطبيق</button>
+        <button class="btn btn-secondary" onclick="App.printProjectStatement('${id}')">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="App.exportProjectStatement('${id}')">📊 تصدير Excel</button>
+      </div>
+    </div>`;
+
+    const reportHtml = `<div id="project-statement-report-${id}"></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+
+    const html = logoHtml + filterHtml + reportHtml;
+    const overlay = UI.openModal('كشف حساب المشروع — ' + project.name, html, null);
+    overlay.dataset.projectId = id;
+    overlay.dataset.projectName = project.name;
+    overlay.dataset.clientName = project.client_name || '';
+    overlay.dataset.supervisionPercentage = project.supervision_percentage || 0;
+    overlay.dataset.deposits = JSON.stringify(deposits);
+    overlay.dataset.expenses = JSON.stringify(expenses);
+    this.renderProjectStatement(id);
+  },
+
+  renderProjectStatement(id) {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const projectName = overlay.dataset.projectName || '';
+    const clientName = overlay.dataset.clientName || '';
+    const supervisionPercentage = +overlay.dataset.supervisionPercentage || 0;
+    const deposits = JSON.parse(overlay.dataset.deposits || '[]');
+    const expenses = JSON.parse(overlay.dataset.expenses || '[]');
+
+    const fromVal = document.getElementById('ps-from')?.value || '';
+    const toVal = document.getElementById('ps-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const fDeposits = deposits.filter(t => inRange(t.date));
+    const fExpenses = expenses.filter(t => inRange(t.date));
+
+    const totalExpenses = fExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
+    const designExpenses = fExpenses.filter(t => t.expense_category === 'design');
     const totalDesign = designExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
     const totalConstr = totalExpenses - totalDesign;
-    const supervisionAmount = totalConstr * (project.supervision_percentage || 0) / 100;
+    const supervisionAmount = totalConstr * supervisionPercentage / 100;
+
     const ledger = [];
-    deposits.forEach(t => {
+    fDeposits.forEach(t => {
       const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '';
       ledger.push({ date: t.date || t.created_at, type: 'وارد', in: +t.amount || 0, out: 0, desc: (t.description || 'عربون من العميل') + (pm ? ` (${pm})` : '') });
     });
-    expenses.filter(t => (t.expense_category || 'construction') !== 'design').forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: (t.description || '-') + (t.vendor_name ? ` (${t.vendor_name})` : '') }));
+    fExpenses.filter(t => (t.expense_category || 'construction') !== 'design').forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
     if (designExpenses.length > 0) {
       ledger.push({ date: new Date().toISOString(), type: 'تصنيف', in: 0, out: 0, desc: '<strong>━━ مصروفات تصميم ━━</strong>' });
-      designExpenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف تصميم', in: 0, out: +t.amount || 0, desc: (t.description || '-') + (t.vendor_name ? ` (${t.vendor_name})` : '') }));
+      designExpenses.forEach(t => ledger.push({ date: t.date || t.created_at, type: 'منصرف تصميم', in: 0, out: +t.amount || 0, desc: t.description || '-' }));
     }
-    ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: supervisionAmount, desc: `إشراف ${project.name} (${project.supervision_percentage || 0}%)` });
+    ledger.push({ date: new Date().toISOString(), type: 'إشراف', in: 0, out: supervisionAmount, desc: `إشراف ${projectName} (${supervisionPercentage}%)` });
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
     let balance = 0;
     const rows = ledger.map(r => {
@@ -1524,9 +1579,9 @@ const Crud = {
     const totalIn = ledger.reduce((s, r) => s + r.in, 0);
     const totalOut = ledger.reduce((s, r) => s + r.out, 0);
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
-    // Expense detail section with payment method
+
     const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
-    const expenseDetailRows = expenses.sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).map((t, idx) => {
+    const expenseDetailRows = fExpenses.sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).map((t, idx) => {
       const isNew = t.payment_term !== undefined && t.payment_term !== null;
       const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
       const bal = (+t.amount || 0) - paid;
@@ -1535,12 +1590,82 @@ const Crud = {
       const sectionLabel = t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب');
       const itemLabel = t.item_name || '-';
       const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
-      return [idx + 1, t.vendor_name || '-', sectionLabel, itemLabel, App.fmtMoney(t.amount), pmBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
+      return [idx + 1, sectionLabel, itemLabel, App.fmtMoney(t.amount), pmBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
     });
-    const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
-    const printTitle = `كشف حساب مشروع ${project.name} - ${project.client_name || ''}`;
-    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('${printTitle.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}${expenseDetailHtml}`;
-    UI.openModal('كشف حساب المشروع', html, null);
+    const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
+
+    let html = `<div style="margin-bottom:16px">
+      <strong>المشروع:</strong> ${projectName}<br>
+      <strong>العميل:</strong> ${clientName || '-'}<br>
+      <strong>الفترة:</strong> ${fromVal || '—'} → ${toVal || '—'}<br>
+      <strong>نسبة الإشراف:</strong> ${supervisionPercentage}%<br>
+      <strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br>
+      <strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br>
+      <strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br>
+      <strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}
+    </div>
+    ${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}${expenseDetailHtml}`;
+
+    const reportEl = document.getElementById(`project-statement-report-${id}`);
+    if (reportEl) reportEl.innerHTML = html;
+  },
+
+  printProjectStatement(id) {
+    const overlay = document.querySelector('.modal-overlay');
+    const clientName = overlay?.dataset.clientName || '';
+    const projectName = overlay?.dataset.projectName || '';
+    const fromVal = document.getElementById('ps-from')?.value || '';
+    const toVal = document.getElementById('ps-to')?.value || '';
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    this.printReport(`كشف-حساب-${safe(clientName)}-${safe(projectName)}-${dateStr}`);
+  },
+
+  exportProjectStatement(id) {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const projectName = overlay.dataset.projectName || '';
+    const clientName = overlay.dataset.clientName || '';
+    const supervisionPercentage = +overlay.dataset.supervisionPercentage || 0;
+    const deposits = JSON.parse(overlay.dataset.deposits || '[]');
+    const expenses = JSON.parse(overlay.dataset.expenses || '[]');
+    const fromVal = document.getElementById('ps-from')?.value || '';
+    const toVal = document.getElementById('ps-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const fDeposits = deposits.filter(t => inRange(t.date));
+    const fExpenses = expenses.filter(t => inRange(t.date));
+
+    const rows = [];
+    fDeposits.forEach(t => rows.push({ date: t.date || t.created_at, type: 'وارد', amount: +t.amount || 0, description: t.description || 'عربون' }));
+    fExpenses.forEach(t => {
+      const type = t.expense_category === 'design' ? 'مصروف تصميم' : 'مصروف تشطيب';
+      rows.push({ date: t.date || t.created_at, type, amount: +t.amount || 0, description: t.description || '-' });
+    });
+    const constr = fExpenses.filter(t => (t.expense_category || 'construction') !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const sup = constr * supervisionPercentage / 100;
+    if (sup > 0) rows.push({ date: '', type: 'إشراف', amount: sup, description: `إشراف ${projectName}` });
+
+    rows.sort((a, b) => new Date(a.date || '1970-01-01') - new Date(b.date || '1970-01-01'));
+
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['التاريخ', 'النوع', 'المبلغ', 'البيان'],
+      ...rows.map(r => [r.date, r.type, r.amount, r.description])
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب المشروع');
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `كشف-حساب-${safe(clientName)}-${safe(projectName)}-${dateStr}.xlsx`);
   },
 
   async projectBudget(id) {
