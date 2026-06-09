@@ -1600,9 +1600,58 @@ const Crud = {
     ]);
     if (!clientRows.length) return;
     const client = clientRows[0];
+
+    const minDate = deposits.concat(expenses).filter(t => t.date).map(t => t.date).sort()[0] || '';
+    const maxDate = new Date().toISOString().slice(0, 10);
+
+    const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+      <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="cs-from" value="${minDate}"></div>
+        <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="cs-to" value="${maxDate}"></div>
+        <button class="btn btn-primary" onclick="App.renderClientStatement()">تطبيق</button>
+        <button class="btn btn-secondary" onclick="App.printClientStatement()">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="App.exportClientStatement()">📊 تصدير Excel</button>
+      </div>
+    </div>`;
+
+    const reportHtml = `<div id="client-statement-report"></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+
+    const html = logoHtml + filterHtml + reportHtml;
+    const overlay = UI.openModal('كشف حساب العميل — ' + client.name, html, null);
+    overlay.dataset.clientId = id;
+    overlay.dataset.clientName = client.name;
+    overlay.dataset.projects = JSON.stringify(projects);
+    overlay.dataset.deposits = JSON.stringify(deposits);
+    overlay.dataset.expenses = JSON.stringify(expenses);
+    this.renderClientStatement();
+  },
+
+  renderClientStatement() {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const clientName = overlay.dataset.clientName || '';
+    const projects = JSON.parse(overlay.dataset.projects || '[]');
+    const deposits = JSON.parse(overlay.dataset.deposits || '[]');
+    const expenses = JSON.parse(overlay.dataset.expenses || '[]');
+
+    const fromVal = document.getElementById('cs-from')?.value || '';
+    const toVal = document.getElementById('cs-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
     const projIds = projects.map(p => p.id);
-    const clientDeposits = deposits.filter(t => projIds.includes(t.project_id));
-    const clientExpenses = expenses.filter(t => projIds.includes(t.project_id));
+    const clientDeposits = deposits.filter(t => projIds.includes(t.project_id) && inRange(t.date));
+    const clientExpenses = expenses.filter(t => projIds.includes(t.project_id) && inRange(t.date));
     const depByProject = {};
     clientDeposits.forEach(t => { depByProject[t.project_id] = (depByProject[t.project_id] || 0) + (+t.amount || 0); });
     const expByProject = {};
@@ -1615,7 +1664,6 @@ const Crud = {
       }
     });
 
-    // Build per-project summary
     const projectSummary = projects.map(p => {
       const dep = depByProject[p.id] || 0;
       const exp = expByProject[p.id] || 0;
@@ -1633,10 +1681,9 @@ const Crud = {
 
     const card = (title, value, color) => `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center;min-width:120px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">${title}</div><div style="font-size:18px;font-weight:700;color:${color||'var(--text)'}">${value}</div></div>`;
 
-    // Page 1: Summary
     let html = `<div style="margin-bottom:20px;padding:16px;background:linear-gradient(135deg,var(--bg3),var(--bg));border-radius:var(--radius);border:1px solid var(--border)">
-      <h2 style="color:var(--gold);margin-bottom:8px;font-size:18px">📋 ملخص العميل — ${client.name}</h2>
-      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">${client.phone || ''} · ${client.email || ''} · ${client.address || ''}</div>
+      <h2 style="color:var(--gold);margin-bottom:8px;font-size:18px">📋 ملخص العميل — ${clientName}</h2>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">الفترة: ${fromVal || '—'} → ${toVal || '—'}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
         ${card('إجمالي الوارد', App.fmtMoney(totalDep), 'var(--green)')}
         ${card('إجمالي المصروفات', App.fmtMoney(totalExp), 'var(--red)')}
@@ -1649,14 +1696,13 @@ const Crud = {
       ]))}
     </div>`;
 
-    // Each project chapter
     projectSummary.forEach(p => {
       const pDeposits = clientDeposits.filter(t => t.project_id === p.id);
       const pExpenses = clientExpenses.filter(t => t.project_id === p.id);
       const pDesign = pExpenses.filter(t => t.expense_category === 'design');
       const pConstr = pExpenses.filter(t => (t.expense_category || 'construction') !== 'design');
 
-      html += `<div style="margin-bottom:20px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+      html += `<div style="margin-bottom:20px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border);page-break-inside:avoid">
         <h3 style="color:var(--gold);margin-bottom:12px;font-size:16px;border-bottom:1px solid var(--border);padding-bottom:8px">🏗️ ${p.name}</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
           <span style="background:var(--bg);padding:4px 10px;border-radius:var(--radius-sm)">وارد: ${App.fmtMoney(p.dep)}</span>
@@ -1665,7 +1711,6 @@ const Crud = {
           <span style="background:var(--bg);padding:4px 10px;border-radius:var(--radius-sm);color:${p.bal >= 0 ? 'var(--green)' : 'var(--red)'}">رصيد: ${App.fmtMoney(p.bal)}</span>
         </div>`;
 
-      // Deposits
       if (pDeposits.length) {
         html += `<h4 style="font-size:13px;color:var(--text2);margin:8px 0">💰 الوارد</h4>`;
         html += App.table(['التاريخ', 'المبلغ', 'طريقة الدفع', 'البيان'], pDeposits.map(t => {
@@ -1674,19 +1719,16 @@ const Crud = {
         }));
       }
 
-      // Construction expenses
       if (pConstr.length) {
         html += `<h4 style="font-size:13px;color:var(--text2);margin:8px 0">🔨 مصروفات تشطيب</h4>`;
-        html += App.table(['التاريخ', 'المبلغ', 'المورد', 'البيان'], pConstr.map(t => [App.fmtDate(t.date || t.created_at), App.fmtMoney(t.amount), t.vendor_name || '-', t.description || '-']));
+        html += App.table(['التاريخ', 'المبلغ', 'البيان'], pConstr.map(t => [App.fmtDate(t.date || t.created_at), App.fmtMoney(t.amount), t.description || '-']));
       }
 
-      // Design expenses
       if (pDesign.length) {
         html += `<h4 style="font-size:13px;color:var(--text2);margin:8px 0">🎨 مصروفات تصميم</h4>`;
         html += App.table(['التاريخ', 'المبلغ', 'البيان'], pDesign.map(t => [App.fmtDate(t.date || t.created_at), App.fmtMoney(t.amount), t.description || '-']));
       }
 
-      // Supervision line
       html += `<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;font-size:13px">
         <span>📋 إشراف (${p.supervision_percentage || 0}% على ${App.fmtMoney(p.constr)})</span>
         <strong style="color:var(--gold)">${App.fmtMoney(p.sup)}</strong>
@@ -1695,8 +1737,70 @@ const Crud = {
       html += `</div>`;
     });
 
-    html += `<div style="text-align:center;margin-top:20px"><button class="btn btn-secondary" onclick="App.printReport('كشف حساب العميل ${client.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>`;
-    UI.openModal('كشف حساب العميل — ' + client.name, html, null);
+    const reportEl = document.getElementById('client-statement-report');
+    if (reportEl) reportEl.innerHTML = html;
+  },
+
+  printClientStatement() {
+    const overlay = document.querySelector('.modal-overlay');
+    const clientName = overlay?.dataset.clientName || '';
+    const fromVal = document.getElementById('cs-from')?.value || '';
+    const toVal = document.getElementById('cs-to')?.value || '';
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    this.printReport(`كشف-حساب-${safe(clientName)}-${dateStr}`);
+  },
+
+  exportClientStatement() {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const clientName = overlay.dataset.clientName || '';
+    const projects = JSON.parse(overlay.dataset.projects || '[]');
+    const deposits = JSON.parse(overlay.dataset.deposits || '[]');
+    const expenses = JSON.parse(overlay.dataset.expenses || '[]');
+    const fromVal = document.getElementById('cs-from')?.value || '';
+    const toVal = document.getElementById('cs-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const projIds = projects.map(p => p.id);
+    const clientDeposits = deposits.filter(t => projIds.includes(t.project_id) && inRange(t.date));
+    const clientExpenses = expenses.filter(t => projIds.includes(t.project_id) && inRange(t.date));
+
+    const rows = [];
+    projects.forEach(p => {
+      const pDeposits = clientDeposits.filter(t => t.project_id === p.id);
+      const pExpenses = clientExpenses.filter(t => t.project_id === p.id);
+      pDeposits.forEach(t => rows.push({ date: t.date || t.created_at, project: p.name, type: 'وارد', amount: +t.amount || 0, description: t.description || 'عربون' }));
+      pExpenses.forEach(t => {
+        const type = t.expense_category === 'design' ? 'مصروف تصميم' : 'مصروف تشطيب';
+        rows.push({ date: t.date || t.created_at, project: p.name, type, amount: +t.amount || 0, description: t.description || '-' });
+      });
+      const design = pExpenses.filter(t => t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+      const constr = pExpenses.filter(t => (t.expense_category || 'construction') !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+      const sup = constr * (p.supervision_percentage || 0) / 100;
+      if (sup > 0) rows.push({ date: '', project: p.name, type: 'إشراف', amount: sup, description: `إشراف ${p.name}` });
+    });
+
+    rows.sort((a, b) => new Date(a.date || '1970-01-01') - new Date(b.date || '1970-01-01'));
+
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['التاريخ', 'المشروع', 'النوع', 'المبلغ', 'البيان'],
+      ...rows.map(r => [r.date, r.project, r.type, r.amount, r.description])
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب العميل');
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `كشف-حساب-${safe(clientName)}-${dateStr}.xlsx`);
   },
 
   delProject(id) {
