@@ -102,11 +102,16 @@ const Spreadsheet = {
 
   render(columns, defaults = {}, cascade = {}) {
     const headerCells = columns.map(c => `<th>${c.label}${c.req ? ' <span style="color:#e53935">*</span>' : ''}</th>`).join('');
-    const hasCascade = cascade && cascade.clientProject;
+    const hasClientProjectCascade = cascade && cascade.clientProject;
+    const hasSectionItemCascade = cascade && cascade.sectionItem;
     const inputCells = columns.map(c => {
       const def = defaults[c.key];
-      const cascadeAttr = (hasCascade && c.key === cascade.clientProject.clientKey) ? ` onchange="Spreadsheet.handleClientProjectCascade(this)"` : '';
-      const disabledAttr = (hasCascade && c.key === cascade.clientProject.projectKey && !def) ? ' disabled' : '';
+      let cascadeAttr = '';
+      let disabledAttr = '';
+      if (hasClientProjectCascade && c.key === cascade.clientProject.clientKey) cascadeAttr = ` onchange="Spreadsheet.handleClientProjectCascade(this)"`;
+      if (hasClientProjectCascade && c.key === cascade.clientProject.projectKey && !def) disabledAttr = ' disabled';
+      if (hasSectionItemCascade && c.key === cascade.sectionItem.sectionKey) cascadeAttr = ` onchange="Spreadsheet.handleSectionItemCascade(this)"`;
+      if (hasSectionItemCascade && c.key === cascade.sectionItem.itemKey && !def) disabledAttr = ' disabled';
       if (c.type === 'select') {
         let optsHtml = c.opts.map(o => `<option value="${o.v}" ${def !== undefined && o.v == def ? 'selected' : ''}>${o.l}</option>`).join('');
         if (hasCascade && c.key === cascade.clientProject.projectKey && def) {
@@ -299,6 +304,12 @@ const Spreadsheet = {
       if (clientSel) clientSel.onchange = function() { Spreadsheet.handleClientProjectCascade(this); };
       if (projSel) projSel.disabled = true;
     }
+    if (cascade && cascade.sectionItem) {
+      const sectionSel = newRow.querySelector(`select[data-key="${cascade.sectionItem.sectionKey}"]`);
+      const itemSel = newRow.querySelector(`select[data-key="${cascade.sectionItem.itemKey}"]`);
+      if (sectionSel) sectionSel.onchange = function() { Spreadsheet.handleSectionItemCascade(this); };
+      if (itemSel) itemSel.disabled = true;
+    }
     newRow.querySelector('.row-num').textContent = tbody.children.length + 1;
     tbody.appendChild(newRow);
   },
@@ -320,6 +331,25 @@ const Spreadsheet = {
     const filtered = projects.filter(p => p.client_id === clientId);
     projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     projSel.disabled = false;
+  },
+
+  handleSectionItemCascade(el) {
+    const row = el.closest('tr');
+    const spreadsheet = el.closest('.spreadsheet');
+    const cascade = spreadsheet._cascade;
+    if (!cascade || !cascade.sectionItem) return;
+    const { sectionKey, itemKey, items } = cascade.sectionItem;
+    const itemSel = row.querySelector(`select[data-key="${itemKey}"]`);
+    if (!itemSel) return;
+    const sectionId = el.value;
+    if (!sectionId) {
+      itemSel.innerHTML = '<option value="">-- اختر بند --</option>';
+      itemSel.disabled = true;
+      return;
+    }
+    const filtered = items.filter(i => i.section_id === sectionId);
+    itemSel.innerHTML = '<option value="">-- اختر بند --</option>' + filtered.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+    itemSel.disabled = false;
   },
 
   removeRow(btn) {
