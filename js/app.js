@@ -135,6 +135,7 @@ const App = {
     if (screen === 'master') await this.loadMasterData();
     if (screen === 'profitloss') await this.loadProfitLoss();
     if (screen === 'projectprofit') await this.loadProjectProfit();
+    if (screen === 'aging') await this.loadAging();
 
     // Update URL hash without triggering hashchange
     const hash = opts.tab ? `#/${screen}?tab=${opts.tab}` : `#/${screen}`;
@@ -185,6 +186,7 @@ const App = {
       ${navItem('master', '📋', 'البيانات الأساسية')}
       ${navItem('profitloss', '📊', 'بيان الأرباح والخسائر')}
       ${navItem('projectprofit', '📈', 'ربحية المشاريع')}
+      ${navItem('aging', '📋', 'الأرصدة المستحقة')}
       ${isAdmin ? navItem('settings', '⚙️', 'الإعدادات') : ''}
     </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
   },
@@ -205,6 +207,7 @@ const App = {
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>${Auth.can('master', 'add') ? `<div class="card" style="margin-top:16px"><h3>📤 رفع أقسام وبنود من Excel</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">الملف يجب أن يحتوي على عمودين على الأقل: القسم والبند. يمكن إضافة عمود ملاحظات اختياري.</p><input type="file" id="work-sections-items-file" accept=".xlsx,.xls,.csv" onchange="App.parseWorkSectionsItemsFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:320px"><div id="work-sections-items-preview" style="margin-top:16px">لم يتم اختيار ملف</div></div>` : ''}<div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
     if (screen === 'profitloss') return `<div class="page-header"><h1>📊 بيان الأرباح والخسائر</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">من:</label><input type="date" id="pl-from" onchange="App.loadProfitLoss()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><label style="font-size:13px">إلى:</label><input type="date" id="pl-to" onchange="App.loadProfitLoss()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','this_month');App.loadProfitLoss()">هذا الشهر</button><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','last_month');App.loadProfitLoss()">الشهر الماضي</button><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','this_quarter');App.loadProfitLoss()">هذا الربع</button><button class="btn btn-sm btn-secondary" onclick="App.setDateRange('pl-from','pl-to','this_year');App.loadProfitLoss()">هذا العام</button><button class="btn btn-sm btn-primary" onclick="App.exportProfitLossExcel()">📥 Excel</button><button class="btn btn-sm btn-secondary" onclick="App.printReport('بيان-الأرباح-والخسائر')">🖨️ طباعة</button></div><div id="pl-report"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'projectprofit') return `<div class="page-header"><h1>📈 ربحية المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="App.exportProjectProfitExcel()">📥 Excel</button><button class="btn btn-sm btn-secondary" onclick="App.printReport('ربحية-المشاريع')">🖨️ طباعة</button></div></div><div class="card"><div id="project-profit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'aging') return `<div class="page-header"><h1>📋 الأرصدة المستحقة</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" onclick="App.printReport('الأرصدة-المستحقة')">🖨️ طباعة</button></div></div><div class="content-grid"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><h3>💰 مستحقات من العملاء</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="kpi-label" style="font-size:13px">الإجمالي: <strong id="aging-clients-total" style="color:var(--red)">--</strong></div><button class="btn btn-sm btn-primary" onclick="App.exportAgingClientsExcel()">📥 Excel</button></div></div><div id="aging-clients-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><h3>🏪 مستحقات للموردين</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="kpi-label" style="font-size:13px">الإجمالي: <strong id="aging-vendors-total" style="color:var(--red)">--</strong></div><button class="btn btn-sm btn-primary" onclick="App.exportAgingVendorsExcel()">📥 Excel</button></div></div><div id="aging-vendors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
     return '';
     return '';
   },
@@ -1517,6 +1520,178 @@ const App = {
     } catch (e) {
       console.error(e);
       document.getElementById('project-profit-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadProjectProfit()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async loadAging() {
+    try {
+      const [clients, projects, transactions, procurements, vendors] = await Promise.all([
+        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+        API.request('projects', 'GET', null, '?select=id,client_id,supervision_percentage&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null'),
+        API.request('procurements', 'GET', null, '?select=*&deleted_at=is.null'),
+        API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      ]);
+
+      const projByClient = {};
+      projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
+
+      const deposits = transactions.filter(t => t.type === 'project_deposit');
+      const expenses = transactions.filter(t => t.type === 'project_expense');
+
+      const expByProject = {};
+      const designByProject = {};
+      const expenseDatesByProject = {};
+      expenses.forEach(t => {
+        const amt = +t.amount || 0;
+        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
+        if (t.expense_category === 'design') {
+          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
+        }
+        const d = t.date || t.created_at;
+        if (d) {
+          if (!expenseDatesByProject[t.project_id] || d > expenseDatesByProject[t.project_id]) expenseDatesByProject[t.project_id] = d;
+        }
+      });
+
+      const depByClient = {};
+      const depositDatesByClient = {};
+      deposits.forEach(t => {
+        depByClient[t.client_id] = (depByClient[t.client_id] || 0) + (+t.amount || 0);
+        const d = t.date || t.created_at;
+        if (d) {
+          if (!depositDatesByClient[t.client_id] || d > depositDatesByClient[t.client_id]) depositDatesByClient[t.client_id] = d;
+        }
+      });
+
+      const clientRows = clients.map(c => {
+        const clientProjects = projByClient[c.id] || [];
+        if (!clientProjects.length) return null;
+        let totalExp = 0;
+        let totalSup = 0;
+        let lastDate = depositDatesByClient[c.id] || '';
+        clientProjects.forEach(p => {
+          const exp = expByProject[p.id] || 0;
+          const design = designByProject[p.id] || 0;
+          const constr = exp - design;
+          totalExp += exp;
+          totalSup += constr * (p.supervision_percentage || 0) / 100;
+          const pd = expenseDatesByProject[p.id];
+          if (pd && pd > lastDate) lastDate = pd;
+        });
+        const dep = depByClient[c.id] || 0;
+        const balance = dep - totalExp - totalSup;
+        if (balance >= 0) return null;
+        return {
+          name: c.name,
+          balance,
+          lastDate,
+          html: [c.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(Math.abs(balance))}</span>`, this.fmtDate(lastDate)]
+        };
+      }).filter(Boolean);
+
+      clientRows.sort((a, b) => a.balance - b.balance);
+      const totalReceivable = clientRows.reduce((s, r) => s + Math.abs(r.balance), 0);
+      document.getElementById('aging-clients-total').textContent = this.fmtMoney(totalReceivable);
+      document.getElementById('aging-clients-tbl').innerHTML = clientRows.length
+        ? this.table(['العميل', 'المبلغ المستحق', 'آخر معاملة'], clientRows.map(r => r.html))
+        : '<p style="color:var(--text3)">لا توجد مستحقات من العملاء</p>';
+
+      const serviceCostByVendor = {};
+      const servicePaidByVendor = {};
+      const serviceDatesByVendor = {};
+      expenses.forEach(t => {
+        if (!t.vendor_id) return;
+        const amt = +t.amount || 0;
+        const isNew = t.payment_term !== undefined && t.payment_term !== null;
+        const paid = isNew ? (+t.paid_amount || 0) : amt;
+        serviceCostByVendor[t.vendor_id] = (serviceCostByVendor[t.vendor_id] || 0) + amt;
+        servicePaidByVendor[t.vendor_id] = (servicePaidByVendor[t.vendor_id] || 0) + paid;
+        const d = t.date || t.created_at;
+        if (d) {
+          if (!serviceDatesByVendor[t.vendor_id] || d > serviceDatesByVendor[t.vendor_id]) serviceDatesByVendor[t.vendor_id] = d;
+        }
+      });
+
+      const merchandiseByVendor = {};
+      const merchPaidByVendor = {};
+      const merchDatesByVendor = {};
+      procurements.forEach(p => {
+        if (!p.vendor_id) return;
+        const amt = +p.total_price || 0;
+        const isNew = p.payment_term !== undefined && p.payment_term !== null;
+        const paid = isNew ? (+p.paid_amount || 0) : amt;
+        merchandiseByVendor[p.vendor_id] = (merchandiseByVendor[p.vendor_id] || 0) + amt;
+        merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + paid;
+        const d = p.date || p.created_at;
+        if (d) {
+          if (!merchDatesByVendor[p.vendor_id] || d > merchDatesByVendor[p.vendor_id]) merchDatesByVendor[p.vendor_id] = d;
+        }
+      });
+
+      const vendorRows = vendors.map(v => {
+        const serviceCost = serviceCostByVendor[v.id] || 0;
+        const servicePaid = servicePaidByVendor[v.id] || 0;
+        const merchandise = merchandiseByVendor[v.id] || 0;
+        const merchPaid = merchPaidByVendor[v.id] || 0;
+        const balance = (serviceCost + merchandise) - (servicePaid + merchPaid);
+        if (balance <= 0) return null;
+        const lastDate = serviceDatesByVendor[v.id] || merchDatesByVendor[v.id] || '';
+        return {
+          name: v.name,
+          balance,
+          lastDate,
+          html: [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(balance)}</span>`, this.fmtDate(lastDate)]
+        };
+      }).filter(Boolean);
+
+      vendorRows.sort((a, b) => b.balance - a.balance);
+      const totalPayable = vendorRows.reduce((s, r) => s + r.balance, 0);
+      document.getElementById('aging-vendors-total').textContent = this.fmtMoney(totalPayable);
+      document.getElementById('aging-vendors-tbl').innerHTML = vendorRows.length
+        ? this.table(['المورد', 'المبلغ المستحق', 'آخر معاملة'], vendorRows.map(r => r.html))
+        : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
+
+      this._agingData = { clients: clientRows, vendors: vendorRows };
+    } catch (e) {
+      console.error(e);
+      const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadAging()">🔄 إعادة المحاولة</button>`;
+      document.getElementById('aging-clients-tbl').innerHTML = err;
+      document.getElementById('aging-vendors-tbl').innerHTML = err;
+    }
+  },
+
+  async exportAgingClientsExcel() {
+    try {
+      const rows = (this._agingData?.clients || []).map(r => [r.name, Math.abs(r.balance), r.lastDate ? new Date(r.lastDate).toLocaleDateString('ar-EG') : '-']);
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['مستحقات من العملاء'],
+        ['العميل', 'المبلغ المستحق', 'آخر معاملة'],
+        ...rows
+      ]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'مستحقات العملاء');
+      XLSX.writeFile(wb, `مستحقات-العملاء-${new Date().toISOString().slice(0,10)}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      UI.toast('خطأ في تصدير Excel: ' + e.message, 'error');
+    }
+  },
+
+  async exportAgingVendorsExcel() {
+    try {
+      const rows = (this._agingData?.vendors || []).map(r => [r.name, r.balance, r.lastDate ? new Date(r.lastDate).toLocaleDateString('ar-EG') : '-']);
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['مستحقات للموردين'],
+        ['المورد', 'المبلغ المستحق', 'آخر معاملة'],
+        ...rows
+      ]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'مستحقات الموردين');
+      XLSX.writeFile(wb, `مستحقات-الموردين-${new Date().toISOString().slice(0,10)}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      UI.toast('خطأ في تصدير Excel: ' + e.message, 'error');
     }
   },
 
