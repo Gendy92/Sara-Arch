@@ -486,12 +486,14 @@ const App = {
       const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
       const expenseRows = projectExpenses.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
       document.getElementById('tx-expenses-tbl').innerHTML = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
-        const bal = (+t.amount || 0) - (+t.paid_amount || 0);
+        const isNew = t.payment_term !== undefined && t.payment_term !== null;
+        const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
+        const bal = (+t.amount || 0) - paid;
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
         const catLabel = t.expense_category === 'design' ? 'تصميم' : 'تشطيب';
         const termBadge = t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-';
-        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', catLabel, this.fmtMoney(t.amount), termBadge, this.fmtMoney(t.paid_amount || 0), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', catLabel, this.fmtMoney(t.amount), termBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
     } catch (e) { console.error(e); }
@@ -1496,8 +1498,21 @@ const Crud = {
     const totalIn = ledger.reduce((s, r) => s + r.in, 0);
     const totalOut = ledger.reduce((s, r) => s + r.out, 0);
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
+    // Expense detail section with payment terms
+    const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
+    const expenseDetailRows = expenses.sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).map((t, idx) => {
+      const isNew = t.payment_term !== undefined && t.payment_term !== null;
+      const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
+      const bal = (+t.amount || 0) - paid;
+      const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
+      const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
+      const catLabel = t.expense_category === 'design' ? 'تصميم' : 'تشطيب';
+      const termBadge = t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-';
+      return [idx + 1, t.vendor_name || '-', catLabel, App.fmtMoney(t.amount), termBadge, App.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, App.fmtDate(t.date || t.created_at), t.description || '-'];
+    });
+    const expenseDetailHtml = expenseDetailRows.length ? `<div style="margin-top:24px"><h3 style="font-size:15px;color:var(--gold);margin-bottom:14px">📋 تفاصيل المصروفات</h3>${App.table(['#', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'البيان'], expenseDetailRows)}</div>` : '';
     const printTitle = `كشف حساب مشروع ${project.name} - ${project.client_name || ''}`;
-    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('${printTitle.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
+    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('${printTitle.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}${expenseDetailHtml}`;
     UI.openModal('كشف حساب المشروع', html, null);
   },
 
