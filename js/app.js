@@ -2016,52 +2016,79 @@ const Crud = {
     if (!vendorRows.length) return;
     const vendor = vendorRows[0];
 
-    // Build unified ledger combining procurements + transactions
-    const ledger = [];
+    const minDate = procs.concat(payments).filter(t => t.date).map(t => t.date).sort()[0] || '';
+    const maxDate = new Date().toISOString().slice(0, 10);
 
-    // Procurements (purchases)
-    procs.forEach(p => {
+    const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+      <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="vs-from" value="${minDate}"></div>
+        <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="vs-to" value="${maxDate}"></div>
+        <button class="btn btn-primary" onclick="App.renderVendorStatement('${id}')">تطبيق</button>
+        <button class="btn btn-secondary" onclick="App.printVendorStatement('${id}')">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="App.exportVendorStatement('${id}')">📊 تصدير Excel</button>
+      </div>
+    </div>`;
+
+    const reportHtml = `<div id="vendor-statement-report-${id}"></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+
+    const html = logoHtml + filterHtml + reportHtml;
+    const overlay = UI.openModal('📋 كشف حساب المورد — ' + vendor.name, html, null);
+    overlay.dataset.vendorId = id;
+    overlay.dataset.vendorName = vendor.name;
+    overlay.dataset.procs = JSON.stringify(procs);
+    overlay.dataset.payments = JSON.stringify(payments);
+    this.renderVendorStatement(id);
+  },
+
+  renderVendorStatement(id) {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const vendorName = overlay.dataset.vendorName || '';
+    const procs = JSON.parse(overlay.dataset.procs || '[]');
+    const payments = JSON.parse(overlay.dataset.payments || '[]');
+
+    const fromVal = document.getElementById('vs-from')?.value || '';
+    const toVal = document.getElementById('vs-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const fProcs = procs.filter(p => inRange(p.date));
+    const fPayments = payments.filter(t => inRange(t.date || t.created_at));
+
+    const ledger = [];
+    fProcs.forEach(p => {
       const isNew = p.payment_term !== undefined && p.payment_term !== null;
       const amount = +p.total_price || 0;
-      const paid = isNew ? (+p.paid_amount || 0) : 0; // old data: unpaid
-      const term = p.payment_term || 'credit'; // old data: treat as credit
+      const paid = isNew ? (+p.paid_amount || 0) : 0;
+      const term = p.payment_term || 'credit';
       ledger.push({
-        date: p.date,
-        source: 'procurement',
-        client: p.client_name || '-',
-        project: p.project_name || '-',
-        vendor: vendor.name,
-        category: p.item_name || 'شراء',
-        amount,
-        paid,
-        term,
-        payment_method: null,
-        desc: `شراء: ${p.item_name || '-'} (${p.project_name || '-'})`
+        date: p.date, source: 'procurement', client: p.client_name || '-', project: p.project_name || '-',
+        vendor: vendorName, category: p.item_name || 'شراء', amount, paid, term,
+        payment_method: null, desc: `شراء: ${p.item_name || '-'} (${p.project_name || '-'})`
       });
     });
-
-    // Transactions (expenses / payments / settlements)
-    payments.forEach(t => {
+    fPayments.forEach(t => {
       const isNew = t.payment_term !== undefined && t.payment_term !== null;
-      const amount = isNew ? (+t.amount || 0) : 0; // old data: pure payment
-      const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0); // old data: paid = amount
-      const term = t.payment_term || 'settlement'; // old data: treat as settlement
+      const amount = isNew ? (+t.amount || 0) : 0;
+      const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
+      const term = t.payment_term || 'settlement';
       const category = t.item_name || t.section_name || (t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى')));
       ledger.push({
-        date: t.date || t.created_at,
-        source: 'transaction',
-        client: t.party_name || t.client_name || '-',
-        project: t.project_name || '-',
-        vendor: t.vendor_name || vendor.name,
-        category,
-        amount,
-        paid,
-        term,
-        payment_method: t.payment_method || null,
-        desc: t.description || 'دفعة للمورد'
+        date: t.date || t.created_at, source: 'transaction', client: t.party_name || t.client_name || '-', project: t.project_name || '-',
+        vendor: t.vendor_name || vendorName, category, amount, paid, term,
+        payment_method: t.payment_method || null, desc: t.description || 'دفعة للمورد'
       });
     });
-
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
@@ -2071,14 +2098,8 @@ const Crud = {
       running += balanceChange;
       const pmBadge = r.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[r.payment_method] || r.payment_method}</span>` : '-';
       return [
-        idx + 1,
-        r.client,
-        r.project,
-        r.vendor,
-        r.category,
-        App.fmtMoney(r.amount),
-        pmBadge,
-        App.fmtMoney(r.paid),
+        idx + 1, r.client, r.project, r.vendor, r.category,
+        App.fmtMoney(r.amount), pmBadge, App.fmtMoney(r.paid),
         `<strong style="color:${running >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(running))}</strong>`,
         App.fmtDate(r.date)
       ];
@@ -2090,40 +2111,61 @@ const Crud = {
 
     if (tableRows.length) tableRows.push(['', '', '', '', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalAmount)}</strong>`, '', `<strong>${App.fmtMoney(totalPaid)}</strong>`, `<strong style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(balance))}</strong>`, '']);
 
-    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المبلغ:</strong> ${App.fmtMoney(totalAmount)}<br><strong>إجمالي المدفوع:</strong> ${App.fmtMoney(totalPaid)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div><div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="App.printReport('كشف حساب المورد ${vendor.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button><button class="btn btn-secondary" onclick="Crud.exportVendorLedger('${id}')">📊 تصدير Excel</button></div>`;
+    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendorName}<br><strong>الفترة:</strong> ${fromVal || '—'} → ${toVal || '—'}<br><strong>إجمالي المبلغ:</strong> ${App.fmtMoney(totalAmount)}<br><strong>إجمالي المدفوع:</strong> ${App.fmtMoney(totalPaid)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div>`;
     const tableHtml = tableRows.length ? App.table(['#', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ'], tableRows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
-    UI.openModal('📋 كشف حساب المورد — ' + vendor.name, summary + tableHtml, null);
+
+    const reportEl = document.getElementById(`vendor-statement-report-${id}`);
+    if (reportEl) reportEl.innerHTML = summary + tableHtml;
   },
 
-  async exportVendorLedger(id) {
-    const [vendorRows, procs, payments] = await Promise.all([
-      API.request('vendors', 'GET', null, `?select=*&id=eq.${id}`),
-      API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`),
-      API.request('transactions', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
-    ]);
-    if (!vendorRows.length) return;
-    const vendor = vendorRows[0];
+  printVendorStatement(id) {
+    const overlay = document.querySelector('.modal-overlay');
+    const vendorName = overlay?.dataset.vendorName || '';
+    const fromVal = document.getElementById('vs-from')?.value || '';
+    const toVal = document.getElementById('vs-to')?.value || '';
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    this.printReport(`كشف-حساب-مورد-${safe(vendorName)}-${dateStr}`);
+  },
+
+  exportVendorStatement(id) {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const vendorName = overlay.dataset.vendorName || '';
+    const procs = JSON.parse(overlay.dataset.procs || '[]');
+    const payments = JSON.parse(overlay.dataset.payments || '[]');
+    const fromVal = document.getElementById('vs-from')?.value || '';
+    const toVal = document.getElementById('vs-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const fProcs = procs.filter(p => inRange(p.date));
+    const fPayments = payments.filter(t => inRange(t.date || t.created_at));
 
     const ledger = [];
-    procs.forEach(p => {
+    fProcs.forEach(p => {
       const isNew = p.payment_term !== undefined && p.payment_term !== null;
       ledger.push({
         date: p.date, client: p.client_name || '-', project: p.project_name || '-',
-        vendor: vendor.name, category: p.item_name || 'شراء',
-        amount: +p.total_price || 0, paid: isNew ? (+p.paid_amount || 0) : 0,
-        payment_method: null,
-        term: p.payment_term || 'credit', desc: `شراء: ${p.item_name || '-'}`
+        category: p.item_name || 'شراء', amount: +p.total_price || 0, paid: isNew ? (+p.paid_amount || 0) : 0,
+        payment_method: null, desc: `شراء: ${p.item_name || '-'}`
       });
     });
-    payments.forEach(t => {
+    fPayments.forEach(t => {
       const isNew = t.payment_term !== undefined && t.payment_term !== null;
       const category = t.item_name || t.section_name || (t.expense_category === 'design' ? 'تصميم' : (t.expense_category === 'construction' ? 'تشطيب' : (t.type === 'office_expense' ? 'مكتبي' : 'أخرى')));
       ledger.push({
         date: t.date || t.created_at, client: t.party_name || t.client_name || '-', project: t.project_name || '-',
-        vendor: t.vendor_name || vendor.name, category,
-        amount: isNew ? (+t.amount || 0) : 0, paid: isNew ? (+t.paid_amount || 0) : (+t.amount || 0),
-        payment_method: t.payment_method || null,
-        term: t.payment_term || 'settlement', desc: t.description || 'دفعة للمورد'
+        category, amount: isNew ? (+t.amount || 0) : 0, paid: isNew ? (+t.paid_amount || 0) : (+t.amount || 0),
+        payment_method: t.payment_method || null, desc: t.description || 'دفعة للمورد'
       });
     });
     ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -2133,20 +2175,22 @@ const Crud = {
     const rows = ledger.map(r => {
       running += (r.amount - r.paid);
       const pm = r.payment_method ? (pmLabels[r.payment_method] || r.payment_method) : '-';
-      return [r.date, r.client, r.project, r.vendor, r.category, r.amount, pm, r.paid, running, r.desc];
+      return [r.date, r.client, r.project, r.category, r.amount, pm, r.paid, running, r.desc];
     });
 
     const totalAmount = ledger.reduce((s, r) => s + r.amount, 0);
     const totalPaid = ledger.reduce((s, r) => s + r.paid, 0);
-    rows.push(['', '', '', '', 'الإجمالي', totalAmount, '', totalPaid, totalAmount - totalPaid, '']);
+    rows.push(['', '', '', 'الإجمالي', totalAmount, '', totalPaid, totalAmount - totalPaid, '']);
 
     const ws = XLSX.utils.aoa_to_sheet([
-      ['التاريخ', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'البيان'],
+      ['التاريخ', 'العميل', 'المشروع', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'البيان'],
       ...rows
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب المورد');
-    XLSX.writeFile(wb, `كشف-حساب-مورد-${vendor.name}-${new Date().toISOString().slice(0,10)}.xlsx`);
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `كشف-حساب-مورد-${safe(vendorName)}-${dateStr}.xlsx`);
   },
 
   async vendorPurchases(vendorId) {
@@ -2157,16 +2201,109 @@ const Crud = {
     ]);
     if (!vendorRows.length) return;
     const vendor = vendorRows[0];
-    const total = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
-    const rows = procs.map(p => [
+
+    const minDate = procs.filter(p => p.date).map(p => p.date).sort()[0] || '';
+    const maxDate = new Date().toISOString().slice(0, 10);
+
+    const filterHtml = `<div style="margin-bottom:16px;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border)">
+      <h3 style="font-size:14px;color:var(--gold);margin-bottom:12px">📅 فلتر التاريخ</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="vp-from" value="${minDate}"></div>
+        <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="vp-to" value="${maxDate}"></div>
+        <button class="btn btn-primary" onclick="App.renderVendorPurchases('${vendorId}')">تطبيق</button>
+        <button class="btn btn-secondary" onclick="App.printVendorPurchases('${vendorId}')">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="App.exportVendorPurchases('${vendorId}')">📊 تصدير Excel</button>
+      </div>
+    </div>`;
+
+    const reportHtml = `<div id="vendor-purchases-report-${vendorId}"></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+
+    const html = logoHtml + filterHtml + reportHtml;
+    const overlay = UI.openModal('💰 مشتريات — ' + vendor.name, html, null);
+    overlay.dataset.vendorId = vendorId;
+    overlay.dataset.vendorName = vendor.name;
+    overlay.dataset.procs = JSON.stringify(procs);
+    this.renderVendorPurchases(vendorId);
+  },
+
+  renderVendorPurchases(vendorId) {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const vendorName = overlay.dataset.vendorName || '';
+    const procs = JSON.parse(overlay.dataset.procs || '[]');
+
+    const fromVal = document.getElementById('vp-from')?.value || '';
+    const toVal = document.getElementById('vp-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const fProcs = procs.filter(p => inRange(p.date));
+    const total = fProcs.reduce((s, p) => s + (+p.total_price || 0), 0);
+    const rows = fProcs.map(p => [
       App.fmtDate(p.date), p.project_name || '-', p.item_name || '-', p.quantity || '-',
       App.fmtMoney(p.unit_price), App.fmtMoney(p.total_price), p.expense_type || '-',
       UI.actions(p.id, 'Crud.editProcurement', 'Crud.delProcurement')
     ]);
-    const html = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(total)}</div>
+
+    let html = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendorName}<br><strong>الفترة:</strong> ${fromVal || '—'} → ${toVal || '—'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(total)}</div>
       <div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addProcurement('${vendorId}')">+ إضافة مشتريات</button></div>
       ${rows.length ? App.table(['التاريخ', 'المشروع', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'التصنيف', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>'}`;
-    UI.openModal('💰 مشتريات — ' + vendor.name, html, null);
+
+    const reportEl = document.getElementById(`vendor-purchases-report-${vendorId}`);
+    if (reportEl) reportEl.innerHTML = html;
+  },
+
+  printVendorPurchases(vendorId) {
+    const overlay = document.querySelector('.modal-overlay');
+    const vendorName = overlay?.dataset.vendorName || '';
+    const fromVal = document.getElementById('vp-from')?.value || '';
+    const toVal = document.getElementById('vp-to')?.value || '';
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    this.printReport(`مشتريات-مورد-${safe(vendorName)}-${dateStr}`);
+  },
+
+  exportVendorPurchases(vendorId) {
+    const overlay = document.querySelector('.modal-overlay');
+    if (!overlay) return;
+    const vendorName = overlay.dataset.vendorName || '';
+    const procs = JSON.parse(overlay.dataset.procs || '[]');
+    const fromVal = document.getElementById('vp-from')?.value || '';
+    const toVal = document.getElementById('vp-to')?.value || '';
+    const fromDate = fromVal ? new Date(fromVal) : null;
+    const toDate = toVal ? new Date(toVal) : null;
+
+    const inRange = (d) => {
+      if (!d) return true;
+      const date = new Date(d);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
+      return true;
+    };
+
+    const fProcs = procs.filter(p => inRange(p.date));
+    const rows = fProcs.map(p => [p.date, p.project_name || '-', p.item_name || '-', p.quantity || 0, p.unit_price || 0, p.total_price || 0, p.expense_type || '-']);
+    const total = fProcs.reduce((s, p) => s + (+p.total_price || 0), 0);
+    rows.push(['', '', '', '', '', total, '']);
+
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['التاريخ', 'المشروع', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'التصنيف'],
+      ...rows
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'مشتريات المورد');
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `مشتريات-مورد-${safe(vendorName)}-${dateStr}.xlsx`);
   },
 
   async addProcurement(vendorId) {
