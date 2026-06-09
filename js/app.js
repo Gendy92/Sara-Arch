@@ -447,9 +447,9 @@ const App = {
         }
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
         const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
-        let pt = pm;
+        let pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : '-';
         if (t.type === 'project_expense') {
-          pt = t.payment_method ? pm : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
+          pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
         }
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', pt, actions];
@@ -459,7 +459,7 @@ const App = {
       // Expenses-only tab with full details
       const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
       const expenseRows = projectExpenses.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-      document.getElementById('tx-expenses-tbl').innerHTML = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'التصنيف', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
+      document.getElementById('tx-expenses-tbl').innerHTML = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
         const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
         const bal = (+t.amount || 0) - paid;
@@ -2249,7 +2249,7 @@ const Crud = {
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
-      { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
+      { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'paid_amount', label: 'المدفوع', type: 'number' },
       { key: 'date', label: 'التاريخ', type: 'date' },
@@ -2398,8 +2398,8 @@ const Crud = {
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
-        { name: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
-        { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
+        { name: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
+        { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'paid_amount', label: 'المدفوع', type: 'number' },
         { name: 'date', label: 'التاريخ', type: 'date' },
