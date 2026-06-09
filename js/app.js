@@ -600,7 +600,9 @@ const App = {
       document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
     } catch (e) {
       console.error(e);
-      const msg = e.message && e.message.includes('does not exist')
+      const errText = (e.message || '').toLowerCase();
+      const isMissing = errText.includes('does not exist') || errText.includes('pgrst');
+      const msg = isMissing
         ? '<p style="color:var(--red)">جداول الرواتب غير موجودة. شغّل schema.sql في Supabase.</p>'
         : '<p style="color:var(--red)">خطأ في تحميل البيانات</p>';
       document.getElementById('emp-payroll-tbl').innerHTML = msg;
@@ -675,10 +677,12 @@ const App = {
       const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
       const users = (authData.users || []).map(u => {
         const p = profileMap[u.id];
+        const rawName = p?.name || u.user_metadata?.name || '';
+        const safeName = Auth.safeName(rawName, '');
         return {
           id: u.id,
           email: u.email,
-          name: p?.name || u.user_metadata?.name || '-',
+          name: safeName || Auth.fromEmail(u.email),
           role: p?.role || u.user_metadata?.role || 'user',
           email_confirmed_at: u.email_confirmed_at,
           created_at: u.created_at
@@ -810,9 +814,11 @@ const App = {
       document.getElementById('permissions-tbl').innerHTML = saveBtn + html;
     } catch (e) {
       console.error(e);
-      const msg = e.message && e.message.includes('does not exist')
+      const errText = (e.message || '').toLowerCase();
+      const isMissingTable = errText.includes('does not exist') || errText.includes('user_permissions') || errText.includes('pgrst116') || errText.includes('relation');
+      const msg = isMissingTable
         ? '<p style="color:var(--red)">جدول user_permissions غير موجود. شغّل schema.sql في Supabase.</p>'
-        : '<p style="color:var(--red)">خطأ في التحميل</p>';
+        : '<p style="color:var(--red)">خطأ في التحميل: ' + (e.message || '').slice(0, 100) + '</p>';
       document.getElementById('permissions-tbl').innerHTML = msg;
     }
   },
@@ -859,7 +865,9 @@ const App = {
       ])) : '<p style="color:var(--text3)">لا توجد سجلات</p>';
     } catch (e) {
       console.error(e);
-      const msg = e.message && e.message.includes('does not exist')
+      const errText = (e.message || '').toLowerCase();
+      const isMissing = errText.includes('does not exist') || errText.includes('audit_logs') || errText.includes('pgrst');
+      const msg = isMissing
         ? '<p style="color:var(--red)">جدول audit_logs غير موجود. شغّل schema.sql في Supabase.</p>'
         : '<p style="color:var(--red)">خطأ في التحميل</p>';
       document.getElementById('audit-tbl').innerHTML = msg;
