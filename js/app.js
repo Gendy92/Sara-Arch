@@ -214,7 +214,9 @@ const App = {
       projects.forEach(p => { if (!projByClient[p.client_id]) projByClient[p.client_id] = []; projByClient[p.client_id].push(p); });
       const depByClient = {};
       deposits.forEach(t => { depByClient[t.client_id] = (depByClient[t.client_id] || 0) + (+t.amount || 0); });
-      const balanceRows = clients.map(c => {
+      // Show balances for all clients with active projects
+      const activeClientIds = new Set(projects.filter(p => p.status === 'active').map(p => p.client_id));
+      const balanceRows = clients.filter(c => activeClientIds.has(c.id)).map(c => {
         const clientProjects = projByClient[c.id] || [];
         let totalExp = 0;
         let totalSup = 0;
@@ -229,21 +231,32 @@ const App = {
         const balance = dep - totalExp - totalSup;
         const color = balance >= 0 ? 'var(--green)' : 'var(--red)';
         return { name: c.name, dep, totalExp, totalSup, balance, color, html: [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`] };
-      }).filter(r => r.balance !== 0);
-      const sortedBalances = balanceRows.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
-      document.getElementById('customer-balances').innerHTML = sortedBalances.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], sortedBalances.map(r => r.html)) : '<p style="color:var(--text3)">لا يوجد عملاء غير مسددين</p>';
-      // Active vendors (vendors with project expenses)
-      const [vendors, vendorTxs] = await Promise.all([
-        API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
-        API.request('transactions', 'GET', null, "?select=vendor_id,amount&type=eq.project_expense&deleted_at=is.null")
-      ]);
-      const vendorTotals = {};
-      vendorTxs.forEach(t => { vendorTotals[t.vendor_id] = (vendorTotals[t.vendor_id] || 0) + (+t.amount || 0); });
-      const activeVendorRows = vendors.filter(v => vendorTotals[v.id] > 0).map(v => {
-        const total = vendorTotals[v.id] || 0;
-        return [v.name, v.vendor_type === 'merchandise' ? 'بضاعة' : 'خدمات', this.fmtMoney(total), `<button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`];
       });
-      document.getElementById('active-vendors').innerHTML = activeVendorRows.length ? this.table(['المورد', 'النوع', 'إجمالي المدفوعات', 'الإجراءات'], activeVendorRows) : '<p style="color:var(--text3)">لا يوجد موردين نشطين</p>';
+      const sortedBalances = balanceRows.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+      document.getElementById('customer-balances').innerHTML = sortedBalances.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], sortedBalances.map(r => r.html)) : '<p style="color:var(--text3)">لا يوجد عملاء نشطين</p>';
+      // Unsettled vendors (balance ≠ 0)
+      const [vendors, vendorTxs, procs] = await Promise.all([
+        API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
+        API.request('transactions', 'GET', null, "?select=vendor_id,amount&type=eq.project_expense&deleted_at=is.null"),
+        API.request('procurements', 'GET', null, '?select=vendor_id,total_price&deleted_at=is.null')
+      ]);
+      const paymentsByVendor = {};
+      vendorTxs.forEach(t => { paymentsByVendor[t.vendor_id] = (paymentsByVendor[t.vendor_id] || 0) + (+t.amount || 0); });
+      const purchasesByVendor = {};
+      procs.forEach(p => { purchasesByVendor[p.vendor_id] = (purchasesByVendor[p.vendor_id] || 0) + (+p.total_price || 0); });
+      const unsettledVendors = vendors.map(v => {
+        const purchases = purchasesByVendor[v.id] || 0;
+        const payments = paymentsByVendor[v.id] || 0;
+        const balance = purchases - payments;
+        return { ...v, purchases, payments, balance };
+      }).filter(v => v.balance !== 0);
+      const sortedVendors = unsettledVendors.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+      const vendorRows = sortedVendors.map(v => {
+        const color = v.balance > 0 ? 'var(--red)' : 'var(--green)';
+        const status = v.balance > 0 ? 'علينا' : 'له';
+        return [v.name, v.vendor_type === 'merchandise' ? 'بضاعة' : 'خدمات', App.fmtMoney(v.purchases), App.fmtMoney(v.payments), `<span style="color:${color};font-weight:700">${App.fmtMoney(Math.abs(v.balance))}</span>`, status, `<button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`];
+      });
+      document.getElementById('active-vendors').innerHTML = vendorRows.length ? this.table(['المورد', 'النوع', 'مشتريات', 'مدفوعات', 'الرصيد', 'الحالة', 'الإجراءات'], vendorRows) : '<p style="color:var(--text3)">لا يوجد موردين غير مسددين</p>';
 
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
