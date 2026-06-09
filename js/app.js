@@ -47,6 +47,16 @@ const App = {
     this.stopIdleTimer();
     Auth.logout();
     UI.toast('تم تسجيل الخروج تلقائيًا بسبب عدم النشاط لمدة 10 دقائق', 'error');
+  },
+
+  printReport(title) {
+    const origTitle = document.title;
+    const date = new Date().toISOString().slice(0, 10);
+    const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
+    document.title = `${safe(title)}-${date}`;
+    window.print();
+    setTimeout(() => { document.title = origTitle; }, 1000);
+  },
     this.renderLogin();
   },
 
@@ -1392,7 +1402,8 @@ const Crud = {
     const totalIn = ledger.reduce((s, r) => s + r.in, 0);
     const totalOut = ledger.reduce((s, r) => s + r.out, 0);
     rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalIn)}</strong>`, `<strong>${App.fmtMoney(totalOut)}</strong>`, `<strong>${App.fmtMoney(balance)}</strong>`, '']);
-    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
+    const printTitle = `كشف حساب مشروع ${project.name} - ${project.client_name || ''}`;
+    const html = `<div style="margin-bottom:16px"><strong>المشروع:</strong> ${project.name}<br><strong>العميل:</strong> ${project.client_name || '-'}<br><strong>نسبة الإشراف:</strong> ${project.supervision_percentage || 0}%<br><strong>إجمالي الوارد:</strong> ${App.fmtMoney(totalIn)}<br><strong>إجمالي المنصرف:</strong> ${App.fmtMoney(totalExpenses)}<br><strong>إشراف:</strong> ${App.fmtMoney(supervisionAmount)}<br><strong style="color:var(--gold)">رصيد العميل:</strong> ${App.fmtMoney(balance)}</div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('${printTitle.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>${App.table(['التاريخ', 'النوع', 'وارد', 'منصرف', 'رصيد العميل', 'البيان'], rows)}`;
     UI.openModal('كشف حساب المشروع', html, null);
   },
 
@@ -1440,7 +1451,7 @@ const Crud = {
         : `🔧 المشروع قيد التنفيذ — الرصيد الحالي: <strong>${App.fmtMoney(clientBalance)}</strong><br>💡 التسوية النهائية (استرداد / مديونية) تظهر بعد إغلاق المشروع`
       }
     </div>
-    <div style="margin-top:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
+    <div style="margin-top:16px"><button class="btn btn-secondary" onclick="App.printReport('ميزانية المشروع ${project.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>`;
     UI.openModal('📊 ميزانية المشروع — ' + project.name, html, null);
   },
 
@@ -1548,7 +1559,7 @@ const Crud = {
       html += `</div>`;
     });
 
-    html += `<div style="text-align:center;margin-top:20px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
+    html += `<div style="text-align:center;margin-top:20px"><button class="btn btn-secondary" onclick="App.printReport('كشف حساب العميل ${client.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>`;
     UI.openModal('كشف حساب العميل — ' + client.name, html, null);
   },
 
@@ -1646,7 +1657,7 @@ const Crud = {
 
     if (rows.length) rows.push(['', '<strong>الإجمالي</strong>', `<strong>${App.fmtMoney(totalPurchases)}</strong>`, `<strong>${App.fmtMoney(totalPayments)}</strong>`, `<strong style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(Math.abs(balance))}</strong>`, balance >= 0 ? 'علينا' : 'له']);
 
-    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(totalPurchases)}<br><strong>إجمالي المدفوعات:</strong> ${App.fmtMoney(totalPayments)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="window.print()">🖨️ طباعة / PDF</button></div>`;
+    const summary = `<div style="margin-bottom:16px"><strong>المورد:</strong> ${vendor.name}<br><strong>الشخص المسؤول:</strong> ${vendor.contact_person || '-'}<br><strong>الهاتف:</strong> ${vendor.phone || '-'}<br><strong>إجمالي المشتريات:</strong> ${App.fmtMoney(totalPurchases)}<br><strong>إجمالي المدفوعات:</strong> ${App.fmtMoney(totalPayments)}<br><strong style="color:var(--gold)">الرصيد:</strong> <span style="color:${balance >= 0 ? 'var(--red)' : 'var(--green)'}">${balance >= 0 ? 'علينا ' + App.fmtMoney(balance) : 'له ' + App.fmtMoney(Math.abs(balance))}</span></div><div style="margin-bottom:16px"><button class="btn btn-secondary" onclick="App.printReport('كشف حساب المورد ${vendor.name.replace(/'/g, "\\'")}')">🖨️ طباعة / PDF</button></div>`;
     const tableHtml = rows.length ? App.table(['التاريخ', 'البيان', 'مدين (شراء)', 'دائن (دفعة)', 'الرصيد', ''], rows) : '<p style="color:var(--text3)">لا توجد بيانات</p>';
     UI.openModal('📋 كشف حساب المورد — ' + vendor.name, summary + tableHtml, null);
   },
