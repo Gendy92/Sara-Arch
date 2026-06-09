@@ -2,11 +2,17 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#3d2e22">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sara Arch">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="logo.png">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Sara Abo Elelaa — Financial System</title>
+<title>سارة أبو العلا — النظام المالي</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="css/style.css?v=84">
 </head>
@@ -41,6 +47,11 @@
 
   function loadAll(version) {
     localStorage.setItem('sara_app_version', version);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js?v=' + version).catch(function(err) {
+        console.log('[SW] registration failed:', err);
+      });
+    }
     var cdnScripts = [
       'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js',
       'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'

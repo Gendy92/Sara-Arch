@@ -4,6 +4,9 @@ const App = {
   screen: 'login',
   txTab: 'all',
   loading: false,
+  txExpenseOffset: 0,
+  txExpenseLimit: 50,
+  txExpenseLoaded: [],
 
   async start() {
     try {
@@ -95,7 +98,7 @@ const App = {
     if (screen === 'dashboard') await this.loadDashboard();
     if (screen === 'clients') await this.loadClients();
     if (screen === 'vendors') await this.loadVendors();
-    if (screen === 'transactions') await this.loadTransactions();
+    if (screen === 'transactions') { this.txExpenseOffset = 0; this.txExpenseLoaded = []; await this.loadTransactions(); }
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
     if (screen === 'settings') await this.loadSettings();
@@ -137,19 +140,19 @@ const App = {
   },
 
   pageContent(screen) {
-    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card"><h3>💳 أرصدة العملاء النشطين</h3><div id="customer-balances">جاري التحميل...</div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors">جاري التحميل...</div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx">جاري التحميل...</div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj">جاري التحميل...</div></div>`;
-    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1>${Auth.can('clients', 'add') ? `<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button>` : ''}</div><div id="clients-list">جاري التحميل...</div>`;
+    if (screen === 'dashboard') return `<div class="page-header"><h1>📊 لوحة التحكم</h1></div><div class="kpi-grid" id="kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="card"><h3>💳 أرصدة العملاء النشطين</h3><div id="customer-balances"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="content-grid"><div class="card"><h3>🏪 الموردين النشطين</h3><div id="active-vendors"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div><div class="card"><h3>آخر المعاملات</h3><div id="recent-tx"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div></div><div class="card"><h3>المشاريع النشطة</h3><div id="active-proj"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>`;
+    if (screen === 'clients') return `<div class="page-header"><h1>👥 العملاء والمشاريع</h1>${Auth.can('clients', 'add') ? `<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة عميل</button>` : ''}</div><div id="clients-list"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div>`;
     if (screen === 'projects') { this.go('clients'); return ''; }
-    if (screen === 'transactions') return `<div class="page-header"><h1>💰 معاملات المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="tab-bar"><button class="tab-btn ${App.txTab==='all'?'active':''}" onclick="App.setTxTab('all')">الكل</button><button class="tab-btn ${App.txTab==='expenses'?'active':''}" onclick="App.setTxTab('expenses')">المصروفات</button></div><div id="tx-all" style="display:${App.txTab==='all'?'block':'none'}"><div class="card"><div id="tx-tbl">جاري التحميل...</div></div></div><div id="tx-expenses" style="display:${App.txTab==='expenses'?'block':'none'}"><div class="card"><div id="tx-expenses-tbl">جاري التحميل...</div></div></div>`;
-    if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1>${Auth.can('vendors', 'add') ? `<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button>` : ''}</div><div class="card"><div id="vendors-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl">جاري التحميل...</div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'transactions') return `<div class="page-header"><h1>💰 معاملات المشاريع</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addProjectDeposit()">💰 عربون مشروع</button><button class="btn btn-primary" onclick="Crud.addProjectExpense()">🔨 مصروف مشروع</button></div></div><div class="kpi-grid" id="tx-kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="tab-bar"><button class="tab-btn ${App.txTab==='all'?'active':''}" onclick="App.setTxTab('all')">الكل</button><button class="tab-btn ${App.txTab==='expenses'?'active':''}" onclick="App.setTxTab('expenses')">المصروفات</button></div><div id="tx-all" style="display:${App.txTab==='all'?'block':'none'}"><div class="card"><div id="tx-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div><div id="tx-expenses" style="display:${App.txTab==='expenses'?'block':'none'}"><div class="card"><div id="tx-expenses-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
+    if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1>${Auth.can('vendors', 'add') ? `<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button>` : ''}</div><div class="card"><div id="vendors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
     if (screen === 'settings') return `<div class="page-header"><h1>⚙️ الإعدادات</h1></div><div class="content-grid"><div class="card"><h3>🔐 المستخدمين والصلاحيات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة حسابات المستخدمين وصلاحيات الوصول للشاشات.</p><button class="btn btn-primary" onclick="App.go('users')">فتح المستخدمين</button></div><div class="card"><h3>💾 النسخ الاحتياطي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">تحميل نسخة احتياطية ومراجعة حالة الجداول.</p><button class="btn btn-primary" onclick="App.go('backup')">فتح النسخ الاحتياطي</button></div><div class="card"><h3>📜 سجل العمليات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">متابعة التعديلات والإضافات على قاعدة البيانات.</p><button class="btn btn-primary" onclick="App.go('audit')">فتح السجل</button></div></div>`;
-    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><div style="display:flex;gap:8px;flex-wrap:wrap">${Auth.can('users', 'add') ? `<button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button>` : ''}<button class="btn btn-secondary" onclick="App.go('permissions')">🔑 صلاحيات المستخدمين</button></div></div><div class="card"><div id="users-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl">جاري التحميل...</div></div>`;
+    if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><div style="display:flex;gap:8px;flex-wrap:wrap">${Auth.can('users', 'add') ? `<button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button>` : ''}<button class="btn btn-secondary" onclick="App.go('permissions')">🔑 صلاحيات المستخدمين</button></div></div><div class="card"><div id="users-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🧹 مسح الكاش</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إذا واجهت مشاكل في تحميل التحديثات الجديدة، اضغط لمسح الكاش وإعادة تحميل التطبيق.</p><div id="cache-clear-msg" style="margin-bottom:12px;font-size:12px;color:var(--text3)">الإصدار المحلي: <strong>${localStorage.getItem('sara_app_version') || '-'}</strong></div><button class="btn btn-secondary" onclick="App.clearAppCache()">🧹 مسح الكاش وإعادة التحميل</button></div></div>`;
-    if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1><button class="btn btn-secondary" onclick="App.go('users')">← العودة إلى المستخدمين</button></div><div class="card"><div id="permissions-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl">جاري التحميل...</div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl">جاري التحميل...</div></div></div>${Auth.can('master', 'add') ? `<div class="card" style="margin-top:16px"><h3>📤 رفع أقسام وبنود من Excel</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">الملف يجب أن يحتوي على عمودين على الأقل: القسم والبند. يمكن إضافة عمود ملاحظات اختياري.</p><input type="file" id="work-sections-items-file" accept=".xlsx,.xls,.csv" onchange="App.parseWorkSectionsItemsFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:320px"><div id="work-sections-items-preview" style="margin-top:16px">لم يتم اختيار ملف</div></div>` : ''}<div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl">جاري التحميل...</div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl">جاري التحميل...</div></div></div>`;
+    if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1><button class="btn btn-secondary" onclick="App.go('users')">← العودة إلى المستخدمين</button></div><div class="card"><div id="permissions-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📦 الأصناف / البنود</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة أصناف</button>` : ''}<div id="items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>${Auth.can('master', 'add') ? `<div class="card" style="margin-top:16px"><h3>📤 رفع أقسام وبنود من Excel</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">الملف يجب أن يحتوي على عمودين على الأقل: القسم والبند. يمكن إضافة عمود ملاحظات اختياري.</p><input type="file" id="work-sections-items-file" accept=".xlsx,.xls,.csv" onchange="App.parseWorkSectionsItemsFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:320px"><div id="work-sections-items-preview" style="margin-top:16px">لم يتم اختيار ملف</div></div>` : ''}<div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
     return '';
     return '';
   },
@@ -342,7 +345,7 @@ const App = {
           const constr = exp - design;
           const dep = depByProject[p.id] || 0;
           const supAmt = constr * (p.supervision_percentage || 0) / 100;
-          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button>`;
+          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
           return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
@@ -415,15 +418,16 @@ const App = {
       const [data, projects, projectExpenses, allProjTxs] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50"),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, "?select=*&type=eq.project_expense&deleted_at=is.null"),
+        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${App.txExpenseOffset}&limit=${App.txExpenseLimit}`),
         API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null')
       ]);
       // KPIs
       const deposits = allProjTxs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const expenses = allProjTxs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      const allProjectExpenses = allProjTxs.filter(t => t.type === 'project_expense');
+      const expenses = allProjectExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
       const expByProject = {};
       const designByProject = {};
-      projectExpenses.forEach(t => {
+      allProjectExpenses.forEach(t => {
         const amt = +t.amount || 0;
         expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
         if (t.expense_category === 'design') {
@@ -444,7 +448,7 @@ const App = {
       // Table
       const expByProj = {};
       const designByProj = {};
-      projectExpenses.forEach(t => {
+      allProjectExpenses.forEach(t => {
         const amt = +t.amount || 0;
         expByProj[t.project_id] = (expByProj[t.project_id] || 0) + amt;
         if (t.expense_category === 'design') {
@@ -485,9 +489,17 @@ const App = {
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
 
       // Expenses-only tab with full details
+      if (App.txExpenseOffset === 0) App.txExpenseLoaded = projectExpenses;
+      else App.txExpenseLoaded = [...App.txExpenseLoaded, ...projectExpenses];
+      const totalExpCount = allProjectExpenses.length;
+      const displayedExpCount = App.txExpenseLoaded.length;
       const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
-      const expenseRows = projectExpenses.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-      document.getElementById('tx-expenses-tbl').innerHTML = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
+      const expenseRows = App.txExpenseLoaded.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+      const loadMoreBtn = displayedExpCount < totalExpCount
+        ? `<div style="margin-top:16px;text-align:center"><button class="btn btn-secondary" onclick="App.loadMoreExpenses()">تحميل المزيد (+${Math.min(App.txExpenseLimit, totalExpCount - displayedExpCount)})</button></div>`
+        : '';
+      const counterHtml = `<div style="margin-bottom:12px;font-size:13px;color:var(--text2)">عرض ${displayedExpCount} من ${totalExpCount} مصروف</div>`;
+      document.getElementById('tx-expenses-tbl').innerHTML = counterHtml + (expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
         const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
         const bal = (+t.amount || 0) - paid;
@@ -497,7 +509,7 @@ const App = {
         const itemLabel = t.item_name || '-';
         const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
         return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, itemLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
-      })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
+      })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>') + loadMoreBtn;
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
     } catch (e) {
       console.error(e);
@@ -506,6 +518,11 @@ const App = {
     }
   },
 
+
+  async loadMoreExpenses() {
+    App.txExpenseOffset += App.txExpenseLimit;
+    await App.loadTransactions();
+  },
 
   async loadOffice() {
     try {
@@ -1872,6 +1889,115 @@ const Crud = {
     UI.openModal('📊 ميزانية المشروع — ' + project.name, html, null);
   },
 
+  // ─── PROJECT TASKS ───
+  async loadProjectTasks(projectId) {
+    try {
+      const [projectRows, tasks] = await Promise.all([
+        API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}`),
+        API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=created_at.desc`)
+      ]);
+      if (!projectRows.length) return;
+      const project = projectRows[0];
+      const statusColors = { pending: 'gray', in_progress: 'gold', done: 'green' };
+      const statusLabels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
+      const priorityColors = { low: 'green', medium: 'gold', high: 'red' };
+      const priorityLabels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
+      const taskRows = tasks.map(t => [
+        t.name,
+        t.assignee || '-',
+        `<span class="badge badge-${statusColors[t.status] || 'gray'}">${statusLabels[t.status] || t.status}</span>`,
+        `<span class="badge badge-${priorityColors[t.priority] || 'gray'}">${priorityLabels[t.priority] || t.priority}</span>`,
+        App.fmtDate(t.start_date),
+        App.fmtDate(t.end_date),
+        t.notes || '-',
+        UI.actions(t.id, 'Crud.editProjectTask', 'Crud.delProjectTask')
+      ]);
+      const html = `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="Crud.addProjectTask('${projectId}')">+ إضافة مهمة</button></div>${tasks.length ? App.table(['المهمة', 'المسؤول', 'الحالة', 'الأولوية', 'تاريخ البدء', 'تاريخ الانتهاء', 'ملاحظات', 'الإجراءات'], taskRows) : '<p style="color:var(--text3)">لا توجد مهام لهذا المشروع</p>'}`;
+      UI.openModal('📋 مهام المشروع — ' + project.name, html, null);
+    } catch (e) {
+      console.error(e);
+      UI.toast('خطأ في تحميل المهام: ' + e.message, 'error');
+    }
+  },
+
+  async addProjectTask(projectId) {
+    const projects = await API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const fields = [
+      { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'name', label: 'اسم المهمة', req: true },
+      { name: 'assignee', label: 'المسؤول' },
+      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'pending', l: 'معلق' }, { v: 'in_progress', l: 'قيد التنفيذ' }, { v: 'done', l: 'منتهي' }] },
+      { name: 'priority', label: 'الأولوية', type: 'select', opts: [{ v: 'low', l: 'منخفض' }, { v: 'medium', l: 'متوسط' }, { v: 'high', l: 'عالي' }] },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('إضافة مهمة', `<form>${UI.form(fields, { project_id: projectId || '', status: 'pending', priority: 'medium' })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      try {
+        await this.save('project_tasks', {
+          project_id: fd.get('project_id'),
+          name: fd.get('name'),
+          assignee: fd.get('assignee') || null,
+          start_date: fd.get('start_date') || null,
+          end_date: fd.get('end_date') || null,
+          status: fd.get('status') || 'pending',
+          priority: fd.get('priority') || 'medium',
+          notes: fd.get('notes') || null
+        });
+        UI.toast('تمت الإضافة');
+        Crud.loadProjectTasks(fd.get('project_id'));
+      } catch (e) {
+        if (e.message && (e.message.includes('project_tasks') || e.message.includes('does not exist'))) {
+          UI.toast('جدول المهام غير موجود. شغّل schema.sql في Supabase.', 'error');
+        } else {
+          throw e;
+        }
+      }
+    });
+  },
+
+  async editProjectTask(id) {
+    const rows = await API.request('project_tasks', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const task = rows[0];
+    const projects = await API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
+    const fields = [
+      { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'name', label: 'اسم المهمة', req: true },
+      { name: 'assignee', label: 'المسؤول' },
+      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'pending', l: 'معلق' }, { v: 'in_progress', l: 'قيد التنفيذ' }, { v: 'done', l: 'منتهي' }] },
+      { name: 'priority', label: 'الأولوية', type: 'select', opts: [{ v: 'low', l: 'منخفض' }, { v: 'medium', l: 'متوسط' }, { v: 'high', l: 'عالي' }] },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل مهمة', `<form>${UI.form(fields, { ...task, project_id: task.project_id || '' })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('project_tasks', {
+        project_id: fd.get('project_id'),
+        name: fd.get('name'),
+        assignee: fd.get('assignee') || null,
+        start_date: fd.get('start_date') || null,
+        end_date: fd.get('end_date') || null,
+        status: fd.get('status') || 'pending',
+        priority: fd.get('priority') || 'medium',
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      Crud.loadProjectTasks(fd.get('project_id'));
+    });
+  },
+
+  delProjectTask(id) {
+    UI.confirm('هل أنت متأكد من حذف هذه المهمة؟', async () => {
+      await this.softDelete('project_tasks', id);
+      UI.toast('تم الحذف');
+    });
+  },
+
   async clientStatement(id) {
     const [clientRows, projects, deposits, expenses] = await Promise.all([
       API.request('clients', 'GET', null, `?select=*&id=eq.${id}`),
@@ -2469,6 +2595,7 @@ const Crud = {
       { name: 'item_name', label: 'البند / الصنف', req: true },
       { name: 'quantity', label: 'الكمية', type: 'number' },
       { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
+      { name: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
       { name: 'expense_type', label: 'التصنيف' },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -2479,10 +2606,14 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
+      const tax_rate = +fd.get('tax_rate') || 14;
+      const total_price = qty * up;
+      const tax_amount = total_price * tax_rate / 100;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
-        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price: qty * up,
+        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price,
+        tax_rate, tax_amount,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       });
       UI.toast('تمت الإضافة');
@@ -2506,6 +2637,7 @@ const Crud = {
       { name: 'item_name', label: 'البند / الصنف', req: true },
       { name: 'quantity', label: 'الكمية', type: 'number' },
       { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
+      { name: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
       { name: 'expense_type', label: 'التصنيف' },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -2516,10 +2648,14 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
+      const tax_rate = +fd.get('tax_rate') || 14;
+      const total_price = qty * up;
+      const tax_amount = total_price * tax_rate / 100;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
-        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price: qty * up,
+        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price,
+        tax_rate, tax_amount,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       }, id);
       UI.toast('تم التحديث'); App.loadVendors();
@@ -2793,6 +2929,7 @@ const Crud = {
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'paid_amount', label: 'المدفوع', type: 'number' },
+      { key: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
@@ -2814,13 +2951,15 @@ const Crud = {
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
-        return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, item_id: r.item_id || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        const tax_rate = (+r.tax_rate || 0) > 0 ? +r.tax_rate : 14;
+        const tax_amount = amount * tax_rate / 100;
+        return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, item_id: r.item_id || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, tax_rate, tax_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       try {
         await this.bulkSave('transactions', enriched);
       } catch (e) {
-        if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
-          const fallback = enriched.map(r => { const { expense_category, section_id, section_name, item_id, item_name, payment_term, payment_method, paid_amount, ...rest } = r; return rest; });
+        if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('tax_rate') || e.message.includes('tax_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          const fallback = enriched.map(r => { const { expense_category, section_id, section_name, item_id, item_name, payment_term, payment_method, paid_amount, tax_rate, tax_amount, ...rest } = r; return rest; });
           await this.bulkSave('transactions', fallback);
         } else { throw e; }
       }
@@ -2947,10 +3086,12 @@ const Crud = {
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'paid_amount', label: 'المدفوع', type: 'number' },
+        { name: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
+        { name: 'tax_amount', label: 'قيمة الضريبة', type: 'number' },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0), tax_rate: tx.tax_rate !== undefined ? tx.tax_rate : 14, tax_amount: tx.tax_amount !== undefined ? tx.tax_amount : ((+tx.amount || 0) * 14 / 100) })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => String(p.id) === String(fd.get('project_id')));
         const vendor = vendors.find(v => String(v.id) === String(fd.get('vendor_id')));
@@ -2968,10 +3109,12 @@ const Crud = {
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
+        const tax_rate = +fd.get('tax_rate') || 14;
+        const tax_amount = +fd.get('tax_amount') || (amount * tax_rate / 100);
         try {
-          await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+          await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, tax_rate, tax_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         } catch (e) {
-          if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('tax_rate') || e.message.includes('tax_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
             await this.save('transactions', { type: 'project_expense', amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
           } else { throw e; }
         }
