@@ -114,11 +114,11 @@ const Spreadsheet = {
       if (hasSectionItemCascade && c.key === cascade.sectionItem.itemKey && !def) disabledAttr = ' disabled';
       if (c.type === 'select') {
         let optsHtml = c.opts.map(o => `<option value="${o.v}" ${def !== undefined && o.v == def ? 'selected' : ''}>${o.l}</option>`).join('');
-        if (hasCascade && c.key === cascade.clientProject.projectKey && def) {
+        if (hasClientProjectCascade && c.key === cascade.clientProject.projectKey && def) {
           const projData = cascade.clientProject.projects;
           const clientId = def[cascade.clientProject.clientKey] || defaults[cascade.clientProject.clientKey];
           if (clientId) {
-            optsHtml = c.opts.filter(o => !o.v || (projData.find(p => p.id === o.v && p.client_id === clientId))).map(o => `<option value="${o.v}">${o.l}</option>`).join('');
+            optsHtml = c.opts.filter(o => !o.v || (projData.find(p => String(p.id) === String(o.v) && String(p.client_id) === String(clientId)))).map(o => `<option value="${o.v}">${o.l}</option>`).join('');
           }
         }
         return `<td><select data-key="${c.key}"${cascadeAttr}${disabledAttr}>${optsHtml}</select></td>`;
@@ -328,7 +328,7 @@ const Spreadsheet = {
       projSel.disabled = true;
       return;
     }
-    const filtered = projects.filter(p => p.client_id === clientId);
+    const filtered = projects.filter(p => String(p.client_id) === String(clientId));
     projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     projSel.disabled = false;
   },
@@ -347,7 +347,7 @@ const Spreadsheet = {
       itemSel.disabled = true;
       return;
     }
-    const filtered = items.filter(i => i.section_id === sectionId);
+    const filtered = items.filter(i => String(i.section_id) === String(sectionId));
     itemSel.innerHTML = '<option value="">-- اختر بند --</option>' + filtered.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
     itemSel.disabled = false;
   },

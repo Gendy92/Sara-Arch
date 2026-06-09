@@ -697,7 +697,8 @@ const App = {
     try {
       // Upsert: delete old records for same month first, then insert new
       const start = `${year}-${String(month).padStart(2,'0')}-01`;
-      const end = `${year}-${String(month).padStart(2,'0')}-31`;
+      const endDay = new Date(year, month, 0).getDate();
+      const end = `${year}-${String(month).padStart(2,'0')}-${String(endDay).padStart(2,'0')}`;
       const existing = await API.request('attendance_records', 'GET', null, `?select=id&date=gte.${start}&date=lte.${end}&deleted_at=is.null`);
       // Soft delete old
       for (const ex of existing) {
@@ -1233,7 +1234,8 @@ const App = {
   },
 
   table(headers, rows) {
-    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
 
   attachSearch(containerId, placeholder = '🔍 بحث...') {
@@ -1268,9 +1270,14 @@ const Crud = {
   _currentUserName() { return Auth.user?.displayName || Auth.fromEmail(Auth.user?.email) || 'unknown'; },
 
   _extractMissingColumn(msg) {
+    if (!msg) return null;
     let m = msg.match(/Could not find the '([^']+)'/);
     if (m) return m[1];
     m = msg.match(/column "([^"]+)" of relation/);
+    if (m) return m[1];
+    m = msg.match(/column "([^"]+)" does not exist/);
+    if (m) return m[1];
+    m = msg.match(/unknown column ['"]([^'"]+)['"]/i);
     if (m) return m[1];
     return null;
   },
@@ -1362,7 +1369,7 @@ const Crud = {
         projSel.disabled = true;
         return;
       }
-      const filtered = projects.filter(p => p.client_id === clientId);
+      const filtered = projects.filter(p => String(p.client_id) === String(clientId));
       projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
       projSel.disabled = false;
     };
@@ -1377,6 +1384,38 @@ const Crud = {
 
     clientSel.addEventListener('change', () => {
       filterProjects(clientSel.value);
+    });
+  },
+
+  _setupSectionItemCascade(overlay, sections, items, currentSectionId, currentItemId) {
+    const form = overlay.querySelector('form');
+    if (!form) return;
+    const secSel = form.querySelector('[name="section_id"]');
+    const itemSel = form.querySelector('[name="item_id"]');
+    if (!secSel || !itemSel) return;
+
+    const allItemOpts = Array.from(itemSel.options).map(o => ({ v: o.value, l: o.textContent }));
+
+    const filterItems = (sectionId) => {
+      if (!sectionId) {
+        itemSel.innerHTML = '<option value="">-- اختر بند --</option>';
+        itemSel.disabled = true;
+        return;
+      }
+      const filtered = items.filter(i => String(i.section_id) === String(sectionId));
+      itemSel.innerHTML = '<option value="">-- اختر بند --</option>' + filtered.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+      itemSel.disabled = false;
+    };
+
+    if (currentSectionId) {
+      filterItems(currentSectionId);
+      if (currentItemId) itemSel.value = currentItemId;
+    } else {
+      itemSel.disabled = true;
+    }
+
+    secSel.addEventListener('change', () => {
+      filterItems(secSel.value);
     });
   },
 
@@ -1546,9 +1585,9 @@ const Crud = {
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="ps-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="ps-to" value="${maxDate}"></div>
-        <button class="btn btn-primary" onclick="App.renderProjectStatement('${id}')">تطبيق</button>
-        <button class="btn btn-secondary" onclick="App.printProjectStatement('${id}')">🖨️ طباعة / PDF</button>
-        <button class="btn btn-secondary" onclick="App.exportProjectStatement('${id}')">📊 تصدير Excel</button>
+        <button class="btn btn-primary" onclick="Crud.renderProjectStatement('${id}')">تطبيق</button>
+        <button class="btn btn-secondary" onclick="Crud.printProjectStatement('${id}')">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="Crud.exportProjectStatement('${id}')">📊 تصدير Excel</button>
       </div>
     </div>`;
 
@@ -1656,7 +1695,7 @@ const Crud = {
     const toVal = document.getElementById('ps-to')?.value || '';
     const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
     const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
-    this.printReport(`كشف-حساب-${safe(clientName)}-${safe(projectName)}-${dateStr}`);
+    App.printReport(`كشف-حساب-${safe(clientName)}-${safe(projectName)}-${dateStr}`);
   },
 
   exportProjectStatement(id) {
@@ -1772,9 +1811,9 @@ const Crud = {
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="cs-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="cs-to" value="${maxDate}"></div>
-        <button class="btn btn-primary" onclick="App.renderClientStatement()">تطبيق</button>
-        <button class="btn btn-secondary" onclick="App.printClientStatement()">🖨️ طباعة / PDF</button>
-        <button class="btn btn-secondary" onclick="App.exportClientStatement()">📊 تصدير Excel</button>
+        <button class="btn btn-primary" onclick="Crud.renderClientStatement()">تطبيق</button>
+        <button class="btn btn-secondary" onclick="Crud.printClientStatement()">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="Crud.exportClientStatement()">📊 تصدير Excel</button>
       </div>
     </div>`;
 
@@ -1911,7 +1950,7 @@ const Crud = {
     const toVal = document.getElementById('cs-to')?.value || '';
     const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
     const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
-    this.printReport(`كشف-حساب-${safe(clientName)}-${dateStr}`);
+    App.printReport(`كشف-حساب-${safe(clientName)}-${dateStr}`);
   },
 
   exportClientStatement() {
@@ -2034,7 +2073,7 @@ const Crud = {
     const [vendorRows, procs, payments] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=*&id=eq.${id}`),
       API.request('procurements', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`),
-      API.request('transactions', 'GET', null, `?select=*&vendor_id=eq.${id}&deleted_at=is.null&order=date.asc`)
+      API.request('transactions', 'GET', null, `?select=*&vendor_id=eq.${id}&type=in.(project_expense,office_expense)&deleted_at=is.null&order=date.asc`)
     ]);
     if (!vendorRows.length) return;
     const vendor = vendorRows[0];
@@ -2047,9 +2086,9 @@ const Crud = {
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="vs-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="vs-to" value="${maxDate}"></div>
-        <button class="btn btn-primary" onclick="App.renderVendorStatement('${id}')">تطبيق</button>
-        <button class="btn btn-secondary" onclick="App.printVendorStatement('${id}')">🖨️ طباعة / PDF</button>
-        <button class="btn btn-secondary" onclick="App.exportVendorStatement('${id}')">📊 تصدير Excel</button>
+        <button class="btn btn-primary" onclick="Crud.renderVendorStatement('${id}')">تطبيق</button>
+        <button class="btn btn-secondary" onclick="Crud.printVendorStatement('${id}')">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="Crud.exportVendorStatement('${id}')">📊 تصدير Excel</button>
       </div>
     </div>`;
 
@@ -2148,7 +2187,7 @@ const Crud = {
     const toVal = document.getElementById('vs-to')?.value || '';
     const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
     const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
-    this.printReport(`كشف-حساب-مورد-${safe(vendorName)}-${dateStr}`);
+    App.printReport(`كشف-حساب-مورد-${safe(vendorName)}-${dateStr}`);
   },
 
   exportVendorStatement(id) {
@@ -2233,9 +2272,9 @@ const Crud = {
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:160px"><label>من</label><input type="date" id="vp-from" value="${minDate}"></div>
         <div class="form-group" style="min-width:160px"><label>إلى</label><input type="date" id="vp-to" value="${maxDate}"></div>
-        <button class="btn btn-primary" onclick="App.renderVendorPurchases('${vendorId}')">تطبيق</button>
-        <button class="btn btn-secondary" onclick="App.printVendorPurchases('${vendorId}')">🖨️ طباعة / PDF</button>
-        <button class="btn btn-secondary" onclick="App.exportVendorPurchases('${vendorId}')">📊 تصدير Excel</button>
+        <button class="btn btn-primary" onclick="Crud.renderVendorPurchases('${vendorId}')">تطبيق</button>
+        <button class="btn btn-secondary" onclick="Crud.printVendorPurchases('${vendorId}')">🖨️ طباعة / PDF</button>
+        <button class="btn btn-secondary" onclick="Crud.exportVendorPurchases('${vendorId}')">📊 تصدير Excel</button>
       </div>
     </div>`;
 
@@ -2292,7 +2331,7 @@ const Crud = {
     const toVal = document.getElementById('vp-to')?.value || '';
     const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
     const dateStr = fromVal && toVal ? `${fromVal}_to_${toVal}` : new Date().toISOString().slice(0, 10);
-    this.printReport(`مشتريات-مورد-${safe(vendorName)}-${dateStr}`);
+    App.printReport(`مشتريات-مورد-${safe(vendorName)}-${dateStr}`);
   },
 
   exportVendorPurchases(vendorId) {
@@ -2806,12 +2845,12 @@ const Crud = {
         API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('work_items', 'GET', null, '?select=id,name,section_id&deleted_at=is.null&order=name.asc')
       ]);
-      const itemOpts = [{ v: '', l: '-- اختر بند --' }, ...workItems.filter(i => i.section_id === tx.section_id).map(i => ({ v: i.id, l: i.name }))];
+      const itemOpts = [{ v: '', l: '-- اختر بند --' }, ...workItems.filter(i => String(i.section_id) === String(tx.section_id)).map(i => ({ v: i.id, l: i.name }))];
       const fields = [
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
-        { name: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
+        { name: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'item_id', label: 'البند', type: 'select', opts: itemOpts },
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -2821,12 +2860,12 @@ const Crud = {
       ];
       const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
         const fd = new FormData(form);
-        const project = projects.find(p => p.id === fd.get('project_id'));
-        const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
-        const section = workSections.find(s => s.id === fd.get('section_id'));
-        const item = workItems.find(i => i.id === fd.get('item_id'));
+        const project = projects.find(p => String(p.id) === String(fd.get('project_id')));
+        const vendor = vendors.find(v => String(v.id) === String(fd.get('vendor_id')));
+        const section = workSections.find(s => String(s.id) === String(fd.get('section_id')));
+        const item = workItems.find(i => String(i.id) === String(fd.get('item_id')));
         if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
-        if (fd.get('client_id') && project.client_id !== fd.get('client_id')) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
+        if (fd.get('client_id') && String(project.client_id) !== String(fd.get('client_id'))) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
         let amount = +fd.get('amount') || 0;
         let paid_amount = +fd.get('paid_amount') || 0;
         const payment_method = fd.get('payment_method') || null;
@@ -2847,6 +2886,7 @@ const Crud = {
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
       this._setupClientProjectCascade(overlay, projects, tx.client_id, tx.project_id);
+      this._setupSectionItemCascade(overlay, workSections, workItems, tx.section_id, tx.item_id);
     } else if (tx.type === 'office_expense') {
       const [employees, sectors] = await Promise.all([
         API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
