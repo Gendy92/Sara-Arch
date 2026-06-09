@@ -220,38 +220,7 @@ const App = {
         <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
         <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
         <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
-      // Monthly bar chart
-      const months = {};
-      txs.forEach(t => {
-        const m = (t.date || t.created_at || '').slice(0, 7);
-        if (!m) return;
-        if (!months[m]) months[m] = { inc: 0, exp: 0 };
-        if (['project_deposit','owner_deposit'].includes(t.type)) months[m].inc += (+t.amount || 0);
-        else if (['project_expense','office_expense'].includes(t.type)) months[m].exp += (+t.amount || 0);
-      });
-      const monthKeys = Object.keys(months).sort().slice(-6);
-      const maxVal = Math.max(...monthKeys.map(m => Math.max(months[m].inc, months[m].exp)), 1);
-      const chartHtml = monthKeys.length ? `
-        <div class="card"><h3>📈 الحركة الشهرية</h3>
-        <div class="chart-container">
-          ${monthKeys.map(m => {
-            const ih = Math.round((months[m].inc / maxVal) * 140);
-            const eh = Math.round((months[m].exp / maxVal) * 140);
-            return `<div class="chart-bar">
-              <div class="chart-bars">
-                <div style="flex:1;height:${ih}px;background:var(--green);border-radius:4px 4px 0 0;min-height:3px" title="وارد: ${this.fmtMoney(months[m].inc)}"></div>
-                <div style="flex:1;height:${eh}px;background:var(--red);border-radius:4px 4px 0 0;min-height:3px" title="منصرف: ${this.fmtMoney(months[m].exp)}"></div>
-              </div>
-              <span class="chart-bar-label">${m.slice(5)}</span>
-            </div>`;
-          }).join('')}
-        </div>
-        <div class="chart-legend">
-          <span><i style="background:var(--green)"></i> وارد</span>
-          <span><i style="background:var(--red)"></i> منصرف</span>
-        </div>
-        </div>` : '';
-      if (chartHtml) document.getElementById('kpis').insertAdjacentHTML('afterend', chartHtml);
+      // Monthly chart removed per user request
       // Customer balances
       const deposits = txs.filter(t => t.type === 'project_deposit');
       const expenses = txs.filter(t => t.type === 'project_expense');
