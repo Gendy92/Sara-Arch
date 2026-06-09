@@ -2,6 +2,7 @@
 
 const App = {
   screen: 'login',
+  txTab: 'all',
   loading: false,
 
   async start() {
