@@ -3,12 +3,16 @@ Object.assign(App, {
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      const [clients, projects, employees, txs] = await Promise.all([
+      const sixMoAgo = new Date(); sixMoAgo.setMonth(sixMoAgo.getMonth() - 6);
+      const dateGte = sixMoAgo.toISOString().slice(0, 10);
+      const [clients, projects, employees, projTxs, officeTxs] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null')
+        API.request('transactions', 'GET', null, `?select=id,type,amount,date,project_id,client_id,expense_category,created_at&type=in.(project_deposit,project_expense)&deleted_at=is.null`),
+        API.request('transactions', 'GET', null, `?select=id,type,amount,date,project_id,expense_category,sector_name,created_at&type=in.(owner_deposit,office_expense,withdrawal)&date=gte.${dateGte}&deleted_at=is.null`)
       ]);
+      const txs = [...projTxs, ...officeTxs];
       const activeProjects = projects.filter(p => p.status === 'active').length;
       const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
       const totalExp = txs.filter(t => ['project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
@@ -251,13 +255,13 @@ Object.assign(App, {
 
   async loadTransactions() {
     try {
-      const [data, projects, projectExpenses, allProjTxs] = await Promise.all([
+      const [recentTxs, projects, projectExpenses, allProjTxs] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50"),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${App.txExpenseOffset}&limit=${App.txExpenseLimit}`),
-        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null')
+        API.request('transactions', 'GET', null, '?select=type,amount,project_id,expense_category&type=in.(project_deposit,project_expense)&deleted_at=is.null')
       ]);
-      // KPIs
+      // KPIs (from lightweight allProjTxs)
       const deposits = allProjTxs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
       const allProjectExpenses = allProjTxs.filter(t => t.type === 'project_expense');
       const expenses = allProjectExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
@@ -281,7 +285,7 @@ Object.assign(App, {
         <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
         <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
-      // Table
+      // Table (from recent 50 with full columns)
       const expByProj = {};
       const designByProj = {};
       allProjectExpenses.forEach(t => {
@@ -300,7 +304,7 @@ Object.assign(App, {
         if (supAmt > 0) rows.push({ created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` });
         return rows;
       }).filter(Boolean);
-      const allTxs = [...data, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const allTxs = [...recentTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         let party;
@@ -363,10 +367,10 @@ Object.assign(App, {
   async loadOffice() {
     try {
       const [incomeTxs, expenseTxs, projects, projectExpenses] = await Promise.all([
-        API.request('transactions', 'GET', null, "?select=*&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc"),
-        API.request('transactions', 'GET', null, "?select=*&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc"),
-        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, "?select=*&type=eq.project_expense&deleted_at=is.null")
+        API.request('transactions', 'GET', null, "?select=amount,created_at,type,description,sector_name,employee_name&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc&limit=200"),
+        API.request('transactions', 'GET', null, "?select=amount,created_at,type,description,sector_name,employee_name&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc&limit=200"),
+        API.request('projects', 'GET', null, '?select=id,name,client_id,client_name,supervision_percentage,created_at,status&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, "?select=amount,project_id,expense_category&type=eq.project_expense&deleted_at=is.null")
       ]);
       const txIncome = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
       const expByProject = {};

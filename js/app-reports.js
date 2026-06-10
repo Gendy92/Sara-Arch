@@ -2,70 +2,11 @@
 Object.assign(App, {
   async loadAging() {
     try {
-      const [clients, projects, transactions, procurements, vendors] = await Promise.all([
-        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-        API.request('projects', 'GET', null, '?select=id,client_id,supervision_percentage&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null'),
-        API.request('procurements', 'GET', null, '?select=*&deleted_at=is.null'),
+      const [expenses, procurements, vendors] = await Promise.all([
+        API.request('transactions', 'GET', null, "?select=vendor_id,amount,paid_amount,payment_term,date,created_at&type=eq.project_expense&deleted_at=is.null"),
+        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term,date,created_at&deleted_at=is.null'),
         API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
       ]);
-
-      const projByClient = {};
-      projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
-
-      const deposits = transactions.filter(t => t.type === 'project_deposit');
-      const expenses = transactions.filter(t => t.type === 'project_expense');
-
-      const expByProject = {};
-      const designByProject = {};
-      const expenseDatesByProject = {};
-      expenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-        }
-        const d = t.date || t.created_at;
-        if (d) {
-          if (!expenseDatesByProject[t.project_id] || d > expenseDatesByProject[t.project_id]) expenseDatesByProject[t.project_id] = d;
-        }
-      });
-
-      const depByClient = {};
-      const depositDatesByClient = {};
-      deposits.forEach(t => {
-        depByClient[t.client_id] = (depByClient[t.client_id] || 0) + (+t.amount || 0);
-        const d = t.date || t.created_at;
-        if (d) {
-          if (!depositDatesByClient[t.client_id] || d > depositDatesByClient[t.client_id]) depositDatesByClient[t.client_id] = d;
-        }
-      });
-
-      const clientRows = clients.map(c => {
-        const clientProjects = projByClient[c.id] || [];
-        if (!clientProjects.length) return null;
-        let totalExp = 0;
-        let totalSup = 0;
-        let lastDate = depositDatesByClient[c.id] || '';
-        clientProjects.forEach(p => {
-          const exp = expByProject[p.id] || 0;
-          const design = designByProject[p.id] || 0;
-          const constr = exp - design;
-          totalExp += exp;
-          totalSup += constr * (p.supervision_percentage || 0) / 100;
-          const pd = expenseDatesByProject[p.id];
-          if (pd && pd > lastDate) lastDate = pd;
-        });
-        const dep = depByClient[c.id] || 0;
-        const balance = dep - totalExp - totalSup;
-        if (balance >= 0) return null;
-        return {
-          name: c.name,
-          balance,
-          lastDate,
-          html: [c.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(Math.abs(balance))}</span>`, this.fmtDate(lastDate)]
-        };
-      }).filter(Boolean);
 
       const serviceCostByVendor = {};
       const servicePaidByVendor = {};
