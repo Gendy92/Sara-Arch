@@ -1027,7 +1027,7 @@ const Crud = {
     let totalDep = 0, totalExp = 0;
     const rows = txs.map((t, i) => {
       const amt = +t.amount || 0;
-      if (['project_deposit','owner_deposit','income','deposit'].includes(t.type)) totalDep += amt;
+      if (t.type === 'project_deposit') totalDep += amt;
       else totalExp += amt;
       return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amt)];
     });
@@ -1179,7 +1179,7 @@ const Crud = {
   async vendorStatement(vendorId) {
     const [vendor, txs, procs] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=name&id=eq.${vendorId}`),
-      API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`),
+      API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=eq.project_expense&deleted_at=is.null&order=date.desc`),
       API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`)
     ]);
     const name = vendor[0]?.name || 'مورد';
@@ -1256,16 +1256,23 @@ const Crud = {
     UI.openModal(`💼 عهد موظف: ${name}`, addBtn + summary + table, null);
   },
 
-  addCustody(employeeId) {
+  async addCustody(employeeId) {
+    const [projects] = await Promise.all([
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    ]);
     const fields = [
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     UI.openModal('إضافة عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
+      const proj = projects.find(p => p.id === fd.get('project_id'));
       await this.save('custody_records', {
         employee_id: employeeId,
+        project_id: fd.get('project_id') || null,
+        project_name: proj ? proj.name : null,
         amount: +fd.get('amount') || 0,
         date: fd.get('date') || new Date().toISOString().slice(0, 10),
         notes: fd.get('notes') || null,
@@ -1320,7 +1327,7 @@ const Crud = {
       const labels = { present: 'حاضر', absent: 'غائب', late: 'متأخر', half_day: 'نصف يوم', leave: 'إجازة' };
       return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
     };
-    const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', r.notes || '-', UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance')]);
+    const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', r.notes || '-', UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))]);
     const table = rows.length ? App.table(['#', 'التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addAttendance('${employeeId}')">➕ إضافة حضور</button></div>`;
     UI.openModal(`📋 حضور موظف: ${name}`, addBtn + table, null);

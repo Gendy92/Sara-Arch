@@ -15,7 +15,10 @@ A- Client downloadable financial statement:
   2- design layout is great modernize only and make more clear inclusive all entries.
   3- page1 is project summary for chosen projects only if client statement requested show summary for all projects as-is then details of each in separate chapter.
 
-Vendors
+Vendors & Project transactions (expenses
  1- Vendor types based on field ( service - merchandise)
  2- include dashboard for unsettled vendors balance if <>0
- 3- link vendors statement to 
+ 3- link vendors statement to expenses incurred in project transactions when vendor is mentioned .
+ 4- expenses in project transactions can be ( instant payment - some credit & some instant)
+ 5- Expense can be payment for unpaid credit service fees & to appear normally as project expense when incurred .
+ 
