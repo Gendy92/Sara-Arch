@@ -7,7 +7,7 @@ Object.assign(App, {
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null&order=created_at.desc&limit=10')
+        API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null&order=created_at.desc&limit=200')
       ]);
       const activeProjects = projects.filter(p => p.status === 'active').length;
       const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
@@ -93,63 +93,7 @@ Object.assign(App, {
         pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
       }
       document.getElementById('expense-chart').innerHTML = pieHtml;
-      // ─── Client & Project Balances (merged tree) ───
-      const deposits = txs.filter(t => t.type === 'project_deposit');
-      const expenses = txs.filter(t => t.type === 'project_expense');
-      const expByProject = {};
-      const designByProject = {};
-      const projDeposits = {};
-      expenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-        }
-      });
-      deposits.forEach(t => {
-        if (t.project_id) projDeposits[t.project_id] = (projDeposits[t.project_id] || 0) + (+t.amount || 0);
-      });
-      const projByClient = {};
-      projects.forEach(p => { if (!projByClient[p.client_id]) projByClient[p.client_id] = []; projByClient[p.client_id].push(p); });
-      const clientMap = {};
-      clients.forEach(c => { clientMap[c.id] = c.name; });
-      const activeClientIds = new Set(projects.map(p => p.client_id));
-      const clientRows = clients.filter(c => activeClientIds.has(c.id)).map(c => {
-        const clientProjects = projByClient[c.id] || [];
-        if (!clientProjects.length) return null;
-        let totalDep = 0, totalExp = 0, totalSup = 0;
-        const projectRows = clientProjects.map(p => {
-          const exp = expByProject[p.id] || 0;
-          const design = designByProject[p.id] || 0;
-          const constr = exp - design;
-          const sup = constr * (p.supervision_percentage || 0) / 100;
-          const dep = projDeposits[p.id] || 0;
-          const bal = dep - exp - sup;
-          const color = bal >= 0 ? 'var(--green)' : 'var(--red)';
-          totalDep += dep; totalExp += exp; totalSup += sup;
-          return { name: p.name, dep, exp, sup, bal, color };
-        });
-        const clientBal = totalDep - totalExp - totalSup;
-        const clientColor = clientBal >= 0 ? 'var(--green)' : 'var(--red)';
-        return { name: c.name, dep: totalDep, exp: totalExp, sup: totalSup, bal: clientBal, color: clientColor, projects: projectRows };
-      }).filter(Boolean).sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal));
-      let treeHtml = '<p style="color:var(--text3)">لا يوجد عملاء نشطين</p>';
-      if (clientRows.length) {
-        treeHtml = '<div class="cpt-header"><span></span><span>الاسم</span><span>الوارد</span><span>المصروفات</span><span>الإشراف</span><span>الرصيد</span></div>';
-        clientRows.forEach(c => {
-          const clientBal = `<span style="color:${c.color};font-weight:700">${this.fmtMoney(c.bal)}</span>`;
-          treeHtml += `<div class="cpt-client" onclick="this.classList.toggle('expanded')"><div class="cpt-row"><span class="cpt-toggle">▼</span><span class="cpt-name">${App.esc(c.name)}</span><span class="cpt-num">${this.fmtMoney(c.dep)}</span><span class="cpt-num">${this.fmtMoney(c.exp)}</span><span class="cpt-num">${this.fmtMoney(c.sup)}</span><span class="cpt-num">${clientBal}</span></div><div class="cpt-projects">`;
-          c.projects.forEach(p => {
-            const projBal = `<span style="color:${p.color};font-weight:700">${this.fmtMoney(p.bal)}</span>`;
-            treeHtml += `<div class="cpt-row cpt-project"><span></span><span class="cpt-name">${App.esc(p.name)}</span><span class="cpt-num">${this.fmtMoney(p.dep)}</span><span class="cpt-num">${this.fmtMoney(p.exp)}</span><span class="cpt-num">${this.fmtMoney(p.sup)}</span><span class="cpt-num">${projBal}</span></div>`;
-          });
-          treeHtml += '</div></div>';
-        });
-        treeHtml = `<div class="client-project-tree">${treeHtml}</div>`;
-      }
-      document.getElementById('client-project-balances').innerHTML = treeHtml;
-      // Load aging balances inline
-      await this.loadAging();
+      // Tables removed from dashboard — only KPIs + charts remain
     } catch (e) {
       console.error(e);
       const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadDashboard()">🔄 إعادة المحاولة</button>`;
