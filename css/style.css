@@ -301,3 +301,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .hbar-track { flex: 1; height: 20px; background: var(--bg3); border-radius: var(--radius-sm); overflow: hidden; }
 .hbar-fill { height: 100%; border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--gold), var(--orange)); transition: width 0.6s ease; }
 .hbar-value { width: 70px; font-size: 12px; color: var(--text); text-align: left; direction: ltr; }
+.pie-chart-wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.pie-chart { width: 160px; height: 160px; border-radius: 50%; position: relative; }
+.pie-chart svg { transform: rotate(-90deg); border-radius: 50%; }
+.pie-legend { display: flex; flex-direction: column; gap: 6px; min-width: 140px; }
+.pie-legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
+.pie-legend-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.pie-legend-item span:last-child { margin-right: auto; color: var(--text); direction: ltr; }

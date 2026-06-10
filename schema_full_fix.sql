@@ -510,16 +510,8 @@ NOTIFY pgrst, 'reload schema';
 
 
 -- ┌─────────────────────────────────────────────────────────┐
--- │ STEP 9: v106+ Migrations (Project Tasks, Tax/VAT)       │
+-- │ STEP 9: v106+ Migrations (Project Tasks)                │
 -- └─────────────────────────────────────────────────────────┐
-
--- Tax/VAT columns on transactions
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 14;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
-
--- Tax/VAT columns on procurements
-ALTER TABLE procurements ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 14;
-ALTER TABLE procurements ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
 
 -- Project Tasks table
 CREATE TABLE IF NOT EXISTS project_tasks (

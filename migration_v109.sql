@@ -1,15 +1,5 @@
--- Migration v109: project_tasks + tax columns + indexes
+-- Migration v109: project_tasks + indexes
 -- Run this in Supabase SQL Editor
-
--- ─── TAX COLUMNS ───
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 14;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
-ALTER TABLE procurements ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 14;
-ALTER TABLE procurements ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
-
--- Backfill existing rows with default tax
-UPDATE transactions SET tax_rate = 14, tax_amount = 0 WHERE tax_rate IS NULL;
-UPDATE procurements SET tax_rate = 14, tax_amount = 0 WHERE tax_rate IS NULL;
 
 -- ─── PROJECT TASKS TABLE ───
 CREATE TABLE IF NOT EXISTS project_tasks (

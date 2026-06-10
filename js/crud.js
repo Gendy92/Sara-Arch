@@ -430,7 +430,6 @@ const Crud = {
       { name: 'item_name', label: 'البند / الصنف', req: true },
       { name: 'quantity', label: 'الكمية', type: 'number' },
       { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
-      { name: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
       { name: 'expense_type', label: 'التصنيف' },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -441,14 +440,11 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
-      const tax_rate = +fd.get('tax_rate') || 14;
       const total_price = qty * up;
-      const tax_amount = total_price * tax_rate / 100;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
         item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price,
-        tax_rate, tax_amount,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       });
       UI.toast('تمت الإضافة');
@@ -472,7 +468,6 @@ const Crud = {
       { name: 'item_name', label: 'البند / الصنف', req: true },
       { name: 'quantity', label: 'الكمية', type: 'number' },
       { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
-      { name: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
       { name: 'expense_type', label: 'التصنيف' },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -483,14 +478,11 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
-      const tax_rate = +fd.get('tax_rate') || 14;
       const total_price = qty * up;
-      const tax_amount = total_price * tax_rate / 100;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
         item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price,
-        tax_rate, tax_amount,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       }, id);
       UI.toast('تم التحديث'); App.loadVendors();
@@ -591,12 +583,11 @@ const Crud = {
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
-      { key: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
+      { key: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
       { key: 'item_id', label: 'البند', type: 'select', opts: [{ v: '', l: '-- اختر بند --' }] },
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'paid_amount', label: 'المدفوع', type: 'number' },
-      { key: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
     ];
@@ -618,15 +609,13 @@ const Crud = {
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
-        const tax_rate = (+r.tax_rate || 0) > 0 ? +r.tax_rate : 14;
-        const tax_amount = amount * tax_rate / 100;
-        return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, item_id: r.item_id || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, tax_rate, tax_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, item_id: r.item_id || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       try {
         await this.bulkSave('transactions', enriched);
       } catch (e) {
-        if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('tax_rate') || e.message.includes('tax_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
-          const fallback = enriched.map(r => { const { expense_category, section_id, section_name, item_id, item_name, payment_term, payment_method, paid_amount, tax_rate, tax_amount, ...rest } = r; return rest; });
+        if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          const fallback = enriched.map(r => { const { expense_category, section_id, section_name, item_id, item_name, payment_term, payment_method, paid_amount, ...rest } = r; return rest; });
           await this.bulkSave('transactions', fallback);
         } else { throw e; }
       }
@@ -748,17 +737,15 @@ const Crud = {
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
-        { name: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
+        { name: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'item_id', label: 'البند', type: 'select', opts: itemOpts },
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'paid_amount', label: 'المدفوع', type: 'number' },
-        { name: 'tax_rate', label: 'نسبة الضريبة %', type: 'number' },
-        { name: 'tax_amount', label: 'قيمة الضريبة', type: 'number' },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0), tax_rate: tx.tax_rate !== undefined ? tx.tax_rate : 14, tax_amount: tx.tax_amount !== undefined ? tx.tax_amount : ((+tx.amount || 0) * 14 / 100) })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => String(p.id) === String(fd.get('project_id')));
         const vendor = vendors.find(v => String(v.id) === String(fd.get('vendor_id')));
@@ -776,12 +763,10 @@ const Crud = {
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
-        const tax_rate = +fd.get('tax_rate') || 14;
-        const tax_amount = +fd.get('tax_amount') || (amount * tax_rate / 100);
         try {
-          await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, tax_rate, tax_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+          await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         } catch (e) {
-          if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('tax_rate') || e.message.includes('tax_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
+          if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
             await this.save('transactions', { type: 'project_expense', amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
           } else { throw e; }
         }

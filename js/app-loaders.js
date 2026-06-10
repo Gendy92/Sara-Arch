@@ -18,7 +18,7 @@ Object.assign(App, {
         <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
         <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
         <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
-      // ─── Monthly Revenue vs Expenses Chart (last 6 months) ───
+      // ─── Monthly Office Revenue vs Expenses Chart (last 6 months) ───
       const months = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(); d.setMonth(d.getMonth() - i);
@@ -26,12 +26,31 @@ Object.assign(App, {
       }
       const monthlyRev = {}; const monthlyExp = {};
       months.forEach(m => { monthlyRev[m.key] = 0; monthlyExp[m.key] = 0; });
+      // Office income: owner_deposits + supervision (calculated like loadOffice)
+      const projectExpenses = txs.filter(t => t.type === 'project_expense');
+      const _expByProject = {}; const _designByProject = {};
+      projectExpenses.forEach(t => {
+        const amt = +t.amount || 0;
+        _expByProject[t.project_id] = (_expByProject[t.project_id] || 0) + amt;
+        if (t.expense_category === 'design') {
+          _designByProject[t.project_id] = (_designByProject[t.project_id] || 0) + amt;
+        }
+      });
+      projects.forEach(p => {
+        const exp = _expByProject[p.id] || 0;
+        const design = _designByProject[p.id] || 0;
+        const supAmt = (exp - design) * (p.supervision_percentage || 0) / 100;
+        if (supAmt > 0 && p.created_at) {
+          const mk = p.created_at.slice(0, 7);
+          if (months.some(m => m.key === mk)) monthlyRev[mk] += supAmt;
+        }
+      });
       txs.forEach(t => {
         if (!t.date) return;
         const mk = t.date.slice(0, 7);
         if (months.some(m => m.key === mk)) {
-          if (['project_deposit','owner_deposit'].includes(t.type)) monthlyRev[mk] += (+t.amount || 0);
-          if (['project_expense','office_expense'].includes(t.type)) monthlyExp[mk] += (+t.amount || 0);
+          if (t.type === 'owner_deposit') monthlyRev[mk] += (+t.amount || 0);
+          if (['office_expense','withdrawal'].includes(t.type)) monthlyExp[mk] += (+t.amount || 0);
         }
       });
       const maxVal = Math.max(...months.map(m => Math.max(monthlyRev[m.key], monthlyExp[m.key])), 1);
@@ -39,22 +58,41 @@ Object.assign(App, {
         const rh = Math.round((monthlyRev[m.key] / maxVal) * 120);
         const eh = Math.round((monthlyExp[m.key] / maxVal) * 120);
         return `<div class="bar-chart-group"><div class="bar-chart-bars"><div class="bar-chart-bar revenue" style="height:${rh}px" title="إيرادات: ${this.fmtMoney(monthlyRev[m.key])}"></div><div class="bar-chart-bar expense" style="height:${eh}px" title="مصروفات: ${this.fmtMoney(monthlyExp[m.key])}"></div></div><div class="bar-chart-label">${m.label}</div></div>`;
-      }).join('')}</div><div class="bar-chart-legend"><span><span class="dot" style="background:var(--green)"></span> الإيرادات</span><span><span class="dot" style="background:var(--red)"></span> المصروفات</span></div>`;
+      }).join('')}</div><div class="bar-chart-legend"><span><span class="dot" style="background:var(--green)"></span> إيرادات المكتب</span><span><span class="dot" style="background:var(--red)"></span> مصروفات المكتب</span></div>`;
       document.getElementById('monthly-chart').innerHTML = barChartHtml;
-      // ─── Expense Breakdown by Category ───
-      const expByCat = {};
-      txs.filter(t => ['project_expense','office_expense'].includes(t.type)).forEach(t => {
-        const cat = t.expense_category || 'غير مصنف';
-        expByCat[cat] = (expByCat[cat] || 0) + (+t.amount || 0);
+      // ─── Office Expense Breakdown by Sector (Pie Chart) ───
+      const officeExp = txs.filter(t => t.type === 'office_expense');
+      const expBySector = {};
+      officeExp.forEach(t => {
+        const sector = t.sector_name || 'غير مصنف';
+        expBySector[sector] = (expBySector[sector] || 0) + (+t.amount || 0);
       });
-      const catRows = Object.entries(expByCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
-      const maxCat = Math.max(...catRows.map(r => r[1]), 1);
-      const catLabels = { design: 'تصميم', construction: 'تنفيذ', materials: 'مواد', permits: 'تراخيص', furniture: 'أثاث', equipment: 'معدات', marketing: 'تسويق', salaries: 'رواتب', rent: 'إيجار', utilities: 'مرافق', other: 'أخرى', office: 'مكتبي' };
-      const hbarHtml = `<div class="hbar-chart">${catRows.map(([cat, amt]) => {
-        const pct = Math.round((amt / maxCat) * 100);
-        return `<div class="hbar-row"><div class="hbar-label">${catLabels[cat] || cat}</div><div class="hbar-track"><div class="hbar-fill" style="width:${pct}%"></div></div><div class="hbar-value">${this.fmtMoney(amt)}</div></div>`;
-      }).join('')}</div>`;
-      document.getElementById('expense-chart').innerHTML = catRows.length ? hbarHtml : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
+      const sectorRows = Object.entries(expBySector).sort((a, b) => b[1] - a[1]);
+      const pieColors = ['#e53935', '#43a047', '#1e88e5', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#26a69a', '#ef5350'];
+      let pieHtml = '<p style="color:var(--text3)">لا توجد مصروفات مكتبية</p>';
+      if (sectorRows.length) {
+        const total = sectorRows.reduce((s, r) => s + r[1], 0);
+        const size = 160, cx = size / 2, cy = size / 2, r = size / 2 - 4;
+        let startAngle = 0;
+        const paths = sectorRows.map(([label, amt], i) => {
+          const angle = (amt / total) * 2 * Math.PI;
+          const x1 = cx + r * Math.cos(startAngle);
+          const y1 = cy + r * Math.sin(startAngle);
+          const x2 = cx + r * Math.cos(startAngle + angle);
+          const y2 = cy + r * Math.sin(startAngle + angle);
+          const largeArc = angle > Math.PI ? 1 : 0;
+          const color = pieColors[i % pieColors.length];
+          const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+          startAngle += angle;
+          return `<path d="${d}" fill="${color}" stroke="var(--card)" stroke-width="2"/>`;
+        }).join('');
+        const legend = sectorRows.map(([label, amt], i) => {
+          const pct = Math.round((amt / total) * 100);
+          return `<div class="pie-legend-item"><span class="pie-legend-color" style="background:${pieColors[i % pieColors.length]}"></span><span>${label}</span><span>${pct}% · ${this.fmtMoney(amt)}</span></div>`;
+        }).join('');
+        pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
+      }
+      document.getElementById('expense-chart').innerHTML = pieHtml;
       // Customer balances
       const deposits = txs.filter(t => t.type === 'project_deposit');
       const expenses = txs.filter(t => t.type === 'project_expense');
@@ -91,44 +129,6 @@ Object.assign(App, {
       });
       const sortedBalances = balanceRows.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
       document.getElementById('customer-balances').innerHTML = sortedBalances.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], sortedBalances.map(r => r.html)) : '<p style="color:var(--text3)">لا يوجد عملاء نشطين</p>';
-      // Active vendors — balance = total cost (services + merchandise) - total paid
-      const [vendors, vendorTxs, procs] = await Promise.all([
-        API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
-        API.request('transactions', 'GET', null, "?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null"),
-        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null')
-      ]);
-      const serviceCostByVendor = {};
-      const servicePaidByVendor = {};
-      vendorTxs.forEach(t => {
-        const isNew = t.payment_term !== undefined && t.payment_term !== null;
-        serviceCostByVendor[t.vendor_id] = (serviceCostByVendor[t.vendor_id] || 0) + (+t.amount || 0);
-        servicePaidByVendor[t.vendor_id] = (servicePaidByVendor[t.vendor_id] || 0) + (isNew ? (+t.paid_amount || 0) : (+t.amount || 0));
-      });
-      const merchandiseByVendor = {};
-      const merchPaidByVendor = {};
-      procs.forEach(p => {
-        const isNew = p.payment_term !== undefined && p.payment_term !== null;
-        merchandiseByVendor[p.vendor_id] = (merchandiseByVendor[p.vendor_id] || 0) + (+p.total_price || 0);
-        merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + (isNew ? (+p.paid_amount || 0) : (+p.total_price || 0));
-      });
-      const vendorBalances = vendors.map(v => {
-        const serviceCost = serviceCostByVendor[v.id] || 0;
-        const servicePaid = servicePaidByVendor[v.id] || 0;
-        const merchandise = merchandiseByVendor[v.id] || 0;
-        const merchPaid = merchPaidByVendor[v.id] || 0;
-        const totalCost = serviceCost + merchandise;
-        const totalPaid = servicePaid + merchPaid;
-        const balance = totalCost - totalPaid;
-        return { ...v, serviceCost, merchandise, totalCost, totalPaid, balance };
-      }).filter(v => v.balance !== 0 || v.totalCost > 0);
-      const sortedVendors = vendorBalances.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
-      const vendorRows = sortedVendors.map(v => {
-        const color = v.balance > 0 ? 'var(--red)' : v.balance < 0 ? 'var(--green)' : 'var(--text3)';
-        const status = v.balance > 0 ? 'علينا' : v.balance < 0 ? 'له' : 'تسوية';
-        return [v.name, v.vendor_type === 'merchandise' ? 'بضاعة' : 'خدمات', App.fmtMoney(v.serviceCost), App.fmtMoney(v.merchandise), App.fmtMoney(v.totalPaid), `<span style="color:${color};font-weight:700">${App.fmtMoney(Math.abs(v.balance))}</span>`, status, `<button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button>`];
-      });
-      document.getElementById('active-vendors').innerHTML = vendorRows.length ? this.table(['المورد', 'النوع', 'تكلفة خدمات', 'مشتريات', 'المدفوع', 'الباقي', 'الحالة', 'الإجراءات'], vendorRows) : '<p style="color:var(--text3)">لا يوجد موردين</p>';
-
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');

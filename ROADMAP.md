@@ -31,7 +31,7 @@
 | 2.4 | **Purchase Orders (أوامر شراء)** | PO header + lines, approval workflow, PO-to-procurement matching, status tracking. | 5 hrs |
 | 2.5 | **Project Tasks / Scheduling** | Simple task list per project with start/end dates, assignee, status (pending/in-progress/done). Gantt chart optional. | 4 hrs |
 | 2.6 | **Document Attachments** | Upload contracts, invoices, receipts, photos per project/client/vendor. Store in Supabase Storage. | 3 hrs |
-| 2.7 | **Taxes / VAT (ضريبة القيمة المضافة)** | Add `tax_rate` field to transactions & procurements. Auto-compute tax line. Configurable rate (default 14%). | 2 hrs |
+| 2.7 | ~~Taxes / VAT (ضريبة القيمة المضافة)~~ | ~~Removed — app does not calculate tax~~ | — |
 | 2.8 | **Retention / Holdback (ضمان الأعمال)** | Per-project retention % (e.g., 5%). Track retained amount, release on completion. | 3 hrs |
 
 ---
@@ -123,7 +123,7 @@ Some features require new DB tables/columns:
 
 ```sql
 -- Invoicing
-CREATE TABLE invoices (id UUID, number TEXT, client_id UUID, project_id UUID, date DATE, due_date DATE, subtotal NUMERIC, tax_rate NUMERIC, tax_amount NUMERIC, total NUMERIC, status TEXT, notes TEXT);
+CREATE TABLE invoices (id UUID, number TEXT, client_id UUID, project_id UUID, date DATE, due_date DATE, subtotal NUMERIC, total NUMERIC, status TEXT, notes TEXT);
 CREATE TABLE invoice_lines (id UUID, invoice_id UUID, description TEXT, quantity NUMERIC, unit_price NUMERIC, total NUMERIC);
 
 -- Inventory
@@ -131,14 +131,9 @@ CREATE TABLE inventory_transactions (id UUID, item_id UUID, type TEXT, quantity 
 ALTER TABLE items ADD COLUMN reorder_level NUMERIC DEFAULT 0;
 
 -- Quotations
-CREATE TABLE quotations (id UUID, client_id UUID, project_id UUID, date DATE, expiry_date DATE, subtotal NUMERIC, tax_amount NUMERIC, total NUMERIC, status TEXT);
+CREATE TABLE quotations (id UUID, client_id UUID, project_id UUID, date DATE, expiry_date DATE, subtotal NUMERIC, total NUMERIC, status TEXT);
 CREATE TABLE quotation_lines (id UUID, quotation_id UUID, section_id UUID, item_id UUID, description TEXT, quantity NUMERIC, unit_price NUMERIC, total NUMERIC);
 
--- Taxes
-ALTER TABLE transactions ADD COLUMN tax_rate NUMERIC DEFAULT 14;
-ALTER TABLE transactions ADD COLUMN tax_amount NUMERIC DEFAULT 0;
-ALTER TABLE procurements ADD COLUMN tax_rate NUMERIC DEFAULT 14;
-ALTER TABLE procurements ADD COLUMN tax_amount NUMERIC DEFAULT 0;
 
 -- Retention
 ALTER TABLE projects ADD COLUMN retention_percent NUMERIC DEFAULT 5;
