@@ -93,11 +93,12 @@ Object.assign(App, {
         pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
       }
       document.getElementById('expense-chart').innerHTML = pieHtml;
-      // Customer balances
+      // ─── Client & Project Balances (merged tree) ───
       const deposits = txs.filter(t => t.type === 'project_deposit');
       const expenses = txs.filter(t => t.type === 'project_expense');
       const expByProject = {};
       const designByProject = {};
+      const projDeposits = {};
       expenses.forEach(t => {
         const amt = +t.amount || 0;
         expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
@@ -105,62 +106,52 @@ Object.assign(App, {
           designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
         }
       });
+      deposits.forEach(t => {
+        if (t.project_id) projDeposits[t.project_id] = (projDeposits[t.project_id] || 0) + (+t.amount || 0);
+      });
       const projByClient = {};
       projects.forEach(p => { if (!projByClient[p.client_id]) projByClient[p.client_id] = []; projByClient[p.client_id].push(p); });
-      const depByClient = {};
-      deposits.forEach(t => { depByClient[t.client_id] = (depByClient[t.client_id] || 0) + (+t.amount || 0); });
-      // Show balances for all clients with projects (active or completed)
+      const clientMap = {};
+      clients.forEach(c => { clientMap[c.id] = c.name; });
       const activeClientIds = new Set(projects.map(p => p.client_id));
-      const balanceRows = clients.filter(c => activeClientIds.has(c.id)).map(c => {
+      const clientRows = clients.filter(c => activeClientIds.has(c.id)).map(c => {
         const clientProjects = projByClient[c.id] || [];
-        let totalExp = 0;
-        let totalSup = 0;
-        clientProjects.forEach(p => {
+        if (!clientProjects.length) return null;
+        let totalDep = 0, totalExp = 0, totalSup = 0;
+        const projectRows = clientProjects.map(p => {
           const exp = expByProject[p.id] || 0;
           const design = designByProject[p.id] || 0;
           const constr = exp - design;
-          totalExp += exp;
-          totalSup += constr * (p.supervision_percentage || 0) / 100;
+          const sup = constr * (p.supervision_percentage || 0) / 100;
+          const dep = projDeposits[p.id] || 0;
+          const bal = dep - exp - sup;
+          const color = bal >= 0 ? 'var(--green)' : 'var(--red)';
+          totalDep += dep; totalExp += exp; totalSup += sup;
+          return { name: p.name, dep, exp, sup, bal, color };
         });
-        const dep = depByClient[c.id] || 0;
-        const balance = dep - totalExp - totalSup;
-        const color = balance >= 0 ? 'var(--green)' : 'var(--red)';
-        return { name: c.name, dep, totalExp, totalSup, balance, color, html: [c.name, this.fmtMoney(dep), this.fmtMoney(totalExp), this.fmtMoney(totalSup), `<span style="color:${color};font-weight:700">${this.fmtMoney(balance)}</span>`] };
-      });
-      const sortedBalances = balanceRows.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
-      document.getElementById('customer-balances').innerHTML = sortedBalances.length ? this.table(['العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], sortedBalances.map(r => r.html)) : '<p style="color:var(--text3)">لا يوجد عملاء نشطين</p>';
+        const clientBal = totalDep - totalExp - totalSup;
+        const clientColor = clientBal >= 0 ? 'var(--green)' : 'var(--red)';
+        return { name: c.name, dep: totalDep, exp: totalExp, sup: totalSup, bal: clientBal, color: clientColor, projects: projectRows };
+      }).filter(Boolean).sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal));
+      let treeHtml = '<p style="color:var(--text3)">لا يوجد عملاء نشطين</p>';
+      if (clientRows.length) {
+        treeHtml = '<div class="cpt-header"><span></span><span>الاسم</span><span>الوارد</span><span>المصروفات</span><span>الإشراف</span><span>الرصيد</span></div>';
+        clientRows.forEach(c => {
+          const clientBal = `<span style="color:${c.color};font-weight:700">${this.fmtMoney(c.bal)}</span>`;
+          treeHtml += `<div class="cpt-client" onclick="this.classList.toggle('expanded')"><div class="cpt-row"><span class="cpt-toggle">▼</span><span class="cpt-name">${App.esc(c.name)}</span><span class="cpt-num">${this.fmtMoney(c.dep)}</span><span class="cpt-num">${this.fmtMoney(c.exp)}</span><span class="cpt-num">${this.fmtMoney(c.sup)}</span><span class="cpt-num">${clientBal}</span></div><div class="cpt-projects">`;
+          c.projects.forEach(p => {
+            const projBal = `<span style="color:${p.color};font-weight:700">${this.fmtMoney(p.bal)}</span>`;
+            treeHtml += `<div class="cpt-row cpt-project"><span></span><span class="cpt-name">${App.esc(p.name)}</span><span class="cpt-num">${this.fmtMoney(p.dep)}</span><span class="cpt-num">${this.fmtMoney(p.exp)}</span><span class="cpt-num">${this.fmtMoney(p.sup)}</span><span class="cpt-num">${projBal}</span></div>`;
+          });
+          treeHtml += '</div></div>';
+        });
+        treeHtml = `<div class="client-project-tree">${treeHtml}</div>`;
+      }
+      document.getElementById('client-project-balances').innerHTML = treeHtml;
       const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
       document.getElementById('active-proj').innerHTML = active.length ? this.table(['المشروع', 'العميل', 'الحالة'], active.map(p => [p.name, p.client_name || '-', '<span class="badge badge-green">نشط</span>'])) : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
-      // ─── Project Balances ───
-      const projDeposits = {};
-      const projExpenses = {};
-      const projDesign = {};
-      txs.forEach(t => {
-        if (t.type === 'project_deposit' && t.project_id) projDeposits[t.project_id] = (projDeposits[t.project_id] || 0) + (+t.amount || 0);
-        if (t.type === 'project_expense' && t.project_id) {
-          projExpenses[t.project_id] = (projExpenses[t.project_id] || 0) + (+t.amount || 0);
-          if (t.expense_category === 'design') projDesign[t.project_id] = (projDesign[t.project_id] || 0) + (+t.amount || 0);
-        }
-      });
-      const clientMap = {};
-      clients.forEach(c => { clientMap[c.id] = c.name; });
-      const projRows = projects.map(p => {
-        const dep = projDeposits[p.id] || 0;
-        const exp = projExpenses[p.id] || 0;
-        const design = projDesign[p.id] || 0;
-        const constr = exp - design;
-        const sup = constr * (p.supervision_percentage || 0) / 100;
-        const bal = dep - exp - sup;
-        const color = bal >= 0 ? 'var(--green)' : 'var(--red)';
-        return [p.name, clientMap[p.client_id] || '-', this.fmtMoney(dep), this.fmtMoney(exp), this.fmtMoney(sup), `<span style="color:${color};font-weight:700">${this.fmtMoney(bal)}</span>`];
-      }).sort((a, b) => {
-        const av = parseFloat(a[5].replace(/[^0-9.-]/g, '')) || 0;
-        const bv = parseFloat(b[5].replace(/[^0-9.-]/g, '')) || 0;
-        return Math.abs(bv) - Math.abs(av);
-      });
-      document.getElementById('project-balances').innerHTML = projRows.length ? this.table(['المشروع', 'العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], projRows) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
       // ─── Office Balance ───
       const ownerDeposits = txs.filter(t => t.type === 'owner_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
       const officeExpenses = txs.filter(t => t.type === 'office_expense').reduce((s, t) => s + (+t.amount || 0), 0);

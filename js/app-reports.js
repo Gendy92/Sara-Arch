@@ -67,13 +67,6 @@ Object.assign(App, {
         };
       }).filter(Boolean);
 
-      clientRows.sort((a, b) => a.balance - b.balance);
-      const totalReceivable = clientRows.reduce((s, r) => s + Math.abs(r.balance), 0);
-      document.getElementById('aging-clients-total').textContent = this.fmtMoney(totalReceivable);
-      document.getElementById('aging-clients-tbl').innerHTML = clientRows.length
-        ? this.table(['العميل', 'المبلغ المستحق', 'آخر معاملة'], clientRows.map(r => r.html))
-        : '<p style="color:var(--text3)">لا توجد مستحقات من العملاء</p>';
-
       const serviceCostByVendor = {};
       const servicePaidByVendor = {};
       const serviceDatesByVendor = {};
@@ -129,11 +122,10 @@ Object.assign(App, {
         ? this.table(['المورد', 'المبلغ المستحق', 'آخر معاملة'], vendorRows.map(r => r.html))
         : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
 
-      this._agingData = { clients: clientRows, vendors: vendorRows };
+      this._agingData = { vendors: vendorRows };
     } catch (e) {
       console.error(e);
       const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadAging()">🔄 إعادة المحاولة</button>`;
-      document.getElementById('aging-clients-tbl').innerHTML = err;
       document.getElementById('aging-vendors-tbl').innerHTML = err;
     }
   },

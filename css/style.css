@@ -308,3 +308,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .pie-legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
 .pie-legend-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
 .pie-legend-item span:last-child { margin-right: auto; color: var(--text); direction: ltr; }
+.client-project-tree { display: flex; flex-direction: column; gap: 4px; }
+.cpt-header { display: grid; grid-template-columns: 24px 1fr 110px 110px 110px 110px; gap: 8px; padding: 8px 12px; font-size: 12px; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.cpt-client { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; cursor: pointer; }
+.cpt-client:hover { border-color: var(--gold); }
+.cpt-row { display: grid; grid-template-columns: 24px 1fr 110px 110px 110px 110px; gap: 8px; padding: 10px 12px; align-items: center; }
+.cpt-client > .cpt-row { background: var(--bg3); font-weight: 600; }
+.cpt-toggle { text-align: center; font-size: 12px; color: var(--text3); user-select: none; transition: transform 0.2s; }
+.cpt-client.expanded .cpt-toggle { transform: rotate(180deg); }
+.cpt-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cpt-num { text-align: left; direction: ltr; white-space: nowrap; font-size: 13px; }
+.cpt-projects { display: none; }
+.cpt-client.expanded .cpt-projects { display: flex; flex-direction: column; }
+.cpt-project { border-top: 1px solid var(--border); padding: 8px 12px 8px 36px; color: var(--text2); font-size: 13px; }
+.cpt-project:hover { background: var(--bg3); }
