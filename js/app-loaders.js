@@ -133,6 +133,46 @@ Object.assign(App, {
       document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
       document.getElementById('active-proj').innerHTML = active.length ? this.table(['المشروع', 'العميل', 'الحالة'], active.map(p => [p.name, p.client_name || '-', '<span class="badge badge-green">نشط</span>'])) : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
+      // ─── Project Balances ───
+      const projDeposits = {};
+      const projExpenses = {};
+      const projDesign = {};
+      txs.forEach(t => {
+        if (t.type === 'project_deposit' && t.project_id) projDeposits[t.project_id] = (projDeposits[t.project_id] || 0) + (+t.amount || 0);
+        if (t.type === 'project_expense' && t.project_id) {
+          projExpenses[t.project_id] = (projExpenses[t.project_id] || 0) + (+t.amount || 0);
+          if (t.expense_category === 'design') projDesign[t.project_id] = (projDesign[t.project_id] || 0) + (+t.amount || 0);
+        }
+      });
+      const clientMap = {};
+      clients.forEach(c => { clientMap[c.id] = c.name; });
+      const projRows = projects.map(p => {
+        const dep = projDeposits[p.id] || 0;
+        const exp = projExpenses[p.id] || 0;
+        const design = projDesign[p.id] || 0;
+        const constr = exp - design;
+        const sup = constr * (p.supervision_percentage || 0) / 100;
+        const bal = dep - exp - sup;
+        const color = bal >= 0 ? 'var(--green)' : 'var(--red)';
+        return [p.name, clientMap[p.client_id] || '-', this.fmtMoney(dep), this.fmtMoney(exp), this.fmtMoney(sup), `<span style="color:${color};font-weight:700">${this.fmtMoney(bal)}</span>`];
+      }).sort((a, b) => {
+        const av = parseFloat(a[5].replace(/[^0-9.-]/g, '')) || 0;
+        const bv = parseFloat(b[5].replace(/[^0-9.-]/g, '')) || 0;
+        return Math.abs(bv) - Math.abs(av);
+      });
+      document.getElementById('project-balances').innerHTML = projRows.length ? this.table(['المشروع', 'العميل', 'الوارد', 'المصروفات', 'الإشراف', 'الرصيد'], projRows) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
+      // ─── Office Balance ───
+      const ownerDeposits = txs.filter(t => t.type === 'owner_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
+      const officeExpenses = txs.filter(t => t.type === 'office_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      const ownerWithdrawals = txs.filter(t => t.type === 'owner_withdrawal').reduce((s, t) => s + (+t.amount || 0), 0);
+      const officeSupervision = projects.reduce((s, p) => {
+        const exp = projExpenses[p.id] || 0;
+        const design = projDesign[p.id] || 0;
+        return s + ((exp - design) * (p.supervision_percentage || 0) / 100);
+      }, 0);
+      const officeIncome = ownerDeposits + officeSupervision;
+      const officeBalance = officeIncome - officeExpenses - ownerWithdrawals;
+      document.getElementById('office-balance').innerHTML = `<div class="kpi-grid"><div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(officeIncome)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">توريدات: ${this.fmtMoney(ownerDeposits)} &nbsp;|&nbsp; إشراف: ${this.fmtMoney(officeSupervision)}</div></div><div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(officeExpenses + ownerWithdrawals)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">مصروفات: ${this.fmtMoney(officeExpenses)} &nbsp;|&nbsp; سحب: ${this.fmtMoney(ownerWithdrawals)}</div></div><div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div></div>`;
       // Load aging balances inline
       await this.loadAging();
     } catch (e) {
