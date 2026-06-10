@@ -145,7 +145,7 @@ const App = {
 
   _routeFromHash() {
     const hash = window.location.hash.replace(/^#\/?/, '');
-    if (!hash) return 'dashboard';
+    if (!hash) return { screen: 'dashboard', opts: {} };
     const [path, query] = hash.split('?');
     const opts = {};
     if (query) {

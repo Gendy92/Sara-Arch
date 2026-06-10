@@ -178,7 +178,7 @@ Object.assign(App, {
     } catch (e) {
       console.error(e);
       const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadDashboard()">🔄 إعادة المحاولة</button>`;
-      document.getElementById('kpi-grid').innerHTML = err;
+      document.getElementById('kpis').innerHTML = err;
     }
   },
 
@@ -242,34 +242,6 @@ Object.assign(App, {
     }
   },
 
-  async loadProjects() {
-    try {
-      const [data, expenses] = await Promise.all([
-        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
-        API.request('transactions', 'GET', null, "?select=*&type=eq.project_expense&deleted_at=is.null")
-      ]);
-      const expByProject = {};
-      const designByProject = {};
-      expenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-        }
-      });
-      document.getElementById('projects-tbl').innerHTML = data.length ? this.table(['المشروع', 'العميل', 'العنوان', 'القيمة', 'مصروفات', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], data.map(p => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        const constr = exp - design;
-        const supAmt = constr * (p.supervision_percentage || 0) / 100;
-        const actions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject') + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button>`;
-        return [p.name, p.client_name || '-', p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, actions];
-      })) : '<p style="color:var(--text3)">لا توجد مشاريع</p>';
-    } catch (e) {
-      console.error(e);
-      document.getElementById('projects-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المشاريع</p><button class="btn btn-secondary" onclick="App.loadProjects()">🔄 إعادة المحاولة</button>`;
-    }
-  },
 
   async loadVendors() {
     try {
