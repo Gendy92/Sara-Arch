@@ -3,16 +3,12 @@ Object.assign(App, {
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      const sixMoAgo = new Date(); sixMoAgo.setMonth(sixMoAgo.getMonth() - 6);
-      const dateGte = sixMoAgo.toISOString().slice(0, 10);
-      const [clients, projects, employees, projTxs, officeTxs] = await Promise.all([
+      const [clients, projects, employees, txs] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, `?select=id,type,amount,date,project_id,client_id,expense_category,created_at&type=in.(project_deposit,project_expense)&deleted_at=is.null`),
-        API.request('transactions', 'GET', null, `?select=id,type,amount,date,project_id,expense_category,sector_name,created_at&type=in.(owner_deposit,office_expense,withdrawal)&date=gte.${dateGte}&deleted_at=is.null`)
+        API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null')
       ]);
-      const txs = [...projTxs, ...officeTxs];
       const activeProjects = projects.filter(p => p.status === 'active').length;
       const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
       const totalExp = txs.filter(t => ['project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
@@ -161,8 +157,8 @@ Object.assign(App, {
       const officeExpenses = txs.filter(t => t.type === 'office_expense').reduce((s, t) => s + (+t.amount || 0), 0);
       const ownerWithdrawals = txs.filter(t => t.type === 'owner_withdrawal').reduce((s, t) => s + (+t.amount || 0), 0);
       const officeSupervision = projects.reduce((s, p) => {
-        const exp = projExpenses[p.id] || 0;
-        const design = projDesign[p.id] || 0;
+        const exp = expByProject[p.id] || 0;
+        const design = designByProject[p.id] || 0;
         return s + ((exp - design) * (p.supervision_percentage || 0) / 100);
       }, 0);
       const officeIncome = ownerDeposits + officeSupervision;
