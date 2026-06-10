@@ -38,6 +38,17 @@ ALTER TABLE project_tasks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "authenticated_all" ON project_tasks;
 CREATE POLICY "authenticated_all" ON project_tasks FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+-- ─── WORK SECTIONS / WORK ITEMS COLUMN FIXES ───
+-- Ensure notes column exists (for apps that ran schema.sql)
+-- and description column exists (for apps that ran schema_full_fix.sql)
+ALTER TABLE work_sections ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE work_sections ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS section_name TEXT;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT 'م²';
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS price NUMERIC DEFAULT 0;
+
 -- ─── INDEXES ───
 CREATE INDEX IF NOT EXISTS idx_project_tasks_project ON project_tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_project_type ON transactions(project_id, type);

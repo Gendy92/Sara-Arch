@@ -967,11 +967,11 @@ Object.assign(App, {
 
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
       document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
-        s.name, s.notes || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        s.name, s.notes || s.description || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : `<p style="color:var(--text3);padding:16px">لا يوجد أقسام</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkSection()">+ إضافة أول قسم</button>':''}`;
       this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
       document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
-        i.name, sectionMap[i.section_id] || '-', i.notes || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        i.name, sectionMap[i.section_id] || '-', i.notes || i.description || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : `<p style="color:var(--text3);padding:16px">لا توجد بنود</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkItem()">+ إضافة أول بند</button>':''}`;
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
     } catch (e) {
@@ -1106,7 +1106,7 @@ Object.assign(App, {
         const key = String(sectionData.name || '').trim().toLowerCase();
         if (sectionByName[key]) continue;
         try {
-          const created = await API.request('work_sections', 'POST', sectionData);
+          const created = await Crud.save('work_sections', sectionData);
           const newSection = Array.isArray(created) ? created[0] : created;
           sectionByName[key] = newSection;
         } catch (e) {
@@ -1126,7 +1126,7 @@ Object.assign(App, {
           if (seenItems.has(itemKey)) continue;
           seenItems.add(itemKey);
           try {
-            await API.request('work_items', 'POST', {
+            await Crud.save('work_items', {
               section_id: section.id,
               section_name: section.name,
               name: p.rawItem,
