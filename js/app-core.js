@@ -3,6 +3,7 @@
 const App = {
   screen: 'login',
   txTab: 'all',
+  txTypeFilter: 'all',
   loading: false,
   txExpenseOffset: 0,
   txExpenseLimit: 50,

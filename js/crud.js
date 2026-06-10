@@ -1064,16 +1064,16 @@ const Crud = {
 
   async projectBudget(projectId) {
     const [project, txs] = await Promise.all([
-      API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}`),
+      API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}`),
       API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null`)
     ]);
     const p = project[0];
-    if (!p) return UI.toast('المشروع غير موجود');
+    if (!p) return UI.toast('المشروع غير موجود', 'error');
     const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
     const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
     const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
     const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-    const supervision = (constr - design) * (p.supervision_percentage || 0) / 100;
+    const supervision = Math.max(0, constr - design) * (p.supervision_percentage || 0) / 100;
     const balance = deposits - expenses - supervision;
     const html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(deposits)}</div></div>
@@ -1168,8 +1168,10 @@ const Crud = {
 
   delProjectTask(id) {
     UI.confirm('هل أنت متأكد من حذف هذه المهمة؟', async () => {
+      const rows = await API.request('project_tasks', 'GET', null, `?select=project_id&id=eq.${id}`);
       await this.softDelete('project_tasks', id);
       UI.toast('تم الحذف');
+      if (rows.length) this.loadProjectTasks(rows[0].project_id);
     });
   },
 
@@ -1264,7 +1266,7 @@ const Crud = {
       const fd = new FormData(form);
       await this.save('custody_records', {
         employee_id: employeeId,
-        amount: fd.get('amount'),
+        amount: +fd.get('amount') || 0,
         date: fd.get('date') || new Date().toISOString().slice(0, 10),
         notes: fd.get('notes') || null,
         status: 'active'
@@ -1287,8 +1289,8 @@ const Crud = {
     UI.openModal('تعديل عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
       await this.save('custody_records', {
-        amount: fd.get('amount'),
-        returned_amount: fd.get('returned_amount') || 0,
+        amount: +fd.get('amount') || 0,
+        returned_amount: +fd.get('returned_amount') || 0,
         status: fd.get('status') || 'active',
         date: fd.get('date') || null,
         notes: fd.get('notes') || null
@@ -1300,8 +1302,10 @@ const Crud = {
 
   delCustody(id) {
     UI.confirm('هل أنت متأكد من حذف هذه العهدة؟', async () => {
+      const rows = await API.request('custody_records', 'GET', null, `?select=employee_id&id=eq.${id}`);
       await this.softDelete('custody_records', id);
       UI.toast('تم الحذف');
+      if (rows.length) this.employeeCustody(rows[0].employee_id);
     });
   },
 
@@ -1371,8 +1375,10 @@ const Crud = {
 
   delAttendance(id) {
     UI.confirm('هل أنت متأكد من حذف هذا السجل؟', async () => {
+      const rows = await API.request('attendance_records', 'GET', null, `?select=employee_id&id=eq.${id}`);
       await this.softDelete('attendance_records', id);
       UI.toast('تم الحذف');
+      if (rows.length) this.employeeAttendance(rows[0].employee_id);
     });
   }
 };

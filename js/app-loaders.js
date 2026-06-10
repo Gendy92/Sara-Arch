@@ -125,12 +125,8 @@ Object.assign(App, {
         const merchPaid = merchPaidByVendor[v.id] || 0;
         const balance = (serviceCost + merchandise) - (servicePaid + merchPaid);
         if (balance <= 0) return null;
-        return [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(balance)}</span>`];
-      }).filter(Boolean).sort((a, b) => {
-        const balA = parseFloat(a[1].replace(/[^0-9.-]/g, '')) || 0;
-        const balB = parseFloat(b[1].replace(/[^0-9.-]/g, '')) || 0;
-        return balB - balA;
-      }).slice(0, 5);
+        return { name: v.name, balance };
+      }).filter(Boolean).sort((a, b) => b.balance - a.balance).slice(0, 5).map(v => [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance)}</span>`]);
       document.getElementById('dash-vendors').innerHTML = vendorBalances.length
         ? this.table(['المورد', 'المبلغ المستحق'], vendorBalances)
         : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
@@ -294,7 +290,7 @@ Object.assign(App, {
         if (supAmt > 0) rows.push({ created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` });
         return rows;
       }).filter(Boolean);
-      let allTxs = [...recentTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      let allTxs = [...recentTxs, ...supRows.flat()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       if (App.txTypeFilter === 'deposit') allTxs = allTxs.filter(t => t.type === 'project_deposit' || t.type === 'supervision');
       if (App.txTypeFilter === 'expense') allTxs = allTxs.filter(t => t.type === 'project_expense');
       document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
@@ -326,7 +322,7 @@ Object.assign(App, {
       const totalExpCount = allProjectExpenses.length;
       const displayedExpCount = App.txExpenseLoaded.length;
       const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
-      const expenseRows = App.txExpenseLoaded.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+      const expenseRows = [...App.txExpenseLoaded].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
       const loadMoreBtn = displayedExpCount < totalExpCount
         ? `<div style="margin-top:16px;text-align:center"><button class="btn btn-secondary" onclick="App.loadMoreExpenses()">تحميل المزيد (+${Math.min(App.txExpenseLimit, totalExpCount - displayedExpCount)})</button></div>`
         : '';
