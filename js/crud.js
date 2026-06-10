@@ -1015,5 +1015,364 @@ const Crud = {
       await this.softDelete('work_items', id);
       UI.toast('تم الحذف'); App.loadMasterData();
     });
+  },
+
+  // ─── CLIENT & PROJECT STATEMENTS / BUDGET / TASKS ───
+  async clientStatement(clientId) {
+    const [client, txs] = await Promise.all([
+      API.request('clients', 'GET', null, `?select=name&id=eq.${clientId}`),
+      API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`)
+    ]);
+    const name = client[0]?.name || 'عميل';
+    let totalDep = 0, totalExp = 0;
+    const rows = txs.map((t, i) => {
+      const amt = +t.amount || 0;
+      if (['project_deposit','owner_deposit','income','deposit'].includes(t.type)) totalDep += amt;
+      else totalExp += amt;
+      return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amt)];
+    });
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
+    </div>`;
+    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+    UI.openModal(`كشف حساب: ${name}`, summary + table, null);
+  },
+
+  async projectStatement(projectId) {
+    const [project, txs] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}`),
+      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
+    ]);
+    const name = project[0]?.name || 'مشروع';
+    let totalDep = 0, totalExp = 0;
+    const rows = txs.map((t, i) => {
+      const amt = +t.amount || 0;
+      if (['project_deposit','owner_deposit','income','deposit'].includes(t.type)) totalDep += amt;
+      else totalExp += amt;
+      return [i+1, t.date || '-', App.fmtTxType(t.type), t.description || '-', App.fmtMoney(amt)];
+    });
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
+    </div>`;
+    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+    UI.openModal(`كشف حساب مشروع: ${name}`, summary + table, null);
+  },
+
+  async projectBudget(projectId) {
+    const [project, txs] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}`),
+      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null`)
+    ]);
+    const p = project[0];
+    if (!p) return UI.toast('المشروع غير موجود');
+    const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
+    const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+    const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const supervision = (constr - design) * (p.supervision_percentage || 0) / 100;
+    const balance = deposits - expenses - supervision;
+    const html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(deposits)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(expenses)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مصروفات الإنشاء</div><div class="kpi-value">${App.fmtMoney(constr)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مصروفات التصميم</div><div class="kpi-value">${App.fmtMoney(design)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${p.supervision_percentage || 0}%)</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(balance)}</div></div>
+    </div>`;
+    UI.openModal(`📊 ميزانية مشروع: ${p.name}`, html, null);
+  },
+
+  async loadProjectTasks(projectId) {
+    const [project, tasks] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}`),
+      API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc`)
+    ]);
+    const name = project[0]?.name || 'مشروع';
+    const statusBadge = (s) => {
+      const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
+      const labels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
+      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+    };
+    const priorityBadge = (p) => {
+      const colors = { low: 'gray', medium: 'orange', high: 'red' };
+      const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
+      return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
+    };
+    const rows = tasks.map((t, i) => [
+      i+1, t.name, t.assignee || '-', t.start_date || '-', t.due_date || '-', statusBadge(t.status), priorityBadge(t.priority),
+      `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`
+    ]);
+    const table = rows.length ? App.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية', ''], rows) : '<p style="color:var(--text3)">لا توجد مهام مسجلة</p>';
+    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addProjectTask('${projectId}')">➕ إضافة مهمة</button></div>`;
+    UI.openModal(`📋 مهام مشروع: ${name}`, addBtn + table, null);
+  },
+
+  addProjectTask(projectId) {
+    const fields = [
+      { name: 'name', label: 'اسم المهمة *', req: true },
+      { name: 'assignee', label: 'المسؤول' },
+      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'pending',l:'معلق'},{v:'in_progress',l:'قيد التنفيذ'},{v:'done',l:'منتهي'}] },
+      { name: 'priority', label: 'الأولوية', type: 'select', opts: [{v:'low',l:'منخفض'},{v:'medium',l:'متوسط'},{v:'high',l:'عالي'}] },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('إضافة مهمة', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('project_tasks', {
+        project_id: projectId,
+        name: fd.get('name'),
+        assignee: fd.get('assignee') || null,
+        start_date: fd.get('start_date') || null,
+        due_date: fd.get('due_date') || null,
+        status: fd.get('status') || 'pending',
+        priority: fd.get('priority') || 'medium',
+        notes: fd.get('notes') || null
+      });
+      UI.toast('تم حفظ المهمة');
+      this.loadProjectTasks(projectId);
+    });
+  },
+
+  async editProjectTask(id) {
+    const rows = await API.request('project_tasks', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'name', label: 'اسم المهمة *', req: true },
+      { name: 'assignee', label: 'المسؤول' },
+      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'pending',l:'معلق'},{v:'in_progress',l:'قيد التنفيذ'},{v:'done',l:'منتهي'}] },
+      { name: 'priority', label: 'الأولوية', type: 'select', opts: [{v:'low',l:'منخفض'},{v:'medium',l:'متوسط'},{v:'high',l:'عالي'}] },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل مهمة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('project_tasks', {
+        name: fd.get('name'),
+        assignee: fd.get('assignee') || null,
+        start_date: fd.get('start_date') || null,
+        due_date: fd.get('due_date') || null,
+        status: fd.get('status') || 'pending',
+        priority: fd.get('priority') || 'medium',
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      this.loadProjectTasks(rows[0].project_id);
+    });
+  },
+
+  delProjectTask(id) {
+    UI.confirm('هل أنت متأكد من حذف هذه المهمة؟', async () => {
+      await this.softDelete('project_tasks', id);
+      UI.toast('تم الحذف');
+    });
+  },
+
+  // ─── VENDOR STATEMENT & PURCHASES ───
+  async vendorStatement(vendorId) {
+    const [vendor, txs, procs] = await Promise.all([
+      API.request('vendors', 'GET', null, `?select=name&id=eq.${vendorId}`),
+      API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`),
+      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`)
+    ]);
+    const name = vendor[0]?.name || 'مورد';
+    let totalTx = 0;
+    const txRows = txs.map((t, i) => {
+      const amt = +t.amount || 0;
+      totalTx += amt;
+      return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amt)];
+    });
+    let totalProc = 0;
+    const procRows = procs.map((p, i) => {
+      const amt = +p.total_price || 0;
+      totalProc += amt;
+      return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(p.unit_price || 0), App.fmtMoney(amt), p.projects?.name || p.project_name || '-'];
+    });
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المعاملات</div><div class="kpi-value">${App.fmtMoney(totalTx)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(totalProc)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإجمالي</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalTx + totalProc)}</div></div>
+    </div>`;
+    const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], txRows) : '';
+    const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], procRows) : '';
+    const content = summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
+    UI.openModal(`كشف حساب مورد: ${name}`, content, null);
+  },
+
+  async vendorPurchases(vendorId) {
+    const [vendor, procs] = await Promise.all([
+      API.request('vendors', 'GET', null, `?select=name&id=eq.${vendorId}`),
+      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`)
+    ]);
+    const name = vendor[0]?.name || 'مورد';
+    let total = 0;
+    const rows = procs.map((p, i) => {
+      const amt = +p.total_price || 0;
+      total += amt;
+      return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(p.unit_price || 0), App.fmtMoney(amt), p.projects?.name || p.project_name || '-'];
+    });
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
+    </div>`;
+    const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
+    UI.openModal(`💰 مشتريات مورد: ${name}`, summary + table, null);
+  },
+
+  // ─── EMPLOYEE CUSTODY & ATTENDANCE ───
+  async employeeCustody(employeeId) {
+    const [emp, records] = await Promise.all([
+      API.request('employees', 'GET', null, `?select=name&id=eq.${employeeId}`),
+      API.request('custody_records', 'GET', null, `?select=*,projects(name)&employee_id=eq.${employeeId}&deleted_at=is.null&order=date.desc`)
+    ]);
+    const name = emp[0]?.name || 'موظف';
+    const statusBadge = (s) => {
+      const colors = { active: 'green', settled: 'blue', partial: 'orange' };
+      const labels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
+      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+    };
+    let total = 0, returned = 0;
+    const rows = records.map((r, i) => {
+      const amt = +r.amount || 0;
+      const ret = +r.returned_amount || 0;
+      total += amt;
+      returned += ret;
+      const bal = amt - ret;
+      return [i+1, r.date || '-', App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), r.projects?.name || r.project_name || '-', r.notes || '-', UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+    });
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(returned)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total - returned)}</div></div>
+    </div>`;
+    const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
+    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustody('${employeeId}')">➕ إضافة عهدة</button></div>`;
+    UI.openModal(`💼 عهد موظف: ${name}`, addBtn + summary + table, null);
+  },
+
+  addCustody(employeeId) {
+    const fields = [
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('إضافة عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('custody_records', {
+        employee_id: employeeId,
+        amount: fd.get('amount'),
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        notes: fd.get('notes') || null,
+        status: 'active'
+      });
+      UI.toast('تم حفظ العهدة');
+      this.employeeCustody(employeeId);
+    });
+  },
+
+  async editCustody(id) {
+    const rows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'returned_amount', label: 'المرتجع', type: 'number' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'active',l:'نشطة'},{v:'settled',l:'مقفلة'},{v:'partial',l:'جزئي'}] },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('custody_records', {
+        amount: fd.get('amount'),
+        returned_amount: fd.get('returned_amount') || 0,
+        status: fd.get('status') || 'active',
+        date: fd.get('date') || null,
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      this.employeeCustody(rows[0].employee_id);
+    });
+  },
+
+  delCustody(id) {
+    UI.confirm('هل أنت متأكد من حذف هذه العهدة؟', async () => {
+      await this.softDelete('custody_records', id);
+      UI.toast('تم الحذف');
+    });
+  },
+
+  async employeeAttendance(employeeId) {
+    const [emp, records] = await Promise.all([
+      API.request('employees', 'GET', null, `?select=name&id=eq.${employeeId}`),
+      API.request('attendance_records', 'GET', null, `?select=*&employee_id=eq.${employeeId}&deleted_at=is.null&order=date.desc&limit=31`)
+    ]);
+    const name = emp[0]?.name || 'موظف';
+    const statusBadge = (s) => {
+      const colors = { present: 'green', absent: 'red', late: 'orange', half_day: 'blue', leave: 'gray' };
+      const labels = { present: 'حاضر', absent: 'غائب', late: 'متأخر', half_day: 'نصف يوم', leave: 'إجازة' };
+      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+    };
+    const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', r.notes || '-', UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance')]);
+    const table = rows.length ? App.table(['#', 'التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور</p>';
+    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addAttendance('${employeeId}')">➕ إضافة حضور</button></div>`;
+    UI.openModal(`📋 حضور موظف: ${name}`, addBtn + table, null);
+  },
+
+  addAttendance(employeeId) {
+    const fields = [
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'present',l:'حاضر'},{v:'absent',l:'غائب'},{v:'late',l:'متأخر'},{v:'half_day',l:'نصف يوم'},{v:'leave',l:'إجازة'}] },
+      { name: 'check_in', label: 'وقت الدخول', type: 'time' },
+      { name: 'check_out', label: 'وقت الخروج', type: 'time' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('إضافة حضور', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('attendance_records', {
+        employee_id: employeeId,
+        date: fd.get('date'),
+        status: fd.get('status') || 'present',
+        check_in: fd.get('check_in') || null,
+        check_out: fd.get('check_out') || null,
+        notes: fd.get('notes') || null
+      });
+      UI.toast('تم حفظ الحضور');
+      this.employeeAttendance(employeeId);
+    });
+  },
+
+  async editAttendance(id) {
+    const rows = await API.request('attendance_records', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'present',l:'حاضر'},{v:'absent',l:'غائب'},{v:'late',l:'متأخر'},{v:'half_day',l:'نصف يوم'},{v:'leave',l:'إجازة'}] },
+      { name: 'check_in', label: 'وقت الدخول', type: 'time' },
+      { name: 'check_out', label: 'وقت الخروج', type: 'time' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل حضور', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await this.save('attendance_records', {
+        date: fd.get('date'),
+        status: fd.get('status') || 'present',
+        check_in: fd.get('check_in') || null,
+        check_out: fd.get('check_out') || null,
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      this.employeeAttendance(rows[0].employee_id);
+    });
+  },
+
+  delAttendance(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا السجل؟', async () => {
+      await this.softDelete('attendance_records', id);
+      UI.toast('تم الحذف');
+    });
   }
 };

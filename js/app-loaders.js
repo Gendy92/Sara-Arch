@@ -3,11 +3,15 @@ Object.assign(App, {
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      const [clients, projects, employees, txs] = await Promise.all([
+      const [clients, projects, employees, txs, vendorExpenses, vendorProcs, allProjTxs, vendors] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null&order=created_at.desc&limit=200')
+        API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null&order=created_at.desc&limit=200'),
+        API.request('transactions', 'GET', null, '?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null'),
+        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null'),
+        API.request('transactions', 'GET', null, '?select=client_id,amount,type&deleted_at=is.null&type=in.(project_deposit,project_expense)'),
+        API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
       ]);
       const activeProjects = projects.filter(p => p.status === 'active').length;
       const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
@@ -93,7 +97,69 @@ Object.assign(App, {
         pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
       }
       document.getElementById('expense-chart').innerHTML = pieHtml;
-      // Tables removed from dashboard — only KPIs + charts remain
+      // ─── Top 5 Vendor Outstanding Balances ───
+      const serviceCostByVendor = {};
+      const servicePaidByVendor = {};
+      vendorExpenses.forEach(t => {
+        if (!t.vendor_id) return;
+        const amt = +t.amount || 0;
+        const isNew = t.payment_term !== undefined && t.payment_term !== null;
+        const paid = isNew ? (+t.paid_amount || 0) : amt;
+        serviceCostByVendor[t.vendor_id] = (serviceCostByVendor[t.vendor_id] || 0) + amt;
+        servicePaidByVendor[t.vendor_id] = (servicePaidByVendor[t.vendor_id] || 0) + paid;
+      });
+      const merchByVendor = {};
+      const merchPaidByVendor = {};
+      vendorProcs.forEach(p => {
+        if (!p.vendor_id) return;
+        const amt = +p.total_price || 0;
+        const isNew = p.payment_term !== undefined && p.payment_term !== null;
+        const paid = isNew ? (+p.paid_amount || 0) : amt;
+        merchByVendor[p.vendor_id] = (merchByVendor[p.vendor_id] || 0) + amt;
+        merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + paid;
+      });
+      const vendorBalances = vendors.map(v => {
+        const serviceCost = serviceCostByVendor[v.id] || 0;
+        const servicePaid = servicePaidByVendor[v.id] || 0;
+        const merchandise = merchByVendor[v.id] || 0;
+        const merchPaid = merchPaidByVendor[v.id] || 0;
+        const balance = (serviceCost + merchandise) - (servicePaid + merchPaid);
+        if (balance <= 0) return null;
+        return [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(balance)}</span>`];
+      }).filter(Boolean).sort((a, b) => {
+        const balA = parseFloat(a[1].replace(/[^0-9.-]/g, '')) || 0;
+        const balB = parseFloat(b[1].replace(/[^0-9.-]/g, '')) || 0;
+        return balB - balA;
+      }).slice(0, 5);
+      document.getElementById('dash-vendors').innerHTML = vendorBalances.length
+        ? this.table(['المورد', 'المبلغ المستحق'], vendorBalances)
+        : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
+      // ─── Top 5 Active Customer Balances ───
+      const clientMap = {};
+      clients.forEach(c => clientMap[c.id] = c.name);
+      const activeClientIds = new Set(projects.filter(p => p.status === 'active').map(p => p.client_id));
+      const clientDeposits = {};
+      const clientExpenses = {};
+      allProjTxs.forEach(t => {
+        if (!t.client_id) return;
+        if (t.type === 'project_deposit') clientDeposits[t.client_id] = (clientDeposits[t.client_id] || 0) + (+t.amount || 0);
+        if (t.type === 'project_expense') clientExpenses[t.client_id] = (clientExpenses[t.client_id] || 0) + (+t.amount || 0);
+      });
+      const clientBalances = Object.keys(clientMap)
+        .filter(cid => activeClientIds.has(cid))
+        .map(cid => {
+          const dep = clientDeposits[cid] || 0;
+          const exp = clientExpenses[cid] || 0;
+          const balance = dep - exp;
+          return { name: clientMap[cid], balance, dep, exp };
+        })
+        .filter(c => c.balance !== 0)
+        .sort((a, b) => b.balance - a.balance)
+        .slice(0, 5)
+        .map(c => [c.name, this.fmtMoney(c.dep), this.fmtMoney(c.exp), `<span style="color:${c.balance >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance)}</span>`]);
+      document.getElementById('dash-clients').innerHTML = clientBalances.length
+        ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientBalances)
+        : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
     } catch (e) {
       console.error(e);
       const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadDashboard()">🔄 إعادة المحاولة</button>`;
@@ -228,19 +294,21 @@ Object.assign(App, {
         if (supAmt > 0) rows.push({ created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` });
         return rows;
       }).filter(Boolean);
-      const allTxs = [...recentTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
+      let allTxs = [...recentTxs, ...supRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      if (App.txTypeFilter === 'deposit') allTxs = allTxs.filter(t => t.type === 'project_deposit' || t.type === 'supervision');
+      if (App.txTypeFilter === 'expense') allTxs = allTxs.filter(t => t.type === 'project_expense');
+      document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         let party;
         if (t.type === 'project_expense') {
-          party = t.party_name || '-';
-          if (t.vendor_name) party += ' ← ' + t.vendor_name;
+          party = t.vendor_name || '-';
           if (t.item_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + t.item_name + '</span>';
           else if (t.section_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + t.section_name + '</span>';
           else if (t.expense_category === 'design') party += ' <span class="badge badge-gray" style="font-size:10px">تصميم</span>';
         } else {
-          party = t.vendor_name || t.employee_name || t.party_name || t.sector_name || '-';
+          party = t.vendor_name || t.employee_name || t.sector_name || '-';
         }
+        const clientName = t.party_name || '-';
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
         const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
         let pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : '-';
@@ -248,7 +316,7 @@ Object.assign(App, {
           pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
         }
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, t.project_name || '-', pt, actions];
+        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, clientName, t.project_name || '-', pt, actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
 
@@ -286,6 +354,30 @@ Object.assign(App, {
   async loadMoreExpenses() {
     App.txExpenseOffset += App.txExpenseLimit;
     await App.loadTransactions();
+  },
+
+  exportOfficeExcel() {
+    if (typeof XLSX === 'undefined') {
+      UI.toast('مكتبة Excel لم يتم تحميلها — تأكد من اتصال الإنترنت', 'error');
+      return;
+    }
+    const rows = (this._officeData || []).map(t => [
+      t.created_at ? new Date(t.created_at).toLocaleDateString('ar-EG') : '-',
+      App.fmtTxType(t.type),
+      +t.amount || 0,
+      t.employee_name || '-',
+      t.sector_name || '-',
+      t.description || '-'
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['كشف حساب المكتب'],
+      ['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'],
+      ...rows
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف المكتب');
+    XLSX.writeFile(wb, `كشف-حساب-المكتب-${new Date().toISOString().slice(0,10)}.xlsx`);
+    UI.toast('تم التحميل');
   },
 
   async loadOffice() {
@@ -327,6 +419,7 @@ Object.assign(App, {
         return rows;
       }).filter(Boolean);
       const allTxs = [...incomeTxs, ...expenseTxs, ...supRows.flat()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      this._officeData = allTxs;
       document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = ['owner_deposit','supervision'].includes(t.type) ? 'green' : 'red';
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
@@ -849,33 +942,12 @@ Object.assign(App, {
 
   async loadMasterData() {
     try {
-      // Fetch sectors & items (always exist). Filter out soft-deleted and deduplicate by name.
-      const [sectorsRaw, itemsRaw] = await Promise.all([
-        API.request('sectors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc'),
-        API.request('items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc')
-      ]);
-      const dedup = (arr) => {
-        const seen = new Set();
-        return arr.filter(x => {
-          const key = String(x.name || '').trim().toLowerCase();
-          if (!key || seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-      };
-      const sectors = dedup(sectorsRaw);
-      const items = dedup(itemsRaw);
-
+      const sectors = await API.request('sectors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
         s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : `<p style="color:var(--text3);padding:16px">لا توجد تصنيفات</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addSector()">+ إضافة أول تصنيف</button>':''}`;
       this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...');
-      document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'الماركة', 'الوحدة', 'الإجراءات'], items.map(i => [
-        i.name, i.specification || '-', i.brand || '-', i.unit || 'قطعة', UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
-      ])) : `<p style="color:var(--text3);padding:16px">لا توجد أصناف</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addItem()">+ إضافة أول صنف</button>':''}`;
-      this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
 
-      // Fetch work sections & items (may fail if schema not run yet)
       let workSections = [], workItems = [];
       try {
         workSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
@@ -899,173 +971,4 @@ Object.assign(App, {
     }
   },
 
-  // ─── WORK SECTIONS & ITEMS EXCEL UPLOAD ───
-  async parseWorkSectionsItemsFile(input) {
-    const file = input.files[0];
-    if (!file) return;
-    if (typeof XLSX === 'undefined') {
-      UI.toast('مكتبة Excel لم يتم تحميلها — تأكد من اتصال الإنترنت', 'error');
-      return;
-    }
-    const preview = document.getElementById('work-sections-items-preview');
-    preview.innerHTML = '<p style="color:var(--text3)">جاري قراءة الملف...</p>';
-    try {
-      const data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(new Uint8Array(e.target.result));
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-      });
-      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
-      if (!json.length || json.length < 2) {
-        preview.innerHTML = '<p style="color:var(--red)">الملف فارغ أو غير صالح</p>';
-        return;
-      }
-      const headers = (json[0] || []).map(h => String(h || '').trim());
-      const lowerHeaders = headers.map(h => h.toLowerCase());
-      const findCol = patterns => {
-        for (let i = 0; i < lowerHeaders.length; i++) {
-          if (!lowerHeaders[i]) continue;
-          for (const p of patterns) { if (lowerHeaders[i].includes(p)) return i; }
-        }
-        return -1;
-      };
-      const colSection = findCol(['section', 'قسم', 'القسم', 'department', 'category', 'تصنيف']);
-      const colItem = findCol(['item', 'بند', 'البند', 'name', 'الاسم', 'الأسم', 'work', 'عمل']);
-      const colNotes = findCol(['notes', 'ملاحظات', 'ملاحظه', 'note', 'وصف', 'description']);
-
-      const sectionsOnly = colSection >= 0 && colItem < 0;
-      if (colSection < 0) {
-        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على عمود القسم. العناوين المكتشفة: ${headers.join(' | ')}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود القسم + عمود البند (اختياري: ملاحظات)</p>`;
-        return;
-      }
-
-      // Fetch existing sections to match by name
-      let existingSections = [];
-      try {
-        existingSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
-      } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
-      const sectionByName = {};
-      existingSections.forEach(s => { sectionByName[String(s.name || '').trim().toLowerCase()] = s; });
-
-      const parsed = [];
-      const sectionsToCreate = new Map();
-      for (let i = 1; i < json.length; i++) {
-        const row = json[i];
-        if (!Array.isArray(row) || row.length <= colSection) continue;
-        const rawSection = String(row[colSection] || '').trim();
-        const rawItem = sectionsOnly ? null : String(row[colItem] || '').trim();
-        if (!rawSection || (!sectionsOnly && !rawItem)) continue;
-        const rawNotes = colNotes >= 0 && colNotes < row.length ? String(row[colNotes] || '').trim() : '';
-        const sectionKey = rawSection.toLowerCase();
-        let sectionId = sectionByName[sectionKey]?.id || null;
-        let sectionExists = !!sectionId;
-        if (!sectionExists && !sectionsToCreate.has(sectionKey)) {
-          sectionsToCreate.set(sectionKey, { name: rawSection, notes: rawNotes });
-        }
-        if (sectionsOnly) {
-          parsed.push({ rawSection, rawNotes, sectionKey, sectionExists, sectionId });
-        } else {
-          parsed.push({ rawSection, rawItem, rawNotes, sectionKey, sectionExists, sectionId });
-        }
-      }
-
-      // Build preview
-      const rows = sectionsOnly
-        ? parsed.map((p, idx) => [
-            idx + 1, p.rawSection, p.rawNotes || '-',
-            p.sectionExists ? '<span style="color:var(--green)">موجود</span>' : '<span style="color:var(--gold)">سيتم إنشاؤه</span>'
-          ])
-        : parsed.map((p, idx) => [
-            idx + 1, p.rawSection, p.rawItem, p.rawNotes || '-',
-            p.sectionExists ? '<span style="color:var(--green)">موجود</span>' : '<span style="color:var(--gold)">سيتم إنشاؤه</span>'
-          ]);
-      const summary = sectionsOnly
-        ? `<div style="margin-bottom:12px;font-size:13px">
-            <span style="color:var(--gold)">أقسام جديدة: ${sectionsToCreate.size}</span> &nbsp;|&nbsp;
-            <span style="color:var(--text3)">وضع: أقسام فقط</span>
-          </div>`
-        : `<div style="margin-bottom:12px;font-size:13px">
-            <span style="color:var(--gold)">أقسام جديدة: ${sectionsToCreate.size}</span> &nbsp;|&nbsp;
-            <span style="color:var(--blue)">بنود: ${parsed.length}</span>
-          </div>`;
-      const saveBtn = parsed.length
-        ? `<div style="margin-bottom:16px"><button class="btn btn-primary" onclick="App.saveWorkSectionsItems()">💾 حفظ</button></div>`
-        : '';
-      const table = rows.length
-        ? (sectionsOnly ? App.table(['#', 'القسم', 'ملاحظات', 'الحالة'], rows) : App.table(['#', 'القسم', 'البند', 'ملاحظات', 'الحالة'], rows))
-        : '<p style="color:var(--text3)">لا توجد بيانات</p>';
-      preview.innerHTML = saveBtn + summary + table;
-      preview.dataset.parsed = JSON.stringify(parsed);
-      preview.dataset.sectionsToCreate = JSON.stringify(Array.from(sectionsToCreate.entries()));
-    } catch (e) {
-      console.error(e);
-      preview.innerHTML = '<p style="color:var(--red)">خطأ في قراءة الملف: ' + (e.message || '') + '</p>';
-    }
-  },
-
-  async saveWorkSectionsItems() {
-    const preview = document.getElementById('work-sections-items-preview');
-    const parsed = JSON.parse(preview.dataset.parsed || '[]');
-    if (!parsed.length) { UI.toast('لا يوجد بيانات للحفظ', 'error'); return; }
-    try {
-      // Fetch existing sections again (in case user created some manually)
-      let existingSections = [];
-      try {
-        existingSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
-      } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
-      const sectionByName = {};
-      existingSections.forEach(s => { sectionByName[String(s.name || '').trim().toLowerCase()] = s; });
-
-      // Create missing sections
-      const sectionsToCreate = JSON.parse(preview.dataset.sectionsToCreate || '[]');
-      for (const [, sectionData] of sectionsToCreate) {
-        const key = String(sectionData.name || '').trim().toLowerCase();
-        if (sectionByName[key]) continue;
-        try {
-          const created = await Crud.save('work_sections', sectionData);
-          const newSection = Array.isArray(created) ? created[0] : created;
-          sectionByName[key] = newSection;
-        } catch (e) {
-          console.log('[MasterData] failed to create section:', e.message);
-        }
-      }
-
-      // Create items (deduplicate by section+item name) — skip if sections-only mode
-      const hasItems = parsed.length && parsed[0].rawItem !== undefined && parsed[0].rawItem !== null;
-      const seenItems = new Set();
-      let createdCount = 0;
-      if (hasItems) {
-        for (const p of parsed) {
-          const section = sectionByName[p.sectionKey];
-          if (!section) continue;
-          const itemKey = `${p.sectionKey}::${p.rawItem.trim().toLowerCase()}`;
-          if (seenItems.has(itemKey)) continue;
-          seenItems.add(itemKey);
-          try {
-            await Crud.save('work_items', {
-              section_id: section.id,
-              section_name: section.name,
-              name: p.rawItem,
-              notes: p.rawNotes || null
-            });
-            createdCount++;
-          } catch (e) {
-            console.log('[MasterData] failed to create item:', e.message);
-          }
-        }
-      }
-      const msg = hasItems
-        ? `تم حفظ ${sectionsToCreate.length} قسم و ${createdCount} بند`
-        : `تم حفظ ${sectionsToCreate.length} قسم`;
-      UI.toast(msg);
-      preview.innerHTML = '<p style="color:var(--green)">✅ تم الحفظ بنجاح</p>';
-      this.loadMasterData();
-    } catch (e) {
-      console.error(e);
-      UI.toast('خطأ في الحفظ: ' + e.message, 'error');
-    }
-  },
 });
