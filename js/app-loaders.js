@@ -148,22 +148,6 @@ Object.assign(App, {
         treeHtml = `<div class="client-project-tree">${treeHtml}</div>`;
       }
       document.getElementById('client-project-balances').innerHTML = treeHtml;
-      const recent = await API.request('transactions', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc&limit=5');
-      document.getElementById('recent-tx').innerHTML = recent.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف'], recent.map(t => [this.fmtDate(t.created_at), t.type, this.fmtMoney(t.amount), t.description || '-'])) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-      const active = await API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&status=eq.active&limit=5');
-      document.getElementById('active-proj').innerHTML = active.length ? this.table(['المشروع', 'العميل', 'الحالة'], active.map(p => [p.name, p.client_name || '-', '<span class="badge badge-green">نشط</span>'])) : '<p style="color:var(--text3)">لا توجد مشاريع نشطة</p>';
-      // ─── Office Balance ───
-      const ownerDeposits = txs.filter(t => t.type === 'owner_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const officeExpenses = txs.filter(t => t.type === 'office_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-      const ownerWithdrawals = txs.filter(t => t.type === 'owner_withdrawal').reduce((s, t) => s + (+t.amount || 0), 0);
-      const officeSupervision = projects.reduce((s, p) => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        return s + ((exp - design) * (p.supervision_percentage || 0) / 100);
-      }, 0);
-      const officeIncome = ownerDeposits + officeSupervision;
-      const officeBalance = officeIncome - officeExpenses - ownerWithdrawals;
-      document.getElementById('office-balance').innerHTML = `<div class="kpi-grid"><div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(officeIncome)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">توريدات: ${this.fmtMoney(ownerDeposits)} &nbsp;|&nbsp; إشراف: ${this.fmtMoney(officeSupervision)}</div></div><div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(officeExpenses + ownerWithdrawals)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">مصروفات: ${this.fmtMoney(officeExpenses)} &nbsp;|&nbsp; سحب: ${this.fmtMoney(ownerWithdrawals)}</div></div><div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div></div>`;
       // Load aging balances inline
       await this.loadAging();
     } catch (e) {
