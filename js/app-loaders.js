@@ -432,7 +432,10 @@ Object.assign(App, {
     try {
       const data = await API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc');
       const empIds = data.map(e => e.id);
-      const custodyData = await API.request('custody_records', 'GET', null, `?select=employee_id,amount,status&employee_id=in.(${empIds.join(',')})&deleted_at=is.null`);
+      let custodyData = [];
+      if (empIds.length) {
+        custodyData = await API.request('custody_records', 'GET', null, `?select=employee_id,amount,status&employee_id=in.(${empIds.join(',')})&deleted_at=is.null`);
+      }
       const custodyByEmp = {};
       custodyData.forEach(c => { custodyByEmp[c.employee_id] = (custodyByEmp[c.employee_id] || 0) + (+c.amount || 0); });
       document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
@@ -545,7 +548,9 @@ Object.assign(App, {
         else if (checkIn && !checkOut) status = 'half_day';
         else if (checkIn) {
           const inTime = checkIn.replace(/[^0-9:]/g, '');
-          if (inTime > '09:15') status = 'late';
+          const [ih, im] = inTime.split(':').map(Number);
+        const inMins = ih * 60 + im;
+        if (inMins > 555) status = 'late';
         }
 
         parsed.push({

@@ -451,7 +451,6 @@ const Crud = {
       if (vendorId) this.vendorPurchases(vendorId);
       else App.loadVendors();
     });
-    this._setupClientProjectCascade(overlay, projects, null, null);
   },
 
   async editProcurement(id) {
@@ -487,7 +486,6 @@ const Crud = {
       }, id);
       UI.toast('تم التحديث'); App.loadVendors();
     });
-    this._setupClientProjectCascade(overlay, projects, p.vendor_id, p.project_id);
   },
 
   delProcurement(id) {
@@ -1037,7 +1035,7 @@ const Crud = {
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-    UI.openModal(`كشف حساب: ${name}`, summary + table, null);
+    UI.openModal(`كشف حساب: ${App.esc(name)}`, summary + table, null);
   },
 
   async projectStatement(projectId) {
@@ -1059,7 +1057,7 @@ const Crud = {
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-    UI.openModal(`كشف حساب مشروع: ${name}`, summary + table, null);
+    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, summary + table, null);
   },
 
   async projectBudget(projectId) {
@@ -1073,7 +1071,7 @@ const Crud = {
     const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
     const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
     const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-    const supervision = Math.max(0, constr - design) * (p.supervision_percentage || 0) / 100;
+    const supervision = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
     const balance = deposits - expenses - supervision;
     const html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(deposits)}</div></div>
@@ -1083,7 +1081,7 @@ const Crud = {
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${p.supervision_percentage || 0}%)</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(balance)}</div></div>
     </div>`;
-    UI.openModal(`📊 ميزانية مشروع: ${p.name}`, html, null);
+    UI.openModal(`📊 ميزانية مشروع: ${App.esc(p.name)}`, html, null);
   },
 
   async loadProjectTasks(projectId) {
@@ -1108,7 +1106,7 @@ const Crud = {
     ]);
     const table = rows.length ? App.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية', ''], rows) : '<p style="color:var(--text3)">لا توجد مهام مسجلة</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addProjectTask('${projectId}')">➕ إضافة مهمة</button></div>`;
-    UI.openModal(`📋 مهام مشروع: ${name}`, addBtn + table, null);
+    UI.openModal(`📋 مهام مشروع: ${App.esc(name)}`, addBtn + table, null);
   },
 
   addProjectTask(projectId) {
@@ -1203,7 +1201,7 @@ const Crud = {
     const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], txRows) : '';
     const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], procRows) : '';
     const content = summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
-    UI.openModal(`كشف حساب مورد: ${name}`, content, null);
+    UI.openModal(`كشف حساب مورد: ${App.esc(name)}`, content, null);
   },
 
   async vendorPurchases(vendorId) {
@@ -1222,7 +1220,7 @@ const Crud = {
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
-    UI.openModal(`💰 مشتريات مورد: ${name}`, summary + table, null);
+    UI.openModal(`💰 مشتريات مورد: ${App.esc(name)}`, summary + table, null);
   },
 
   // ─── EMPLOYEE CUSTODY & ATTENDANCE ───
@@ -1253,7 +1251,7 @@ const Crud = {
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustody('${employeeId}')">➕ إضافة عهدة</button></div>`;
-    UI.openModal(`💼 عهد موظف: ${name}`, addBtn + summary + table, null);
+    UI.openModal(`💼 عهد موظف: ${App.esc(name)}`, addBtn + summary + table, null);
   },
 
   async addCustody(employeeId) {
@@ -1330,7 +1328,7 @@ const Crud = {
     const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', r.notes || '-', UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))]);
     const table = rows.length ? App.table(['#', 'التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addAttendance('${employeeId}')">➕ إضافة حضور</button></div>`;
-    UI.openModal(`📋 حضور موظف: ${name}`, addBtn + table, null);
+    UI.openModal(`📋 حضور موظف: ${App.esc(name)}`, addBtn + table, null);
   },
 
   addAttendance(employeeId) {
@@ -1386,6 +1384,52 @@ const Crud = {
       await this.softDelete('attendance_records', id);
       UI.toast('تم الحذف');
       if (rows.length) this.employeeAttendance(rows[0].employee_id);
+    });
+  },
+
+  // ─── PAYROLL CRUD ───
+  async editPayroll(id) {
+    const rows = await API.request('payroll_records', 'GET', null, `?select=*&id=eq.${id}`);
+    if (!rows.length) return;
+    const fields = [
+      { name: 'base_salary', label: 'الراتب الأساسي', type: 'number', req: true },
+      { name: 'deductions', label: 'الخصومات', type: 'number' },
+      { name: 'bonuses', label: 'المكافآت', type: 'number' },
+      { name: 'penalties', label: 'الجزاءات', type: 'number' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل راتب', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const base = +fd.get('base_salary') || 0;
+      const ded = +fd.get('deductions') || 0;
+      const bon = +fd.get('bonuses') || 0;
+      const pen = +fd.get('penalties') || 0;
+      await this.save('payroll_records', {
+        base_salary: base,
+        deductions: ded,
+        bonuses: bon,
+        penalties: pen,
+        net_salary: base - ded + bon - pen,
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      App.loadEmpPayroll();
+    });
+  },
+
+  async approvePayroll(id) {
+    UI.confirm('هل أنت متأكد من اعتماد هذا الراتب؟', async () => {
+      await this.save('payroll_records', { status: 'approved' }, id);
+      UI.toast('تم الاعتماد');
+      App.loadEmpPayroll();
+    });
+  },
+
+  async payPayroll(id) {
+    UI.confirm('هل أنت متأكد من تسجيل الدفع؟', async () => {
+      await this.save('payroll_records', { status: 'paid' }, id);
+      UI.toast('تم تسجيل الدفع');
+      App.loadEmpPayroll();
     });
   }
 };

@@ -232,7 +232,7 @@ const App = {
       this.startIdleTimer();
       await this.go('dashboard');
     } catch (e) {
-      alert('خطأ في الدخول: ' + e.message);
+      UI.toast('خطأ في الدخول: ' + e.message, 'error');
       btn.disabled = false; btn.textContent = 'دخول';
     }
   },
@@ -247,7 +247,7 @@ const App = {
       if (Auth.user?.user_metadata?.role === 'admin') this.go('users');
       else this.renderLogin();
     } catch (e) {
-      alert('خطأ: ' + e.message);
+      UI.toast('خطأ: ' + e.message, 'error');
       btn.disabled = false; btn.textContent = 'تسجيل';
     }
   },
@@ -260,7 +260,7 @@ const App = {
   },
 
   showError(msg) {
-    document.getElementById('app').innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center"><div style="font-size:48px">⚠️</div><h2 style="color:var(--red)">حدث خطأ</h2><p style="color:var(--text2);max-width:400px">${msg}</p><button class="btn btn-primary" onclick="location.reload()">إعادة المحاولة</button></div>`;
+    document.getElementById('app').innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center"><div style="font-size:48px">⚠️</div><h2 style="color:var(--red)">حدث خطأ</h2><p style="color:var(--text2);max-width:400px">${this.esc(msg)}</p><button class="btn btn-primary" onclick="location.reload()">إعادة المحاولة</button></div>`;
   },
 
 
