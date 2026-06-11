@@ -76,6 +76,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
 .form-grid .form-group:nth-child(5),.form-grid .form-group:nth-child(6){grid-column:1/-1}
 
+/* ─── SEARCHABLE SELECT ─── */
+.searchable-select{position:relative;width:100%}
+.searchable-select-input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:.25s}
+.searchable-select-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,160,122,0.08)}
+.searchable-select-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:220px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);z-index:1000;display:none;box-shadow:var(--shadow-sm)}
+.searchable-select-dropdown.open{display:block}
+.searchable-select-option{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);color:var(--text);transition:.15s}
+.searchable-select-option:last-child{border-bottom:none}
+.searchable-select-option:hover{background:var(--bg3)}
+.searchable-select-option.hidden{display:none}
+
 /* ─── CARDS ─── */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;margin-bottom:24px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
 .card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(184,160,122,0.2),transparent)}

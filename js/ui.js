@@ -34,6 +34,7 @@ const UI = {
       });
     }
     document.body.style.overflow = 'hidden';
+    this.initSearchableSelects(overlay);
     return overlay;
   },
 
@@ -51,13 +52,86 @@ const UI = {
     return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   },
 
+  searchableSelectHTML(selectAttrs, options, value) {
+    const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${value == o.v ? 'selected' : ''}>${o.l}</option>`).join('');
+    const dropdownOpts = options.map(o => `<div class="searchable-select-option" data-value="${this._escAttr(o.v)}">${o.l}</div>`).join('');
+    return `<div class="searchable-select">
+      <input type="text" class="searchable-select-input" placeholder="🔍 اكتب للبحث..." autocomplete="off">
+      <select ${selectAttrs} style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;">${optsHtml}</select>
+      <div class="searchable-select-dropdown">${dropdownOpts}</div>
+    </div>`;
+  },
+
+  _searchableSelectGlobalInit: false,
+  initSearchableSelects(container) {
+    if (!UI._searchableSelectGlobalInit) {
+      UI._searchableSelectGlobalInit = true;
+      document.addEventListener('click', (e) => {
+        if (e.target.closest('.searchable-select')) return;
+        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => d.classList.remove('open'));
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => d.classList.remove('open'));
+        }
+      });
+    }
+    if (!container._searchableDelegated) {
+      container._searchableDelegated = true;
+      container.addEventListener('click', (e) => {
+        const opt = e.target.closest('.searchable-select-option');
+        if (!opt) return;
+        const wrapper = opt.closest('.searchable-select');
+        const input = wrapper.querySelector('.searchable-select-input');
+        const select = wrapper.querySelector('select');
+        input.value = opt.textContent;
+        select.value = opt.dataset.value;
+        wrapper.querySelector('.searchable-select-dropdown').classList.remove('open');
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      container.addEventListener('input', (e) => {
+        if (!e.target.classList.contains('searchable-select-input')) return;
+        const wrapper = e.target.closest('.searchable-select');
+        const dropdown = wrapper.querySelector('.searchable-select-dropdown');
+        const term = e.target.value.trim().toLowerCase();
+        dropdown.querySelectorAll('.searchable-select-option').forEach(opt => {
+          opt.classList.toggle('hidden', term && !opt.textContent.toLowerCase().includes(term));
+        });
+        dropdown.classList.add('open');
+      });
+      container.addEventListener('focusin', (e) => {
+        if (!e.target.classList.contains('searchable-select-input')) return;
+        const wrapper = e.target.closest('.searchable-select');
+        wrapper.querySelector('.searchable-select-dropdown').classList.add('open');
+      });
+    }
+    container.querySelectorAll('.searchable-select').forEach(wrapper => {
+      if (wrapper._searchableObserved) return;
+      wrapper._searchableObserved = true;
+      const select = wrapper.querySelector('select');
+      const input = wrapper.querySelector('.searchable-select-input');
+      const dropdown = wrapper.querySelector('.searchable-select-dropdown');
+      const sync = () => {
+        const selected = select.options[select.selectedIndex];
+        input.value = selected ? selected.textContent : '';
+      };
+      const observer = new MutationObserver(() => {
+        dropdown.innerHTML = Array.from(select.options).map(o => `<div class="searchable-select-option" data-value="${UI._escAttr(o.value)}">${o.textContent}</div>`).join('');
+        sync();
+      });
+      observer.observe(select, { childList: true });
+      select.addEventListener('change', sync);
+      sync();
+    });
+  },
+
   form(fields, values = {}) {
     return `<div class="form-grid">${fields.map(f => {
       const fieldName = f.name || f.key;
       const v = values[fieldName] !== undefined ? values[fieldName] : (f.default || '');
       const vEsc = this._escAttr(v);
       if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" ${f.req ? 'required' : ''}>${vEsc}</textarea></div>`;
-      if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><select name="${fieldName}" ${f.req ? 'required' : ''}>${f.opts.map(o => `<option value="${this._escAttr(o.v)}" ${v == o.v ? 'selected' : ''}>${o.l}</option>`).join('')}</select></div>`;
+      if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label>${this.searchableSelectHTML(`name="${fieldName}" ${f.req ? 'required' : ''}`, f.opts, v)}</div>`;
       if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} /></div>`;
       if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} min="0" step="any" /></div>`;
       if (f.type === 'time') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} /></div>`;
@@ -119,15 +193,16 @@ const Spreadsheet = {
       if (hasSectionItemCascade && c.key === cascade.sectionItem.sectionKey) cascadeAttr = ` onchange="Spreadsheet.handleSectionItemCascade(this)"`;
       if (hasSectionItemCascade && c.key === cascade.sectionItem.itemKey && !def) disabledAttr = ' disabled';
       if (c.type === 'select') {
-        let optsHtml = c.opts.map(o => `<option value="${o.v}" ${def !== undefined && o.v == def ? 'selected' : ''}>${o.l}</option>`).join('');
+        let opts = c.opts;
         if (hasClientProjectCascade && c.key === cascade.clientProject.projectKey && def) {
           const projData = cascade.clientProject.projects;
           const clientId = def[cascade.clientProject.clientKey] || defaults[cascade.clientProject.clientKey];
           if (clientId) {
-            optsHtml = c.opts.filter(o => !o.v || (projData.find(p => String(p.id) === String(o.v) && String(p.client_id) === String(clientId)))).map(o => `<option value="${o.v}">${o.l}</option>`).join('');
+            opts = c.opts.filter(o => !o.v || (projData.find(p => String(p.id) === String(o.v) && String(p.client_id) === String(clientId))));
           }
         }
-        return `<td><select data-key="${c.key}"${cascadeAttr}${disabledAttr}>${optsHtml}</select></td>`;
+        const attrs = `data-key="${c.key}"${cascadeAttr}${disabledAttr}`;
+        return `<td>${UI.searchableSelectHTML(attrs, opts, def)}</td>`;
       }
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
       const valAttr = def !== undefined ? `value="${def}"` : '';
@@ -295,6 +370,9 @@ const Spreadsheet = {
 
     // Renumber all rows
     Array.from(tbody.children).forEach((tr, i) => { tr.querySelector('.row-num').textContent = i + 1; });
+    // Sync searchable dropdowns for imported values
+    tbody.querySelectorAll('select').forEach(sel => sel.dispatchEvent(new Event('change', { bubbles: true })));
+    UI.initSearchableSelects(spreadsheetDiv);
   },
 
   addRow(btn) {
@@ -303,6 +381,8 @@ const Spreadsheet = {
     const firstRow = tbody.querySelector('tr');
     const newRow = firstRow.cloneNode(true);
     newRow.querySelectorAll('input, select').forEach(el => { el.value = ''; el.disabled = false; });
+    newRow.querySelectorAll('.searchable-select-input').forEach(inp => inp.value = '');
+    newRow.querySelectorAll('.searchable-select').forEach(w => { w._searchableObserved = false; });
     // Re-attach cascade listener if needed
     const cascade = spreadsheet._cascade;
     if (cascade && cascade.clientProject) {
@@ -319,6 +399,7 @@ const Spreadsheet = {
     }
     newRow.querySelector('.row-num').textContent = tbody.children.length + 1;
     tbody.appendChild(newRow);
+    UI.initSearchableSelects(newRow);
   },
 
   handleClientProjectCascade(el) {
