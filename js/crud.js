@@ -1487,33 +1487,42 @@ const Crud = {
       total += amt;
       returned += ret;
       const bal = amt - ret;
-      return [i+1, r.date || '-', App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), r.projects?.name || r.project_name || '-', r.notes || '-', UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+      return [i+1, r.date || '-', App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), r.sector_name || '-', r.projects?.name || r.project_name || '-', r.notes || '-', UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
     });
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(returned)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total - returned)}</div></div>
     </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
+    const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'التصنيف', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustody('${employeeId}')">➕ إضافة عهدة</button></div>`;
     UI.openModal(`💼 عهد موظف: ${App.esc(name)}`, addBtn + summary + table, null);
   },
 
   async addCustody(employeeId) {
-    const [projects] = await Promise.all([
-      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+    const [projects, sectors, employees] = await Promise.all([
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
     ]);
     const fields = [
+      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
+      { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
-    UI.openModal('إضافة عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+    UI.openModal('إضافة عهدة نقدية', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
+      const emp = employees.find(e => e.id === fd.get('employee_id'));
+      const sector = sectors.find(s => s.id === fd.get('sector_id'));
       const proj = projects.find(p => p.id === fd.get('project_id'));
       await this.save('custody_records', {
-        employee_id: employeeId,
+        employee_id: fd.get('employee_id') || null,
+        employee_name: emp ? emp.name : null,
+        sector_id: fd.get('sector_id') || null,
+        sector_name: sector ? sector.name : null,
         project_id: fd.get('project_id') || null,
         project_name: proj ? proj.name : null,
         amount: +fd.get('amount') || 0,
@@ -1522,14 +1531,25 @@ const Crud = {
         status: 'active'
       });
       UI.toast('تم حفظ العهدة');
-      this.employeeCustody(employeeId);
+      App.loadOffice();
+      if (employeeId) this.employeeCustody(employeeId);
     });
+  },
+
+  async addOfficeCustody() {
+    await this.addCustody('');
   },
 
   async editCustody(id) {
     const rows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
+    const [sectors, employees] = await Promise.all([
+      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
+    ]);
     const fields = [
+      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
+      { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
       { name: 'returned_amount', label: 'المرتجع', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'active',l:'نشطة'},{v:'settled',l:'مقفلة'},{v:'partial',l:'جزئي'}] },
@@ -1538,7 +1558,13 @@ const Crud = {
     ];
     UI.openModal('تعديل عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const emp = employees.find(e => e.id === fd.get('employee_id'));
+      const sector = sectors.find(s => s.id === fd.get('sector_id'));
       await this.save('custody_records', {
+        employee_id: fd.get('employee_id') || null,
+        employee_name: emp ? emp.name : null,
+        sector_id: fd.get('sector_id') || null,
+        sector_name: sector ? sector.name : null,
         amount: +fd.get('amount') || 0,
         returned_amount: +fd.get('returned_amount') || 0,
         status: fd.get('status') || 'active',
@@ -1546,7 +1572,8 @@ const Crud = {
         notes: fd.get('notes') || null
       }, id);
       UI.toast('تم التحديث');
-      this.employeeCustody(rows[0].employee_id);
+      App.loadOffice();
+      if (rows[0].employee_id) this.employeeCustody(rows[0].employee_id);
     });
   },
 
@@ -1555,7 +1582,8 @@ const Crud = {
       const rows = await API.request('custody_records', 'GET', null, `?select=employee_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('custody_records', id);
       UI.toast('تم الحذف');
-      if (rows.length) this.employeeCustody(rows[0].employee_id);
+      App.loadOffice();
+      if (rows.length && rows[0].employee_id) this.employeeCustody(rows[0].employee_id);
     });
   },
 

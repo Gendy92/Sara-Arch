@@ -26,6 +26,8 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS sector TEXT;
 
 -- Migration: custody partial settlement
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS returned_amount NUMERIC DEFAULT 0;
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS sector_name TEXT;
 CREATE TABLE IF NOT EXISTS custody_expenses (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),custody_id UUID REFERENCES custody_records(id),amount NUMERIC NOT NULL DEFAULT 0,description TEXT,date DATE DEFAULT CURRENT_DATE,created_at TIMESTAMPTZ DEFAULT NOW(),updated_at TIMESTAMPTZ DEFAULT NOW(),deleted_at TIMESTAMPTZ);
 
 -- Migration: add vendor to transactions

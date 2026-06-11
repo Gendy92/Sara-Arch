@@ -350,6 +350,8 @@ ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL;
 
 -- Custody
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS returned_amount NUMERIC DEFAULT 0;
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS sector_name TEXT;
 
 -- Fix expense_category for existing rows (after column is created)
 UPDATE transactions 

@@ -432,11 +432,12 @@ Object.assign(App, {
 
   async loadOffice() {
     try {
-      const [incomeTxs, expenseTxs, projects, projectExpenses] = await Promise.all([
+      const [incomeTxs, expenseTxs, projects, projectExpenses, custodyRecords] = await Promise.all([
         API.request('transactions', 'GET', null, "?select=amount,created_at,type,description,sector_name,employee_name&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc&limit=200"),
         API.request('transactions', 'GET', null, "?select=amount,created_at,type,description,sector_name,employee_name&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc&limit=200"),
         API.request('projects', 'GET', null, '?select=id,name,client_id,client_name,supervision_percentage,created_at,status&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, "?select=amount,project_id,expense_category&type=eq.project_expense&deleted_at=is.null")
+        API.request('transactions', 'GET', null, "?select=amount,project_id,expense_category&type=eq.project_expense&deleted_at=is.null"),
+        API.request('custody_records', 'GET', null, "?select=*,employees(name)&deleted_at=is.null&order=date.desc&limit=200")
       ]);
       const txIncome = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
       const expByProject = {};
@@ -455,10 +456,16 @@ Object.assign(App, {
       }, 0);
       const totalIncome = txIncome + calcSupervision;
       const expense = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+
+      // Custody totals
+      const totalCustody = custodyRecords.reduce((s, r) => s + (+r.amount || 0), 0);
+      const totalReturned = custodyRecords.reduce((s, r) => s + (+r.returned_amount || 0), 0);
+
       document.getElementById('office-kpis').innerHTML = `
         <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إشراف: ${this.fmtMoney(calcSupervision)} &nbsp;|&nbsp; توريدات: ${this.fmtMoney(txIncome)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>`;
+        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(totalCustody - totalReturned)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustody)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturned)}</div></div>`;
       const supRows = projects.map(p => {
         const exp = expByProject[p.id] || 0;
         const design = designByProject[p.id] || 0;
@@ -476,6 +483,16 @@ Object.assign(App, {
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
+
+      // Custody table
+      const statusLabels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
+      const custodyRows = custodyRecords.map((r, i) => {
+        const bal = (+r.amount || 0) - (+r.returned_amount || 0);
+        const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
+        return [i+1, r.date || '-', r.employees?.name || r.employee_name || '-', r.sector_name || '-', this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`, statusLabels[r.status] || r.status, UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+      });
+      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'الموظف', 'التصنيف', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
+      this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...');
     } catch (e) {
       console.error(e);
       UI.toast('Office load failed: ' + e.message, 'error');
