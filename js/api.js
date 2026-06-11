@@ -89,16 +89,18 @@ const API = {
   },
 
   async count(table, query = '') {
-    const url = `${this.base}/${table}${query}`;
-    const res = await fetch(url, {
-      method: 'HEAD',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + ((typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY), 'Prefer': 'count=exact' }
-    });
-    const range = res.headers.get('content-range');
-    if (range) {
-      const total = parseInt(range.split('/')[1]);
-      return isNaN(total) ? 0 : total;
-    }
-    return 0;
+    try {
+      const url = `${this.base}/${table}${query}`;
+      const res = await fetch(url, {
+        method: 'HEAD',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + ((typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY), 'Prefer': 'count=exact' }
+      });
+      const range = res.headers.get('content-range');
+      if (range) {
+        const total = parseInt(range.split('/')[1]);
+        return isNaN(total) ? 0 : total;
+      }
+      return 0;
+    } catch (e) { return 0; }
   }
 };

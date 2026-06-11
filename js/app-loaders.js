@@ -2,12 +2,13 @@
 Object.assign(App, {
   // ─── PAGINATION HELPERS ───
   _paginationHtml(table, page, perPage, total) {
-    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    const safeTotal = Number.isFinite(total) ? total : 0;
+    const totalPages = Math.max(1, Math.ceil(safeTotal / perPage));
     const prev = `App.pageState['${table}']=${Math.max(1, page - 1)};App.load${table.charAt(0).toUpperCase() + table.slice(1)}()`;
     const next = `App.pageState['${table}']=${Math.min(totalPages, page + 1)};App.load${table.charAt(0).toUpperCase() + table.slice(1)}()`;
     return `<div class="pagination-bar" style="display:flex;justify-content:center;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="${prev}">← السابق</button>
-      <span style="font-size:13px;color:var(--text2)">صفحة ${page} من ${totalPages} (${total} سجل)</span>
+      <span style="font-size:13px;color:var(--text2)">صفحة ${page} من ${totalPages} (${safeTotal} سجل)</span>
       <button class="btn btn-sm btn-secondary" ${page >= totalPages ? 'disabled' : ''} onclick="${next}">التالي →</button>
     </div>`;
   },
