@@ -738,33 +738,47 @@ Object.assign(App, {
   async loadUsers() {
     try {
       let authUsers = [];
+      let authFailed = false;
       try {
         const authData = await API.authListUsers();
         authUsers = authData.users || [];
       } catch (authErr) {
-        console.log('[Users] authListUsers failed (no service key):', authErr.message);
+        authFailed = true;
+        console.log('[Users] authListUsers failed:', authErr.message);
       }
       const profiles = await API.request('profiles', 'GET', null, '?select=*&order=created_at.desc');
-      const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
-      const users = profiles.map(p => {
-        const authU = authMap[p.id];
-        const rawName = p.name || authU?.user_metadata?.name || '';
-        const safeName = Auth.safeName(rawName, '');
-        return {
-          id: p.id,
-          email: authU?.email || p.username || p.id.slice(0, 8),
-          name: safeName || (authU ? Auth.fromEmail(authU.email) : p.id.slice(0, 8)),
-          role: p.role || authU?.user_metadata?.role || 'user',
-          email_confirmed_at: authU?.email_confirmed_at,
-          created_at: p.created_at
-        };
-      });
-      const noKeyWarning = authUsers.length === 0 ? '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">⚠️ Admin key غير متوفر — البيانات من profiles فقط. ضع Service Key في Settings لعرض الإيميلات.</p>' : '';
+      const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
+      // Build user list from auth first; fallback to profiles only if auth unavailable
+      const users = authUsers.length
+        ? authUsers.map(u => {
+            const p = profileMap[u.id];
+            const rawName = p?.name || u.user_metadata?.name || '';
+            const safeName = Auth.safeName(rawName, '');
+            return {
+              id: u.id,
+              email: u.email,
+              name: safeName || Auth.fromEmail(u.email),
+              role: p?.role || u.user_metadata?.role || 'user',
+              email_confirmed_at: u.email_confirmed_at,
+              created_at: u.created_at
+            };
+          })
+        : profiles.map(p => ({
+            id: p.id,
+            email: p.username || p.id.slice(0, 8),
+            name: p.name || p.id.slice(0, 8),
+            role: p.role || 'user',
+            email_confirmed_at: null,
+            created_at: p.created_at
+          }));
+      const noKeyWarning = authFailed
+        ? '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">⚠️ Admin key غير متوفر أو باطل — اضغط مسح المفتاح في Settings ثم أعد إدخال المفتاح الجديد.</p>'
+        : '';
       document.getElementById('users-tbl').innerHTML = noKeyWarning + (users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         Auth.fromEmail(u.email),
         u.name,
         u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
-        u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-gray">—</span>',
+        u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-red">غير مفعل</span>',
         this.fmtDate(u.created_at),
         `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>');

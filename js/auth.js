@@ -63,6 +63,14 @@ const Auth = {
 
   async register(username, password, name) {
     const data = await API.authSignUp(this.toEmail(username), password, { name, username });
+    // Insert into profiles table for reliable name/role storage
+    try {
+      if (data.user?.id) {
+        await API.request('profiles', 'POST', { id: data.user.id, name: name || username, role: 'user' });
+      }
+    } catch (e) {
+      console.log('[Auth] profile insert skipped:', e.message);
+    }
     return data;
   },
 
