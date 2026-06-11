@@ -1292,36 +1292,61 @@ const Crud = {
     ]);
     const name = vendor[0]?.name || 'مورد';
 
-    // Raw data for Excel export
-    const txData = txs.map((t, i) => ({
-      i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
-      project: t.projects?.name || t.project_name || '-',
-      description: t.description || '-', amount: +t.amount || 0
-    }));
-    const totalTx = txData.reduce((s, t) => s + t.amount, 0);
+    const balHtml = (bal) => {
+      const color = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--blue)' : 'var(--green)';
+      const label = bal > 0 ? 'مستحق' : bal < 0 ? 'زيادة' : 'تسوية';
+      return `<span style="color:${color};font-weight:700;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${label}</span>`;
+    };
 
-    const procData = procs.map((p, i) => ({
-      i: i+1, date: p.date || '-', item: p.item_name || '-',
-      qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
-      total: +p.total_price || 0, project: p.projects?.name || p.project_name || '-'
-    }));
+    // Raw data for Excel export
+    const txData = txs.map((t, i) => {
+      const isNew = t.payment_term !== undefined && t.payment_term !== null;
+      const amount = +t.amount || 0;
+      const paid = isNew ? (+t.paid_amount || 0) : amount;
+      return {
+        i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
+        project: t.projects?.name || t.project_name || '-',
+        description: t.description || '-', amount, paid, balance: amount - paid
+      };
+    });
+    const totalTx = txData.reduce((s, t) => s + t.amount, 0);
+    const totalTxPaid = txData.reduce((s, t) => s + t.paid, 0);
+
+    const procData = procs.map((p, i) => {
+      const isNew = p.payment_term !== undefined && p.payment_term !== null;
+      const total = +p.total_price || 0;
+      const paid = isNew ? (+p.paid_amount || 0) : total;
+      return {
+        i: i+1, date: p.date || '-', item: p.item_name || '-',
+        qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
+        total, paid, balance: total - paid,
+        project: p.projects?.name || p.project_name || '-'
+      };
+    });
     const totalProc = procData.reduce((s, p) => s + p.total, 0);
+    const totalProcPaid = procData.reduce((s, p) => s + p.paid, 0);
+
+    const totalOwed = totalTx + totalProc;
+    const totalPaid = totalTxPaid + totalProcPaid;
+    const netBalance = totalOwed - totalPaid;
+    const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
+    const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
     // HTML rows (formatted)
-    const txRows = txData.map(t => [t.i, t.date, t.type, t.project, t.description, App.fmtMoney(t.amount)]);
-    const procRows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), p.project]);
+    const txRows = txData.map(t => [t.i, t.date, t.type, t.project, t.description, App.fmtMoney(t.amount), App.fmtMoney(t.paid), balHtml(t.balance)]);
+    const procRows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), p.project]);
 
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المعاملات</div><div class="kpi-value">${App.fmtMoney(totalTx)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(totalProc)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإجمالي</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalTx + totalProc)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المستحق</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalOwed)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد (${balLabel})</div><div class="kpi-value" style="color:${balColor}">${App.fmtMoney(Math.abs(netBalance))}</div></div>
     </div>`;
-    const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], txRows) : '';
-    const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], procRows) : '';
+    const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], txRows) : '';
+    const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], procRows) : '';
 
     const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorStatement('${vendorId}')">📥 تحميل Excel</button></div>`;
     this._vendorStatementData = this._vendorStatementData || {};
-    this._vendorStatementData[vendorId] = { txData, procData, totalTx, totalProc, name };
+    this._vendorStatementData[vendorId] = { txData, procData, totalTx, totalTxPaid, totalProc, totalProcPaid, totalOwed, totalPaid, netBalance, name };
 
     const content = downloadBtn + summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
     UI.openModal(`كشف حساب مورد: ${App.esc(name)}`, content, null);
@@ -1337,23 +1362,23 @@ const Crud = {
       const txSheet = [
         ['كشف حساب مورد: ' + data.name],
         ['المعاملات'],
-        ['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'],
-        ...data.txData.map(t => [t.i, t.date, t.type, t.project, t.description, t.amount]),
-        ['', '', '', '', 'الإجمالي', data.totalTx]
+        ['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'],
+        ...data.txData.map(t => [t.i, t.date, t.type, t.project, t.description, t.amount, t.paid, t.balance]),
+        ['', '', '', '', 'الإجمالي', data.totalTx, data.totalTxPaid, data.totalTx - data.totalTxPaid]
       ];
       const txWs = XLSX.utils.aoa_to_sheet(txSheet);
-      txWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }];
+      txWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, txWs, 'المعاملات');
     }
     if (data.procData.length) {
       const procSheet = [
         ['المشتريات'],
-        ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'],
-        ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.project]),
-        ['', '', '', '', '', 'الإجمالي', data.totalProc]
+        ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'],
+        ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project]),
+        ['', '', '', '', '', 'الإجمالي', data.totalProc, data.totalProcPaid, data.totalProc - data.totalProcPaid]
       ];
       const procWs = XLSX.utils.aoa_to_sheet(procSheet);
-      procWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+      procWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
       XLSX.utils.book_append_sheet(wb, procWs, 'المشتريات');
     }
 
@@ -1376,22 +1401,40 @@ const Crud = {
     ]);
     const name = vendor[0]?.name || 'مورد';
 
-    const procData = procs.map((p, i) => ({
-      i: i+1, date: p.date || '-', item: p.item_name || '-',
-      qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
-      total: +p.total_price || 0, project: p.projects?.name || p.project_name || '-'
-    }));
-    const total = procData.reduce((s, p) => s + p.total, 0);
+    const balHtml = (bal) => {
+      const color = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--blue)' : 'var(--green)';
+      const label = bal > 0 ? 'مستحق' : bal < 0 ? 'زيادة' : 'تسوية';
+      return `<span style="color:${color};font-weight:700;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${label}</span>`;
+    };
 
-    const rows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), p.project]);
+    const procData = procs.map((p, i) => {
+      const isNew = p.payment_term !== undefined && p.payment_term !== null;
+      const total = +p.total_price || 0;
+      const paid = isNew ? (+p.paid_amount || 0) : total;
+      return {
+        i: i+1, date: p.date || '-', item: p.item_name || '-',
+        qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
+        total, paid, balance: total - paid,
+        project: p.projects?.name || p.project_name || '-'
+      };
+    });
+    const total = procData.reduce((s, p) => s + p.total, 0);
+    const totalPaid = procData.reduce((s, p) => s + p.paid, 0);
+    const netBalance = total - totalPaid;
+    const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
+    const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
+
+    const rows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), p.project]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد (${balLabel})</div><div class="kpi-value" style="color:${balColor}">${App.fmtMoney(Math.abs(netBalance))}</div></div>
     </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
+    const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
 
     const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorPurchases('${vendorId}')">📥 تحميل Excel</button></div>`;
     this._vendorPurchasesData = this._vendorPurchasesData || {};
-    this._vendorPurchasesData[vendorId] = { procData, total, name };
+    this._vendorPurchasesData[vendorId] = { procData, total, totalPaid, netBalance, name };
 
     UI.openModal(`💰 مشتريات مورد: ${App.esc(name)}`, downloadBtn + summary + table, null);
   },
@@ -1403,12 +1446,12 @@ const Crud = {
 
     const sheet = [
       ['مشتريات مورد: ' + data.name],
-      ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'],
-      ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.project]),
-      ['', '', '', '', '', 'الإجمالي', data.total]
+      ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'],
+      ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project]),
+      ['', '', '', '', '', 'الإجمالي', data.total, data.totalPaid, data.netBalance]
     ];
     const ws = XLSX.utils.aoa_to_sheet(sheet);
-    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'المشتريات');
