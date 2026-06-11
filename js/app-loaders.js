@@ -230,13 +230,13 @@ Object.assign(App, {
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-          return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+          return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${p.name}</a>`, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
         return `<div class="card" style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
             <div>
-              <h3 style="margin-bottom:4px">${c.name}</h3>
+              <h3 style="margin-bottom:4px"><a href="#" onclick="App.go('client',{clientId:'${c.id}'});return false;" style="color:var(--gold);text-decoration:none">${c.name}</a></h3>
               <div style="font-size:12px;color:var(--text2)">${c.phone || '-'} · ${c.email || '-'} · ${c.address || '-'}</div>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
@@ -254,6 +254,141 @@ Object.assign(App, {
     }
   },
 
+  async loadClient(clientId) {
+    try {
+      const [clientRows, projects, expenses, deposits] = await Promise.all([
+        API.request('clients', 'GET', null, `?select=*&id=eq.${clientId}&deleted_at=is.null`),
+        API.request('projects', 'GET', null, `?select=*&client_id=eq.${clientId}&deleted_at=is.null&order=created_at.desc`),
+        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null`),
+        API.request('transactions', 'GET', null, `?select=project_id,amount&type=eq.project_deposit&deleted_at=is.null`)
+      ]);
+      const client = clientRows[0];
+      if (!client) { document.getElementById('client-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ العميل غير موجود</p>'; return; }
+
+      const expByProject = {};
+      const designByProject = {};
+      expenses.forEach(t => {
+        const amt = +t.amount || 0;
+        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
+        if (t.expense_category === 'design') designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
+      });
+      const depByProject = {};
+      deposits.forEach(t => { depByProject[t.project_id] = (depByProject[t.project_id] || 0) + (+t.amount || 0); });
+
+      const totalProjects = projects.length;
+      const totalValue = projects.reduce((s, p) => s + (+p.value || 0), 0);
+      const totalExp = projects.reduce((s, p) => s + (expByProject[p.id] || 0), 0);
+      const totalDep = projects.reduce((s, p) => s + (depByProject[p.id] || 0), 0);
+
+      const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المشاريع</div><div class="kpi-value">${totalProjects}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي القيم</div><div class="kpi-value">${this.fmtMoney(totalValue)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalDep)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(totalExp)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(totalDep - totalExp)}</div></div>
+      </div>`;
+
+      const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${client.id}')">كشف حساب</button>`;
+      const projRows = projects.map(p => {
+        const exp = expByProject[p.id] || 0;
+        const design = designByProject[p.id] || 0;
+        const constr = exp - design;
+        const dep = depByProject[p.id] || 0;
+        const balance = dep - exp;
+        const supAmt = constr * (p.supervision_percentage || 0) / 100;
+        const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
+        const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
+        const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
+        return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${p.name}</a>`, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+      });
+      const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
+
+      const html = `<div class="card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div>
+            <h3 style="margin-bottom:4px">${client.name}</h3>
+            <div style="font-size:12px;color:var(--text2)">${client.phone || '-'} · ${client.email || '-'} · ${client.address || '-'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
+        </div>
+        <div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud.addProject('${client.id}')">+ إضافة مشروع</button></div>
+        ${projTable}
+      </div>`;
+
+      document.getElementById('client-detail-name').textContent = '👤 ' + client.name;
+      document.getElementById('client-detail').innerHTML = summary + html;
+      this.attachSearch('client-detail', '🔍 بحث في المشاريع...');
+    } catch (e) {
+      console.error(e);
+      UI.toast('فشل تحميل تفاصيل العميل: ' + e.message, 'error');
+      document.getElementById('client-detail').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadClient('${clientId}')">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async loadProject(projectId) {
+    try {
+      const [projectRows, txs, procs, tasks] = await Promise.all([
+        API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}&deleted_at=is.null`),
+        API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=100`),
+        API.request('procurements', 'GET', null, `?select=total_price&project_id=eq.${projectId}&deleted_at=is.null&limit=100`),
+        API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc&limit=50`)
+      ]);
+      const project = projectRows[0];
+      if (!project) { document.getElementById('project-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المشروع غير موجود</p>'; return; }
+
+      const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
+      const txExpenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      const txConstr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+      const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+      const procTotal = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
+      const expenses = txExpenses + procTotal;
+      const constr = txConstr + procTotal;
+      const supervision = Math.max(0, constr) * (project.supervision_percentage || 0) / 100;
+      const balance = deposits - expenses - supervision;
+
+      const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">القيمة</div><div class="kpi-value">${this.fmtMoney(project.value)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${project.supervision_percentage || 0}%)</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
+      </div>`;
+
+      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${project.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button>`;
+      const info = `<div class="card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div>
+            <h3 style="margin-bottom:4px">${project.name}</h3>
+            <div style="font-size:12px;color:var(--text2)">العميل: <a href="#" onclick="App.go('client',{clientId:'${project.client_id}'});return false;" style="color:var(--gold);text-decoration:none">${project.clients?.name || project.client_name || '-'}</a> · ${project.address || '-'} · الإشراف: ${project.supervision_percentage || 0}%</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
+        </div>
+      </div>`;
+
+      const txRows = txs.map((t, i) => [i+1, t.date || '-', App.fmtTxType(t.type), t.description || '-', this.fmtMoney(t.amount)]);
+      const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">💰 المعاملات</h4>' + this.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], txRows) : '';
+
+      const statusBadge = (s) => {
+        const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
+        const labels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
+        return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+      };
+      const priorityBadge = (p) => {
+        const colors = { low: 'gray', medium: 'orange', high: 'red' };
+        const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
+        return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
+      };
+      const taskRows = tasks.map((t, i) => [i+1, t.name, t.assignee || '-', t.start_date || '-', t.due_date || '-', statusBadge(t.status), priorityBadge(t.priority)]);
+      const taskTable = taskRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المهام</h4>' + this.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية'], taskRows) : '';
+
+      document.getElementById('project-detail-name').textContent = '🏗️ ' + project.name;
+      document.getElementById('project-detail').innerHTML = summary + info + txTable + taskTable;
+    } catch (e) {
+      console.error(e);
+      UI.toast('فشل تحميل تفاصيل المشروع: ' + e.message, 'error');
+      document.getElementById('project-detail').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadProject('${projectId}')">🔄 إعادة المحاولة</button>`;
+    }
+  },
 
   async loadVendors() {
     try {
@@ -274,7 +409,7 @@ Object.assign(App, {
         const balLabel = balance > 0 ? 'مستحق' : balance < 0 ? 'زيادة' : 'تسوية';
         const balanceCell = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`;
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
-        return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', balanceCell, actions];
+        return [`<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${v.name}</a>`, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', balanceCell, actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
@@ -282,6 +417,72 @@ Object.assign(App, {
       console.error(e);
       UI.toast('Vendors load failed: ' + e.message, 'error');
       document.getElementById('vendors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموردين</p><button class="btn btn-secondary" onclick="App.loadVendors()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async loadVendor(vendorId) {
+    try {
+      const [vendorRows, txs, procs] = await Promise.all([
+        API.request('vendors', 'GET', null, `?select=*&id=eq.${vendorId}&deleted_at=is.null`),
+        API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=eq.project_expense&deleted_at=is.null&order=date.desc&limit=100`),
+        API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=100`)
+      ]);
+      const vendor = vendorRows[0];
+      if (!vendor) { document.getElementById('vendor-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المورد غير موجود</p>'; return; }
+
+      const balHtml = (bal) => {
+        const color = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--blue)' : 'var(--green)';
+        const label = bal > 0 ? 'مستحق' : bal < 0 ? 'زيادة' : 'تسوية';
+        return `<span style="color:${color};font-weight:700;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${label}</span>`;
+      };
+
+      let totalOwed = 0, totalPaid = 0;
+      const txRows = txs.map((t, i) => {
+        const isNew = t.payment_term !== undefined && t.payment_term !== null;
+        const amount = +t.amount || 0;
+        const paid = isNew ? (+t.paid_amount || 0) : amount;
+        totalOwed += amount; totalPaid += paid;
+        return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amount), App.fmtMoney(paid), balHtml(amount - paid)];
+      });
+      const procRows = procs.map((p, i) => {
+        const isNew = p.payment_term !== undefined && p.payment_term !== null;
+        const total = +p.total_price || 0;
+        const paid = isNew ? (+p.paid_amount || 0) : total;
+        totalOwed += total; totalPaid += paid;
+        return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(+p.unit_price || 0), App.fmtMoney(total), App.fmtMoney(paid), balHtml(total - paid), p.projects?.name || p.project_name || '-'];
+      });
+
+      const netBalance = totalOwed - totalPaid;
+      const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
+      const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
+
+      const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المستحق</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalOwed)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد (${balLabel})</div><div class="kpi-value" style="color:${balColor}">${App.fmtMoney(Math.abs(netBalance))}</div></div>
+      </div>`;
+
+      const typeBadge = vendor.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
+      const actions = UI.actions(vendor.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${vendor.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${vendor.id}')">💰 مشتريات</button>`;
+      const info = `<div class="card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div>
+            <h3 style="margin-bottom:4px">${vendor.name}</h3>
+            <div style="font-size:12px;color:var(--text2)">${typeBadge} · ${vendor.sector || '-'} · ${vendor.contact_person || '-'} · ${vendor.phone || '-'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
+        </div>
+      </div>`;
+
+      const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], txRows) : '';
+      const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], procRows) : '';
+
+      document.getElementById('vendor-detail-name').textContent = '🚚 ' + vendor.name;
+      document.getElementById('vendor-detail').innerHTML = summary + info + txTable + procTable;
+    } catch (e) {
+      console.error(e);
+      UI.toast('فشل تحميل تفاصيل المورد: ' + e.message, 'error');
+      document.getElementById('vendor-detail').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadVendor('${vendorId}')">🔄 إعادة المحاولة</button>`;
     }
   },
 

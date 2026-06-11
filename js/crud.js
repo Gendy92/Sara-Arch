@@ -278,12 +278,14 @@ const Crud = {
         if (existing.length) { UI.toast('⚠️ اسم العميل موجود مسبقاً', 'error'); return; }
       }
       await this.save('clients', { name: fd.get('name'), phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null }, id);
-      UI.toast('تم التحديث'); App.loadClients();
+      UI.toast('تم التحديث');
+      if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
+      else App.loadClients();
     });
   },
 
   delClient(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا العميل؟ سيتم حذف جميع مشاريعه ومعاملاته المرتبطة.', async () => { await this.softDelete('clients', id, true); UI.toast('تم الحذف مع البيانات المرتبطة'); App.loadClients(); });
+    UI.confirm('هل أنت متأكد من حذف هذا العميل؟ سيتم حذف جميع مشاريعه ومعاملاته المرتبطة.', async () => { await this.softDelete('clients', id, true); UI.toast('تم الحذف مع البيانات المرتبطة'); App.go('clients'); });
   },
 
   // ─── PROJECTS (linked to Clients) ───
@@ -312,7 +314,8 @@ const Crud = {
       });
       await this.bulkSave('projects', enriched);
       UI.toast(`تم حفظ ${rows.length} مشروع`);
-      App.loadClients();
+      if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
+      else App.loadClients();
     }, defaults, {}, 'none');
   },
 
@@ -348,14 +351,21 @@ const Crud = {
       }
       const client = clients.find(c => c.id === fd.get('client_id'));
       await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, supervision_percentage: +fd.get('supervision_percentage') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
-      UI.toast('تم التحديث'); App.loadClients();
+      UI.toast('تم التحديث');
+      if (App.screen === 'project' && App.projectId) App.loadProject(App.projectId);
+      else if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
+      else App.loadClients();
     });
   },
 
 
 
   delProject(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف'); App.loadClients(); });
+    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف');
+      if (App.screen === 'project' && App.projectId) App.go('clients');
+      else if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
+      else App.loadClients();
+    });
   },
 
   // ─── VENDORS ───
@@ -419,12 +429,14 @@ const Crud = {
           await this.save('vendors', rest, id);
         } else { throw e; }
       }
-      UI.toast('تم التحديث'); App.loadVendors();
+      UI.toast('تم التحديث');
+      if (App.screen === 'vendor' && App.vendorId) App.loadVendor(App.vendorId);
+      else App.loadVendors();
     });
   },
 
   delVendor(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id); UI.toast('تم الحذف'); App.loadVendors(); });
+    UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id); UI.toast('تم الحذف'); App.go('vendors'); });
   },
 
   async addProcurement(vendorId) {
