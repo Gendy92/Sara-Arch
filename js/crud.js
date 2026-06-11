@@ -1163,7 +1163,43 @@ const Crud = {
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, summary + table, null);
+
+    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportProjectStatement('${projectId}')">📥 تحميل Excel</button></div>`;
+    this._projectStatementData = this._projectStatementData || {};
+    this._projectStatementData[projectId] = { rows, totalDep, totalExp, name };
+
+    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, downloadBtn + summary + table, null);
+  },
+
+  _exportProjectStatement(projectId) {
+    const data = this._projectStatementData?.[projectId];
+    if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
+    if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
+
+    const sheet = [
+      ['كشف حساب مشروع: ' + data.name],
+      ['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'],
+      ...data.rows.map((row, i) => [i+1, row[1], row[2], row[3], row[4]]),
+      ['', '', '', 'إجمالي الإيداعات', data.totalDep],
+      ['', '', '', 'إجمالي المصروفات', data.totalExp],
+      ['', '', '', 'الرصيد', data.totalDep - data.totalExp]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(sheet);
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب المشروع');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `كشف-حساب-مشروع-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   async projectBudget(projectId) {
@@ -1191,7 +1227,44 @@ const Crud = {
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${p.supervision_percentage || 0}%)</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(balance)}</div></div>
     </div>`;
-    UI.openModal(`📊 ميزانية مشروع: ${App.esc(p.name)}`, html, null);
+    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportProjectBudget('${projectId}')">📥 تحميل Excel</button></div>`;
+    this._projectBudgetData = this._projectBudgetData || {};
+    this._projectBudgetData[projectId] = { name: p.name, deposits, expenses, constr, design, supervision, balance, supervisionPercentage: p.supervision_percentage || 0 };
+
+    UI.openModal(`📊 ميزانية مشروع: ${App.esc(p.name)}`, downloadBtn + html, null);
+  },
+
+  _exportProjectBudget(projectId) {
+    const data = this._projectBudgetData?.[projectId];
+    if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
+    if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
+
+    const sheet = [
+      ['ميزانية مشروع: ' + data.name],
+      ['البند', 'المبلغ'],
+      ['إجمالي الإيداعات', data.deposits],
+      ['إجمالي المصروفات', data.expenses],
+      ['مصروفات الإنشاء', data.constr],
+      ['مصروفات التصميم', data.design],
+      ['الإشراف (' + data.supervisionPercentage + '%)', data.supervision],
+      ['الرصيد', data.balance]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(sheet);
+    ws['!cols'] = [{ wch: 30 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ميزانية المشروع');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ميزانية-مشروع-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   async loadProjectTasks(projectId) {
