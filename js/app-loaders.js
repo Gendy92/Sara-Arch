@@ -489,9 +489,11 @@ Object.assign(App, {
       const custodyRows = custodyRecords.map((r, i) => {
         const bal = (+r.amount || 0) - (+r.returned_amount || 0);
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
-        return [i+1, r.date || '-', r.employees?.name || r.employee_name || '-', r.sector_name || '-', this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`, statusLabels[r.status] || r.status, UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+        const typeBadge = r.custody_type === 'project' ? '<span class="badge badge-blue">مشروع</span>' : '<span class="badge badge-gold">مكتب</span>';
+        const related = r.custody_type === 'project' ? (r.project_name || '-') : (r.sector_name || '-');
+        return [i+1, r.date || '-', typeBadge, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`, statusLabels[r.status] || r.status, UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
       });
-      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'الموظف', 'التصنيف', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
+      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
       this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...');
     } catch (e) {
       console.error(e);

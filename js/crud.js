@@ -1480,6 +1480,11 @@ const Crud = {
       const labels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
       return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
     };
+    const typeBadge = (t) => {
+      const color = t === 'project' ? 'blue' : 'gold';
+      const label = t === 'project' ? 'مشروع' : 'مكتب';
+      return `<span class="badge badge-${color}">${label}</span>`;
+    };
     let total = 0, returned = 0;
     const rows = records.map((r, i) => {
       const amt = +r.amount || 0;
@@ -1487,14 +1492,14 @@ const Crud = {
       total += amt;
       returned += ret;
       const bal = amt - ret;
-      return [i+1, r.date || '-', App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), r.sector_name || '-', r.projects?.name || r.project_name || '-', r.notes || '-', UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+      return [i+1, r.date || '-', typeBadge(r.custody_type), App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), r.sector_name || '-', r.projects?.name || r.project_name || '-', r.notes || '-', UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
     });
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(returned)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total - returned)}</div></div>
     </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'التصنيف', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
+    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'التصنيف', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustody('${employeeId}')">➕ إضافة عهدة</button></div>`;
     UI.openModal(`💼 عهد موظف: ${App.esc(name)}`, addBtn + summary + table, null);
   },
@@ -1506,6 +1511,7 @@ const Crud = {
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
     ]);
     const fields = [
+      { name: 'custody_type', label: 'نوع العهد *', type: 'select', req: true, opts: [{v:'office',l:'مكتبية'},{v:'project',l:'مشروع'}] },
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
       { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
@@ -1513,18 +1519,19 @@ const Crud = {
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
-    UI.openModal('إضافة عهدة نقدية', `<form>${UI.form(fields)}</form>`, async (form) => {
+    const overlay = UI.openModal('إضافة عهدة نقدية', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
       const emp = employees.find(e => e.id === fd.get('employee_id'));
       const sector = sectors.find(s => s.id === fd.get('sector_id'));
       const proj = projects.find(p => p.id === fd.get('project_id'));
       await this.save('custody_records', {
+        custody_type: fd.get('custody_type') || 'office',
         employee_id: fd.get('employee_id') || null,
         employee_name: emp ? emp.name : null,
-        sector_id: fd.get('sector_id') || null,
-        sector_name: sector ? sector.name : null,
-        project_id: fd.get('project_id') || null,
-        project_name: proj ? proj.name : null,
+        sector_id: fd.get('custody_type') === 'office' ? (fd.get('sector_id') || null) : null,
+        sector_name: fd.get('custody_type') === 'office' ? (sector ? sector.name : null) : null,
+        project_id: fd.get('custody_type') === 'project' ? (fd.get('project_id') || null) : null,
+        project_name: fd.get('custody_type') === 'project' ? (proj ? proj.name : null) : null,
         amount: +fd.get('amount') || 0,
         date: fd.get('date') || new Date().toISOString().slice(0, 10),
         notes: fd.get('notes') || null,
@@ -1534,6 +1541,17 @@ const Crud = {
       App.loadOffice();
       if (employeeId) this.employeeCustody(employeeId);
     });
+    // Wire conditional fields
+    const form = overlay.querySelector('form');
+    const typeSel = form.querySelector('[name="custody_type"]');
+    const sectorGroup = form.querySelector('[name="sector_id"]').closest('.form-group');
+    const projectGroup = form.querySelector('[name="project_id"]').closest('.form-group');
+    const toggle = () => {
+      if (typeSel.value === 'office') { sectorGroup.style.display = ''; projectGroup.style.display = 'none'; }
+      else { sectorGroup.style.display = 'none'; projectGroup.style.display = ''; }
+    };
+    typeSel.addEventListener('change', toggle);
+    toggle();
   },
 
   async addOfficeCustody() {
@@ -1543,28 +1561,35 @@ const Crud = {
   async editCustody(id) {
     const rows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
-    const [sectors, employees] = await Promise.all([
+    const [sectors, employees, projects] = await Promise.all([
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
+      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     const fields = [
+      { name: 'custody_type', label: 'نوع العهد *', type: 'select', req: true, opts: [{v:'office',l:'مكتبية'},{v:'project',l:'مشروع'}] },
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
       { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
+      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
       { name: 'returned_amount', label: 'المرتجع', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'active',l:'نشطة'},{v:'settled',l:'مقفلة'},{v:'partial',l:'جزئي'}] },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
-    UI.openModal('تعديل عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+    const overlay = UI.openModal('تعديل عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
       const emp = employees.find(e => e.id === fd.get('employee_id'));
       const sector = sectors.find(s => s.id === fd.get('sector_id'));
+      const proj = projects.find(p => p.id === fd.get('project_id'));
       await this.save('custody_records', {
+        custody_type: fd.get('custody_type') || 'office',
         employee_id: fd.get('employee_id') || null,
         employee_name: emp ? emp.name : null,
-        sector_id: fd.get('sector_id') || null,
-        sector_name: sector ? sector.name : null,
+        sector_id: fd.get('custody_type') === 'office' ? (fd.get('sector_id') || null) : null,
+        sector_name: fd.get('custody_type') === 'office' ? (sector ? sector.name : null) : null,
+        project_id: fd.get('custody_type') === 'project' ? (fd.get('project_id') || null) : null,
+        project_name: fd.get('custody_type') === 'project' ? (proj ? proj.name : null) : null,
         amount: +fd.get('amount') || 0,
         returned_amount: +fd.get('returned_amount') || 0,
         status: fd.get('status') || 'active',
@@ -1575,6 +1600,16 @@ const Crud = {
       App.loadOffice();
       if (rows[0].employee_id) this.employeeCustody(rows[0].employee_id);
     });
+    const form = overlay.querySelector('form');
+    const typeSel = form.querySelector('[name="custody_type"]');
+    const sectorGroup = form.querySelector('[name="sector_id"]').closest('.form-group');
+    const projectGroup = form.querySelector('[name="project_id"]').closest('.form-group');
+    const toggle = () => {
+      if (typeSel.value === 'office') { sectorGroup.style.display = ''; projectGroup.style.display = 'none'; }
+      else { sectorGroup.style.display = 'none'; projectGroup.style.display = ''; }
+    };
+    typeSel.addEventListener('change', toggle);
+    toggle();
   },
 
   delCustody(id) {
