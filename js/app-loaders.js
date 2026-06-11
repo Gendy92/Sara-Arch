@@ -287,13 +287,20 @@ Object.assign(App, {
 
   async loadTransactions() {
     try {
-      const [recentTxs, projects, projectExpenses, allProjTxs] = await Promise.all([
-        API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=50"),
+      const txPage = this.pageState.transactions || 1;
+      const txPerPage = 10;
+      const expPage = this.pageState.txExpenses || 1;
+      const expPerPage = 10;
+
+      const [recentTxs, projects, projectExpenses, allProjTxs, totalTxCount, totalExpCount] = await Promise.all([
+        API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=100"),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${App.txExpenseOffset}&limit=${App.txExpenseLimit}`),
-        API.request('transactions', 'GET', null, '?select=type,amount,project_id,expense_category&type=in.(project_deposit,project_expense)&deleted_at=is.null')
+        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
+        API.request('transactions', 'GET', null, '?select=type,amount,project_id,expense_category&type=in.(project_deposit,project_expense)&deleted_at=is.null&limit=1000'),
+        API.count('transactions', '?type=in.(project_deposit,project_expense)&deleted_at=is.null'),
+        API.count('transactions', '?type=eq.project_expense&deleted_at=is.null')
       ]);
-      // KPIs (from lightweight allProjTxs)
+      // KPIs (from bounded allProjTxs)
       const deposits = allProjTxs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
       const allProjectExpenses = allProjTxs.filter(t => t.type === 'project_expense');
       const expenses = allProjectExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
@@ -317,7 +324,7 @@ Object.assign(App, {
         <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
         <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
-      // Table (from recent 50 with full columns)
+      // Main table: combine, filter, paginate in memory
       const expByProj = {};
       const designByProj = {};
       allProjectExpenses.forEach(t => {
@@ -339,7 +346,14 @@ Object.assign(App, {
       let allTxs = [...recentTxs, ...supRows.flat()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       if (App.txTypeFilter === 'deposit') allTxs = allTxs.filter(t => t.type === 'project_deposit' || t.type === 'supervision');
       if (App.txTypeFilter === 'expense') allTxs = allTxs.filter(t => t.type === 'project_expense');
-      document.getElementById('tx-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], allTxs.map(t => {
+
+      const totalTxDisplay = allTxs.length;
+      const totalTxPages = Math.max(1, Math.ceil(totalTxDisplay / txPerPage));
+      const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
+      this.pageState.transactions = safeTxPage;
+      const pagedTxs = allTxs.slice((safeTxPage - 1) * txPerPage, safeTxPage * txPerPage);
+
+      const txHtml = pagedTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], pagedTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         let party;
         if (t.type === 'project_expense') {
@@ -360,20 +374,13 @@ Object.assign(App, {
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
         return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, clientName, t.project_name || '-', pt, actions];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxDisplay);
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
 
-      // Expenses-only tab with full details
-      if (App.txExpenseOffset === 0) App.txExpenseLoaded = projectExpenses;
-      else App.txExpenseLoaded = [...App.txExpenseLoaded, ...projectExpenses];
-      const totalExpCount = allProjectExpenses.length;
-      const displayedExpCount = App.txExpenseLoaded.length;
+      // Expenses-only tab with page-based pagination
       const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
-      const expenseRows = [...App.txExpenseLoaded].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-      const loadMoreBtn = displayedExpCount < totalExpCount
-        ? `<div style="margin-top:16px;text-align:center"><button class="btn btn-secondary" onclick="App.loadMoreExpenses()">تحميل المزيد (+${Math.min(App.txExpenseLimit, totalExpCount - displayedExpCount)})</button></div>`
-        : '';
-      const counterHtml = `<div style="margin-bottom:12px;font-size:13px;color:var(--text2)">عرض ${displayedExpCount} من ${totalExpCount} مصروف</div>`;
-      document.getElementById('tx-expenses-tbl').innerHTML = counterHtml + (expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
+      const expenseRows = [...projectExpenses].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+      const expHtml = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
         const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
         const bal = (+t.amount || 0) - paid;
@@ -383,7 +390,8 @@ Object.assign(App, {
         const itemLabel = t.item_name || '-';
         const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
         return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, itemLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
-      })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>') + loadMoreBtn;
+      })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
+      document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
     } catch (e) {
       console.error(e);
@@ -393,10 +401,8 @@ Object.assign(App, {
     }
   },
 
-
-  async loadMoreExpenses() {
-    App.txExpenseOffset += App.txExpenseLimit;
-    await App.loadTransactions();
+  async loadTxExpenses() {
+    await this.loadTransactions();
   },
 
   exportOfficeExcel() {

@@ -5,10 +5,7 @@ const App = {
   txTab: 'all',
   txTypeFilter: 'all',
   loading: false,
-  txExpenseOffset: 0,
-  txExpenseLimit: 50,
-  txExpenseLoaded: [],
-  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1 },
+  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, txExpenses: 1 },
   PAGE_SIZE: 50,
 
   esc(s) {
@@ -127,7 +124,7 @@ const App = {
     if (screen === 'dashboard') await this.loadDashboard();
     if (screen === 'clients') await this.loadClients();
     if (screen === 'vendors') await this.loadVendors();
-    if (screen === 'transactions') { this.txExpenseOffset = 0; this.txExpenseLoaded = []; if (opts.tab) this.txTab = opts.tab; await this.loadTransactions(); }
+    if (screen === 'transactions') { if (opts.tab) this.txTab = opts.tab; await this.loadTransactions(); }
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
     if (screen === 'settings') await this.loadSettings();
