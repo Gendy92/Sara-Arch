@@ -1251,18 +1251,26 @@ const Crud = {
       API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = vendor[0]?.name || 'مورد';
-    let totalTx = 0;
-    const txRows = txs.map((t, i) => {
-      const amt = +t.amount || 0;
-      totalTx += amt;
-      return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amt)];
-    });
-    let totalProc = 0;
-    const procRows = procs.map((p, i) => {
-      const amt = +p.total_price || 0;
-      totalProc += amt;
-      return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(p.unit_price || 0), App.fmtMoney(amt), p.projects?.name || p.project_name || '-'];
-    });
+
+    // Raw data for Excel export
+    const txData = txs.map((t, i) => ({
+      i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
+      project: t.projects?.name || t.project_name || '-',
+      description: t.description || '-', amount: +t.amount || 0
+    }));
+    const totalTx = txData.reduce((s, t) => s + t.amount, 0);
+
+    const procData = procs.map((p, i) => ({
+      i: i+1, date: p.date || '-', item: p.item_name || '-',
+      qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
+      total: +p.total_price || 0, project: p.projects?.name || p.project_name || '-'
+    }));
+    const totalProc = procData.reduce((s, p) => s + p.total, 0);
+
+    // HTML rows (formatted)
+    const txRows = txData.map(t => [t.i, t.date, t.type, t.project, t.description, App.fmtMoney(t.amount)]);
+    const procRows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), p.project]);
+
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المعاملات</div><div class="kpi-value">${App.fmtMoney(totalTx)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(totalProc)}</div></div>
@@ -1270,8 +1278,55 @@ const Crud = {
     </div>`;
     const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], txRows) : '';
     const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], procRows) : '';
-    const content = summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
+
+    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorStatement('${vendorId}')">📥 تحميل Excel</button></div>`;
+    this._vendorStatementData = this._vendorStatementData || {};
+    this._vendorStatementData[vendorId] = { txData, procData, totalTx, totalProc, name };
+
+    const content = downloadBtn + summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
     UI.openModal(`كشف حساب مورد: ${App.esc(name)}`, content, null);
+  },
+
+  _exportVendorStatement(vendorId) {
+    const data = this._vendorStatementData?.[vendorId];
+    if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
+    if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
+
+    const wb = XLSX.utils.book_new();
+    if (data.txData.length) {
+      const txSheet = [
+        ['كشف حساب مورد: ' + data.name],
+        ['المعاملات'],
+        ['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'],
+        ...data.txData.map(t => [t.i, t.date, t.type, t.project, t.description, t.amount]),
+        ['', '', '', '', 'الإجمالي', data.totalTx]
+      ];
+      const txWs = XLSX.utils.aoa_to_sheet(txSheet);
+      txWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, txWs, 'المعاملات');
+    }
+    if (data.procData.length) {
+      const procSheet = [
+        ['المشتريات'],
+        ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'],
+        ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.project]),
+        ['', '', '', '', '', 'الإجمالي', data.totalProc]
+      ];
+      const procWs = XLSX.utils.aoa_to_sheet(procSheet);
+      procWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+      XLSX.utils.book_append_sheet(wb, procWs, 'المشتريات');
+    }
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `كشف-حساب-مورد-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   async vendorPurchases(vendorId) {
@@ -1280,17 +1335,54 @@ const Crud = {
       API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = vendor[0]?.name || 'مورد';
-    let total = 0;
-    const rows = procs.map((p, i) => {
-      const amt = +p.total_price || 0;
-      total += amt;
-      return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(p.unit_price || 0), App.fmtMoney(amt), p.projects?.name || p.project_name || '-'];
-    });
+
+    const procData = procs.map((p, i) => ({
+      i: i+1, date: p.date || '-', item: p.item_name || '-',
+      qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
+      total: +p.total_price || 0, project: p.projects?.name || p.project_name || '-'
+    }));
+    const total = procData.reduce((s, p) => s + p.total, 0);
+
+    const rows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), p.project]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
-    UI.openModal(`💰 مشتريات مورد: ${App.esc(name)}`, summary + table, null);
+
+    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorPurchases('${vendorId}')">📥 تحميل Excel</button></div>`;
+    this._vendorPurchasesData = this._vendorPurchasesData || {};
+    this._vendorPurchasesData[vendorId] = { procData, total, name };
+
+    UI.openModal(`💰 مشتريات مورد: ${App.esc(name)}`, downloadBtn + summary + table, null);
+  },
+
+  _exportVendorPurchases(vendorId) {
+    const data = this._vendorPurchasesData?.[vendorId];
+    if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
+    if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
+
+    const sheet = [
+      ['مشتريات مورد: ' + data.name],
+      ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المشروع'],
+      ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.project]),
+      ['', '', '', '', '', 'الإجمالي', data.total]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(sheet);
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'المشتريات');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `مشتريات-مورد-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   // ─── EMPLOYEE CUSTODY & ATTENDANCE ───
