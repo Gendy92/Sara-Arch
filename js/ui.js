@@ -232,7 +232,7 @@ const Spreadsheet = {
     toolbar.style.cssText = 'margin:16px 0;padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px';
     const uploadBtn = mode === 'full' ? `<label class="btn btn-sm btn-secondary" style="cursor:pointer">
           📁 رفع ملف Excel
-          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="Spreadsheet.handleFile(this, '${columns.map(c => c.key).join(',')}')">
+          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="Spreadsheet.handleFile(this)">
         </label>` : '';
     toolbar.innerHTML = `
       <div style="font-weight:600;color:var(--gold);margin-bottom:10px">📥 استيراد من Excel</div>
@@ -242,7 +242,7 @@ const Spreadsheet = {
       </div>
       <div style="color:var(--text3);font-size:11px;margin-bottom:6px">أو انسخ من Excel والصق هنا (Ctrl+V):</div>
       <textarea class="excel-paste" placeholder="انسخ صفوف من Excel والصقها هنا..." rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;color:var(--text);font-family:inherit;resize:vertical"></textarea>
-      <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="Spreadsheet.handlePaste(this, '${columns.map(c => c.key).join(',')}')">📋 تحليل البيانات الملصقة</button>
+      <button type="button" class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="Spreadsheet.handlePaste(this)">📋 تحليل البيانات الملصقة</button>
     `;
     toolbar._columns = columns;
     toolbar._spreadsheet = spreadsheetDiv;
@@ -267,8 +267,24 @@ const Spreadsheet = {
     });
 
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+    ws['!cols'] = columns.map(() => ({ wch: 22 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
+
+    // Reference sheet with dropdown options
+    const refRows = [['العمود', 'القيمة (value)', 'الوصف (label)']];
+    columns.forEach(col => {
+      if (col.type === 'select' && col.opts) {
+        col.opts.forEach(o => {
+          if (o.v !== '') refRows.push([col.label.replace(/\*/g,'').trim(), o.v, o.l]);
+        });
+      }
+    });
+    if (refRows.length > 1) {
+      const refWs = XLSX.utils.aoa_to_sheet(refRows);
+      refWs['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 36 }];
+      XLSX.utils.book_append_sheet(wb, refWs, 'Reference');
+    }
 
     // Manual Blob download (more reliable than XLSX.writeFile)
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -291,7 +307,7 @@ const Spreadsheet = {
     URL.revokeObjectURL(url);
   },
 
-  async handleFile(input, keysStr) {
+  async handleFile(input) {
     const file = input.files[0];
     if (!file) return;
     const toolbar = input.closest('[data-toolbar="excel"]');
@@ -314,7 +330,7 @@ const Spreadsheet = {
     input.value = '';
   },
 
-  handlePaste(btn, keysStr) {
+  handlePaste(btn) {
     const toolbar = btn.closest('[data-toolbar="excel"]');
     const columns = toolbar._columns;
     const spreadsheetDiv = toolbar._spreadsheet;
@@ -324,7 +340,13 @@ const Spreadsheet = {
 
     // Parse TSV (tab-separated) or CSV
     const lines = text.split(/\r?\n/).filter(l => l.trim());
-    const rows = lines.map(line => {
+    // Detect header: skip first line if it matches the first column label
+    const firstColLabel = columns[0].label.replace(/\*/g,'').trim();
+    let dataLines = lines;
+    if (lines.length > 1 && lines[0].includes(firstColLabel)) {
+      dataLines = lines.slice(1);
+    }
+    const rows = dataLines.map(line => {
       // Try tab first, then comma
       if (line.includes('\t')) return line.split('\t');
       // Simple CSV split (not handling quoted commas for simplicity)
@@ -341,37 +363,65 @@ const Spreadsheet = {
     // Clear existing rows except first
     while (tbody.children.length > 1) tbody.removeChild(tbody.lastChild);
     const firstRow = tbody.querySelector('tr');
+    const cascade = spreadsheetDiv._cascade || {};
 
     rows.forEach((rowData, idx) => {
       const newRow = firstRow.cloneNode(true);
-      newRow.querySelectorAll('input, select').forEach((el, colIdx) => {
-        const col = columns[colIdx];
-        if (!col) return;
-        const rawVal = rowData[colIdx] !== undefined ? String(rowData[colIdx]).trim() : '';
+      // Map pasted values by column key
+      const keyVals = {};
+      columns.forEach((col, colIdx) => {
+        keyVals[col.key] = rowData[colIdx] !== undefined ? String(rowData[colIdx]).trim() : '';
+      });
 
+      const setValue = (key, rawVal) => {
+        const col = columns.find(c => c.key === key);
+        const el = newRow.querySelector(`[data-key="${key}"]`);
+        if (!el || !col) return;
         if (col.type === 'select') {
-          // Try match by value first, then by label
           const match = col.opts.find(o => o.v == rawVal || o.l === rawVal);
           el.value = match ? match.v : '';
         } else if (col.type === 'number') {
           const num = parseFloat(rawVal.replace(/,/g, ''));
           el.value = isNaN(num) ? '' : num;
         } else if (col.type === 'date') {
-          // Try to normalize date
           const d = new Date(rawVal);
           el.value = !isNaN(d.getTime()) ? d.toISOString().slice(0,10) : rawVal;
         } else {
           el.value = rawVal;
         }
+      };
+
+      // 1. Set non-select fields first
+      columns.forEach(col => {
+        if (col.type !== 'select') setValue(col.key, keyVals[col.key]);
       });
+
+      // 2. Set parent selects and trigger cascades
+      if (cascade.clientProject) {
+        setValue(cascade.clientProject.clientKey, keyVals[cascade.clientProject.clientKey]);
+        const parentSel = newRow.querySelector(`[data-key="${cascade.clientProject.clientKey}"]`);
+        if (parentSel) parentSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (cascade.sectionItem) {
+        setValue(cascade.sectionItem.sectionKey, keyVals[cascade.sectionItem.sectionKey]);
+        const parentSel = newRow.querySelector(`[data-key="${cascade.sectionItem.sectionKey}"]`);
+        if (parentSel) parentSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      // 3. Set all selects (children will now have correct options)
+      columns.forEach(col => {
+        if (col.type === 'select') setValue(col.key, keyVals[col.key]);
+      });
+
+      // 4. Sync searchable dropdown display for all selects in this row
+      newRow.querySelectorAll('select').forEach(sel => sel.dispatchEvent(new Event('change', { bubbles: true })));
+
       newRow.querySelector('.row-num').textContent = idx + 1;
       tbody.appendChild(newRow);
     });
 
     // Renumber all rows
     Array.from(tbody.children).forEach((tr, i) => { tr.querySelector('.row-num').textContent = i + 1; });
-    // Sync searchable dropdowns for imported values
-    tbody.querySelectorAll('select').forEach(sel => sel.dispatchEvent(new Event('change', { bubbles: true })));
     UI.initSearchableSelects(spreadsheetDiv);
   },
 

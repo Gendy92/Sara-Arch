@@ -8,6 +8,7 @@ Object.assign(App, {
         ['المورد', 'المبلغ المستحق', 'آخر معاملة'],
         ...rows
       ]);
+      ws['!cols'] = [{ wch: 30 }, { wch: 18 }, { wch: 16 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'مستحقات الموردين');
       XLSX.writeFile(wb, `مستحقات-الموردين-${new Date().toISOString().slice(0,10)}.xlsx`);

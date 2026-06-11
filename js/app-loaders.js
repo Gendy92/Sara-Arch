@@ -417,6 +417,7 @@ Object.assign(App, {
       ['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'],
       ...rows
     ]);
+    ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 30 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'كشف المكتب');
     XLSX.writeFile(wb, `كشف-حساب-المكتب-${new Date().toISOString().slice(0,10)}.xlsx`);
