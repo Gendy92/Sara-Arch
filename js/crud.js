@@ -1106,11 +1106,15 @@ const Crud = {
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
 
-    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportClientStatement('${clientId}')">📥 تحميل Excel</button></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+    const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="Crud._exportClientStatement('${clientId}')">📥 تحميل Excel</button>
+      <button class="btn btn-sm btn-secondary" onclick="Crud._printClientStatement('${clientId}')">🖨️ طباعة / PDF</button>
+    </div>`;
     this._clientStatementData = this._clientStatementData || {};
     this._clientStatementData[clientId] = { txData, totalDep, totalExp, name };
 
-    UI.openModal(`كشف حساب: ${App.esc(name)}`, downloadBtn + summary + table, null);
+    UI.openModal(`كشف حساب: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
   },
 
   _exportClientStatement(clientId) {
@@ -1144,6 +1148,12 @@ const Crud = {
     URL.revokeObjectURL(url);
   },
 
+  _printClientStatement(clientId) {
+    const data = this._clientStatementData?.[clientId];
+    if (!data) { UI.toast('لا توجد بيانات للطباعة', 'error'); return; }
+    App.printReport(`كشف-حساب-عميل-${data.name}`);
+  },
+
   async projectStatement(projectId) {
     const [project, txs] = await Promise.all([
       API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}&deleted_at=is.null`),
@@ -1164,11 +1174,15 @@ const Crud = {
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
 
-    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportProjectStatement('${projectId}')">📥 تحميل Excel</button></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+    const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="Crud._exportProjectStatement('${projectId}')">📥 تحميل Excel</button>
+      <button class="btn btn-sm btn-secondary" onclick="Crud._printProjectStatement('${projectId}')">🖨️ طباعة / PDF</button>
+    </div>`;
     this._projectStatementData = this._projectStatementData || {};
     this._projectStatementData[projectId] = { rows, totalDep, totalExp, name };
 
-    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, downloadBtn + summary + table, null);
+    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
   },
 
   _exportProjectStatement(projectId) {
@@ -1200,6 +1214,12 @@ const Crud = {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  },
+
+  _printProjectStatement(projectId) {
+    const data = this._projectStatementData?.[projectId];
+    if (!data) { UI.toast('لا توجد بيانات للطباعة', 'error'); return; }
+    App.printReport(`كشف-حساب-مشروع-${data.name}`);
   },
 
   async projectBudget(projectId) {
@@ -1417,11 +1437,15 @@ const Crud = {
     const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], txRows) : '';
     const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], procRows) : '';
 
-    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorStatement('${vendorId}')">📥 تحميل Excel</button></div>`;
+    const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
+    const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorStatement('${vendorId}')">📥 تحميل Excel</button>
+      <button class="btn btn-sm btn-secondary" onclick="Crud._printVendorStatement('${vendorId}')">🖨️ طباعة / PDF</button>
+    </div>`;
     this._vendorStatementData = this._vendorStatementData || {};
     this._vendorStatementData[vendorId] = { txData, procData, totalTx, totalTxPaid, totalProc, totalProcPaid, totalOwed, totalPaid, netBalance, name };
 
-    const content = downloadBtn + summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
+    const content = logoHtml + actionsHtml + summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
     UI.openModal(`كشف حساب مورد: ${App.esc(name)}`, content, null);
   },
 
@@ -1465,6 +1489,12 @@ const Crud = {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  },
+
+  _printVendorStatement(vendorId) {
+    const data = this._vendorStatementData?.[vendorId];
+    if (!data) { UI.toast('لا توجد بيانات للطباعة', 'error'); return; }
+    App.printReport(`كشف-حساب-مورد-${data.name}`);
   },
 
   async vendorPurchases(vendorId) {
