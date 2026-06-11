@@ -1088,20 +1088,60 @@ const Crud = {
       API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = client[0]?.name || 'عميل';
-    let totalDep = 0, totalExp = 0;
-    const rows = txs.map((t, i) => {
-      const amt = +t.amount || 0;
-      if (t.type === 'project_deposit') totalDep += amt;
-      else totalExp += amt;
-      return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amt)];
-    });
+
+    const txData = txs.map((t, i) => ({
+      i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
+      project: t.projects?.name || t.project_name || '-',
+      description: t.description || '-', amount: +t.amount || 0,
+      isDeposit: t.type === 'project_deposit'
+    }));
+    const totalDep = txData.reduce((s, t) => s + (t.isDeposit ? t.amount : 0), 0);
+    const totalExp = txData.reduce((s, t) => s + (t.isDeposit ? 0 : t.amount), 0);
+
+    const rows = txData.map(t => [t.i, t.date, t.type, t.project, t.description, App.fmtMoney(t.amount)]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
     </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-    UI.openModal(`كشف حساب: ${App.esc(name)}`, summary + table, null);
+
+    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportClientStatement('${clientId}')">📥 تحميل Excel</button></div>`;
+    this._clientStatementData = this._clientStatementData || {};
+    this._clientStatementData[clientId] = { txData, totalDep, totalExp, name };
+
+    UI.openModal(`كشف حساب: ${App.esc(name)}`, downloadBtn + summary + table, null);
+  },
+
+  _exportClientStatement(clientId) {
+    const data = this._clientStatementData?.[clientId];
+    if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
+    if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
+
+    const sheet = [
+      ['كشف حساب عميل: ' + data.name],
+      ['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'],
+      ...data.txData.map(t => [t.i, t.date, t.type, t.project, t.description, t.amount]),
+      ['', '', '', '', 'إجمالي الإيداعات', data.totalDep],
+      ['', '', '', '', 'إجمالي المصروفات', data.totalExp],
+      ['', '', '', '', 'الرصيد', data.totalDep - data.totalExp]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(sheet);
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب العميل');
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `كشف-حساب-عميل-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 
   async projectStatement(projectId) {
