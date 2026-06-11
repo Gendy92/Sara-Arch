@@ -20,6 +20,15 @@ const Crud = {
     return msg.includes('PGRST204') || msg.includes('42703') || msg.includes('updated_by') || msg.includes('created_by');
   },
 
+  async _checkDuplicate(table, nameField, nameValue, extraFilter = '') {
+    if (!nameValue || !nameValue.trim()) return false;
+    try {
+      const q = `?select=id&${nameField}=eq.${encodeURIComponent(nameValue.trim())}&deleted_at=is.null${extraFilter}`;
+      const existing = await API.request(table, 'GET', null, q);
+      return existing.length > 0;
+    } catch (e) { return false; }
+  },
+
   _stripMissing(payload, missingKey) {
     const clean = Array.isArray(payload) ? payload.map(r => { const c = { ...r }; delete c[missingKey]; return c; }) : { ...payload };
     if (!Array.isArray(payload)) delete clean[missingKey];
@@ -207,6 +216,9 @@ const Crud = {
         console.warn('Cascade delete partial failure:', e);
       }
     }
+    // Fetch old data BEFORE soft-delete so audit captures pre-delete state
+    let oldData = null;
+    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id); oldData = existing[0] || null; } catch (e) {}
     let payload = { deleted_at: new Date().toISOString(), updated_by: userId };
     try {
       await API.request(table, 'PATCH', payload, '?id=eq.' + id);
@@ -225,8 +237,6 @@ const Crud = {
         }
       } else { throw e; }
     }
-    let oldData = null;
-    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id); oldData = existing[0] || null; } catch (e) {}
     this._logAudit(table, id, 'DELETE', oldData, { deleted_at: new Date().toISOString() }, userId, userName).catch(() => {});
   },
 
@@ -1037,7 +1047,7 @@ const Crud = {
   async clientStatement(clientId) {
     const [client, txs] = await Promise.all([
       API.request('clients', 'GET', null, `?select=name&id=eq.${clientId}`),
-      API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`)
+      API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = client[0]?.name || 'عميل';
     let totalDep = 0, totalExp = 0;
@@ -1059,7 +1069,7 @@ const Crud = {
   async projectStatement(projectId) {
     const [project, txs] = await Promise.all([
       API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}`),
-      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
+      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = project[0]?.name || 'مشروع';
     let totalDep = 0, totalExp = 0;
@@ -1195,8 +1205,8 @@ const Crud = {
   async vendorStatement(vendorId) {
     const [vendor, txs, procs] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=name&id=eq.${vendorId}`),
-      API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=eq.project_expense&deleted_at=is.null&order=date.desc`),
-      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`)
+      API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=eq.project_expense&deleted_at=is.null&order=date.desc&limit=200`),
+      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = vendor[0]?.name || 'مورد';
     let totalTx = 0;

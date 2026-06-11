@@ -86,5 +86,19 @@ const API = {
     });
     if (!res.ok) throw new Error('Failed to update user');
     return res.json();
+  },
+
+  async count(table, query = '') {
+    const url = `${this.base}/${table}${query}`;
+    const res = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + ((typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY), 'Prefer': 'count=exact' }
+    });
+    const range = res.headers.get('content-range');
+    if (range) {
+      const total = parseInt(range.split('/')[1]);
+      return isNaN(total) ? 0 : total;
+    }
+    return 0;
   }
 };

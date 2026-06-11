@@ -8,6 +8,8 @@ const App = {
   txExpenseOffset: 0,
   txExpenseLimit: 50,
   txExpenseLoaded: [],
+  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1 },
+  PAGE_SIZE: 50,
 
   esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));

@@ -217,7 +217,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .form-grid{grid-template-columns:1fr}
   .modal{border-radius:var(--radius) var(--radius) 0 0;margin-top:auto;max-width:100%}
   .modal-overlay{align-items:flex-end;padding:0}
-  .spreadsheet td input,.spreadsheet td select{padding:10px 8px;font-size:14px}
+  .spreadsheet td input,.spreadsheet td select{padding:10px 8px;font-size:16px}
   .content-grid{grid-template-columns:1fr}
   .card{padding:20px;margin-bottom:16px;min-width:0}
   .page-header h1{font-size:20px}
@@ -228,6 +228,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .btn{min-height:44px}
   .btn-sm{min-height:36px}
   .nav-item{min-height:44px}
+  input, select, textarea { font-size: 16px !important; }
 }
 @media(max-width:480px){
   .kpi-grid{grid-template-columns:1fr}

@@ -1,5 +1,17 @@
 // App Screen Loaders
 Object.assign(App, {
+  // ─── PAGINATION HELPERS ───
+  _paginationHtml(table, page, perPage, total) {
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    const prev = `App.pageState['${table}']=${Math.max(1, page - 1)};App.load${table.charAt(0).toUpperCase() + table.slice(1)}()`;
+    const next = `App.pageState['${table}']=${Math.min(totalPages, page + 1)};App.load${table.charAt(0).toUpperCase() + table.slice(1)}()`;
+    return `<div class="pagination-bar" style="display:flex;justify-content:center;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="${prev}">← السابق</button>
+      <span style="font-size:13px;color:var(--text2)">صفحة ${page} من ${totalPages} (${total} سجل)</span>
+      <button class="btn btn-sm btn-secondary" ${page >= totalPages ? 'disabled' : ''} onclick="${next}">التالي →</button>
+    </div>`;
+  },
+
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
@@ -158,6 +170,7 @@ Object.assign(App, {
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
     } catch (e) {
       console.error(e);
+      UI.toast('Dashboard load failed: ' + e.message, 'error');
       const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadDashboard()">🔄 إعادة المحاولة</button>`;
       document.getElementById('kpis').innerHTML = err;
     }
@@ -165,11 +178,15 @@ Object.assign(App, {
 
   async loadClients() {
     try {
-      const [clients, projects, expenses, deposits] = await Promise.all([
-        API.request('clients', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
+      const page = this.pageState.clients || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const [clients, projects, expenses, deposits, totalClients] = await Promise.all([
+        API.request('clients', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
         API.request('transactions', 'GET', null, "?select=*&type=eq.project_expense&deleted_at=is.null"),
-        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_deposit&deleted_at=is.null")
+        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_deposit&deleted_at=is.null"),
+        API.count('clients', '?deleted_at=is.null')
       ]);
       const expByProject = {};
       const designByProject = {};
@@ -215,10 +232,11 @@ Object.assign(App, {
           ${projTable}
         </div>`;
       }).join('');
-      document.getElementById('clients-list').innerHTML = html;
+      document.getElementById('clients-list').innerHTML = html + this._paginationHtml('clients', page, limit, totalClients);
       this.attachSearch('clients-list', '🔍 بحث في العملاء أو المشاريع...');
     } catch (e) {
       console.error(e);
+      UI.toast('Clients load failed: ' + e.message, 'error');
       document.getElementById('clients-list').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل العملاء</p><button class="btn btn-secondary" onclick="App.loadClients()">🔄 إعادة المحاولة</button>`;
     }
   },
@@ -226,15 +244,23 @@ Object.assign(App, {
 
   async loadVendors() {
     try {
-      const data = await API.request('vendors', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc');
-      document.getElementById('vendors-tbl').innerHTML = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
+      const page = this.pageState.vendors || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const [data, total] = await Promise.all([
+        API.request('vendors', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
+        API.count('vendors', '?deleted_at=is.null')
+      ]);
+      const html = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
         const typeBadge = v.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
         return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
+      document.getElementById('vendors-tbl').innerHTML = html + this._paginationHtml('vendors', page, limit, total);
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
     } catch (e) {
       console.error(e);
+      UI.toast('Vendors load failed: ' + e.message, 'error');
       document.getElementById('vendors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموردين</p><button class="btn btn-secondary" onclick="App.loadVendors()">🔄 إعادة المحاولة</button>`;
     }
   },
@@ -341,6 +367,7 @@ Object.assign(App, {
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
     } catch (e) {
       console.error(e);
+      UI.toast('Transactions load failed: ' + e.message, 'error');
       document.getElementById('tx-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المعاملات</p><button class="btn btn-secondary" onclick="App.loadTransactions()">🔄 إعادة المحاولة</button>`;
       document.getElementById('tx-expenses-tbl').innerHTML = '';
     }
@@ -424,13 +451,20 @@ Object.assign(App, {
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
     } catch (e) {
       console.error(e);
+      UI.toast('Office load failed: ' + e.message, 'error');
       document.getElementById('office-kpis').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل بيانات المكتب</p><button class="btn btn-secondary" onclick="App.loadOffice()">🔄 إعادة المحاولة</button>`;
     }
   },
 
   async loadEmployees() {
     try {
-      const data = await API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc');
+      const page = this.pageState.employees || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const [data, total] = await Promise.all([
+        API.request('employees', 'GET', null, `?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
+        API.count('employees', '?is_active=eq.true&deleted_at=is.null')
+      ]);
       const empIds = data.map(e => e.id);
       let custodyData = [];
       if (empIds.length) {
@@ -438,16 +472,18 @@ Object.assign(App, {
       }
       const custodyByEmp = {};
       custodyData.forEach(c => { custodyByEmp[c.employee_id] = (custodyByEmp[c.employee_id] || 0) + (+c.amount || 0); });
-      document.getElementById('emp-tbl').innerHTML = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
+      const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
         const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
+      document.getElementById('emp-tbl').innerHTML = html + this._paginationHtml('employees', page, limit, total);
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
       await this.loadEmpPayroll();
     } catch (e) {
       console.error(e);
+      UI.toast('Employees load failed: ' + e.message, 'error');
       document.getElementById('emp-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموظفين</p><button class="btn btn-secondary" onclick="App.loadEmployees()">🔄 إعادة المحاولة</button>`;
     }
   },
@@ -637,6 +673,7 @@ Object.assign(App, {
       document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
     } catch (e) {
       console.error(e);
+      UI.toast('Payroll load failed: ' + e.message, 'error');
       const errText = (e.message || '').toLowerCase();
       const isMissing = errText.includes('does not exist') || errText.includes('pgrst');
       const msg = isMissing
@@ -929,6 +966,7 @@ Object.assign(App, {
       document.getElementById('permissions-tbl').innerHTML = saveBtn + html;
     } catch (e) {
       console.error(e);
+      UI.toast('Permissions load failed: ' + e.message, 'error');
       const errText = (e.message || '').toLowerCase();
       const isMissingTable = errText.includes('does not exist') || errText.includes('user_permissions') || errText.includes('pgrst116') || errText.includes('relation');
       const msg = isMissingTable
@@ -980,6 +1018,7 @@ Object.assign(App, {
       ])) : '<p style="color:var(--text3)">لا توجد سجلات</p>';
     } catch (e) {
       console.error(e);
+      UI.toast('Audit log load failed: ' + e.message, 'error');
       const errText = (e.message || '').toLowerCase();
       const isMissing = errText.includes('does not exist') || errText.includes('audit_logs') || errText.includes('pgrst');
       const msg = isMissing
@@ -1016,6 +1055,7 @@ Object.assign(App, {
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
     } catch (e) {
       console.error(e);
+      UI.toast('Master data load failed: ' + e.message, 'error');
       document.getElementById('sectors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات الأساسية</p><button class="btn btn-secondary" onclick="App.loadMasterData()">🔄 إعادة المحاولة</button>`;
     }
   },
