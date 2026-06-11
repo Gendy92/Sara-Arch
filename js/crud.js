@@ -833,13 +833,23 @@ const Crud = {
       { key: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
     ];
     Spreadsheet.open('إضافة مستخدمين', cols, async (rows) => {
+      let created = 0, failed = 0;
       for (const row of rows) {
-        const authData = await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
-        if (authData.user?.id) {
-          await API.request('profiles', 'POST', { id: authData.user.id, name: row.name, username: row.username, role: row.role || 'user' });
+        try {
+          const authData = await API.authSignUp(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+          if (authData.user?.id) {
+            await API.request('profiles', 'POST', { id: authData.user.id, name: row.name, username: row.username, role: row.role || 'user' });
+            created++;
+          } else {
+            failed++;
+          }
+        } catch (e) {
+          console.error('User creation failed:', e);
+          failed++;
         }
       }
-      UI.toast(`تم إنشاء ${rows.length} مستخدم`);
+      if (failed) UI.toast(`تم إنشاء ${created} مستخدم، فشل ${failed}`, 'error');
+      else UI.toast(`تم إنشاء ${created} مستخدم`);
       App.loadUsers();
     }, {}, {}, 'none');
   },
