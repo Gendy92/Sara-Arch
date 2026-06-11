@@ -1363,7 +1363,8 @@ const Crud = {
         notes: fd.get('notes') || null
       }, id);
       UI.toast('تم التحديث');
-      this.loadProjectTasks(rows[0].project_id);
+      if (App.screen === 'tasks') App.loadTasks();
+      else this.loadProjectTasks(rows[0].project_id);
     });
   },
 
@@ -1372,7 +1373,8 @@ const Crud = {
       const rows = await API.request('project_tasks', 'GET', null, `?select=project_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('project_tasks', id);
       UI.toast('تم الحذف');
-      if (rows.length) this.loadProjectTasks(rows[0].project_id);
+      if (App.screen === 'tasks') App.loadTasks();
+      else if (rows.length) this.loadProjectTasks(rows[0].project_id);
     });
   },
 

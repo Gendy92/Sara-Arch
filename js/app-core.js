@@ -4,6 +4,7 @@ const App = {
   screen: 'login',
   txTab: 'all',
   txTypeFilter: 'all',
+  taskStatusFilter: 'all',
   loading: false,
   pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, txExpenses: 1 },
   PAGE_SIZE: 50,
@@ -127,6 +128,7 @@ const App = {
     if (screen === 'transactions') { if (opts.tab) this.txTab = opts.tab; await this.loadTransactions(); }
     if (screen === 'office') await this.loadOffice();
     if (screen === 'employees') await this.loadEmployees();
+    if (screen === 'tasks') await this.loadTasks();
     if (screen === 'settings') await this.loadSettings();
     if (screen === 'users') await this.loadUsers();
     if (screen === 'permissions') await this.loadPermissionsScreen();
@@ -167,6 +169,11 @@ const App = {
     this.loadTransactions();
   },
 
+  setTaskStatusFilter(filter) {
+    this.taskStatusFilter = filter;
+    this.loadTasks();
+  },
+
   layout(content) {
     const user = Auth.user || {};
     const name = user.displayName || user.user_metadata?.name || 'المستخدم';
@@ -178,6 +185,7 @@ const App = {
       ${bnavItem('clients', '👥', 'العملاء')}
       ${bnavItem('transactions', '💰', 'المالية')}
       ${bnavItem('vendors', '🚚', 'الموردين')}
+      ${bnavItem('tasks', '📋', 'المهام')}
       <button class="bottom-nav-item" onclick="App.toggleSidebar()"><span class="bottom-nav-icon">⚙️</span><span class="bottom-nav-label">المزيد</span></button>
     </div></div>`;
     return `<div class="app-layout"><aside class="sidebar" id="sidebar"><div class="sidebar-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h2>سارة أبو العلا</h2><p>النظام المالي والمحاسبي</p></div><nav class="sidebar-nav">
@@ -187,6 +195,7 @@ const App = {
       ${navItem('transactions', '💰', 'معاملات المشاريع')}
       ${navItem('office', '🏢', 'المكتب')}
       ${navItem('employees', '🧑‍💼', 'الموظفين')}
+      ${navItem('tasks', '📋', 'المهام')}
       ${navItem('master', '📋', 'البيانات الأساسية')}
 
 
@@ -207,6 +216,7 @@ const App = {
     if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🧹 مسح الكاش</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إذا واجهت مشاكل في تحميل التحديثات الجديدة، اضغط لمسح الكاش وإعادة تحميل التطبيق.</p><div id="cache-clear-msg" style="margin-bottom:12px;font-size:12px;color:var(--text3)">الإصدار المحلي: <strong>${localStorage.getItem('sara_app_version') || '-'}</strong></div><button class="btn btn-secondary" onclick="App.clearAppCache()">🧹 مسح الكاش وإعادة التحميل</button></div></div>`;
     if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1><button class="btn btn-secondary" onclick="App.go('users')">← العودة إلى المستخدمين</button></div><div class="card"><div id="permissions-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'tasks') return `<div class="page-header"><h1>📋 المهام</h1></div><div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-sm ${App.taskStatusFilter==='all'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('all')">الكل</button><button class="btn btn-sm ${App.taskStatusFilter==='pending'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('pending')">معلق</button><button class="btn btn-sm ${App.taskStatusFilter==='in_progress'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('in_progress')">قيد التنفيذ</button><button class="btn btn-sm ${App.taskStatusFilter==='done'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('done')">منتهي</button></div><div id="tasks-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
 
 

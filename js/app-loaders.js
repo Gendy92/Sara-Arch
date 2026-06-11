@@ -1108,4 +1108,48 @@ Object.assign(App, {
     }
   },
 
+  async loadTasks() {
+    try {
+      const statusFilter = App.taskStatusFilter || 'all';
+      const [tasks, projects] = await Promise.all([
+        API.request('project_tasks', 'GET', null, `?select=*,projects(name)&deleted_at=is.null&order=due_date.asc&limit=200`),
+        API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null')
+      ]);
+      const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]));
+
+      const filtered = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter);
+
+      const statusBadge = (s) => {
+        const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
+        const labels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
+        return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+      };
+      const priorityBadge = (p) => {
+        const colors = { low: 'gray', medium: 'orange', high: 'red' };
+        const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
+        return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
+      };
+
+      const rows = filtered.map((t, i) => [
+        i+1,
+        `<a href="#" onclick="App.go('clients');return false;" style="color:var(--gold);text-decoration:none">${App.esc(projectMap[t.project_id] || t.projects?.name || '-')}</a>`,
+        App.esc(t.name),
+        t.assignee || '-',
+        t.start_date || '-',
+        t.due_date || '-',
+        statusBadge(t.status),
+        priorityBadge(t.priority),
+        `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`
+      ]);
+
+      const table = rows.length ? App.table(['#', 'المشروع', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية', 'الإجراءات'], rows) : '<p style="color:var(--text3);padding:16px">لا توجد مهام مسجلة</p>';
+      document.getElementById('tasks-tbl').innerHTML = table;
+      this.attachSearch('tasks-tbl', '🔍 بحث في المهام...');
+    } catch (e) {
+      console.error(e);
+      UI.toast('فشل تحميل المهام: ' + e.message, 'error');
+      document.getElementById('tasks-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المهام</p><button class="btn btn-secondary" onclick="App.loadTasks()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
 });
