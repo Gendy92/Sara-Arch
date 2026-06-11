@@ -261,7 +261,7 @@ const Crud = {
   },
 
   async editClient(id) {
-    const rows = await API.request('clients', 'GET', null, '?select=*&id=eq.' + id);
+    const rows = await API.request('clients', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم العميل', req: true },
@@ -318,7 +318,7 @@ const Crud = {
 
   async editProject(id) {
     const [projectRows, clients] = await Promise.all([
-      API.request('projects', 'GET', null, '?select=*&id=eq.' + id),
+      API.request('projects', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null'),
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     if (!projectRows.length) return;
@@ -391,7 +391,7 @@ const Crud = {
   },
 
   async editVendor(id) {
-    const rows = await API.request('vendors', 'GET', null, '?select=*&id=eq.' + id);
+    const rows = await API.request('vendors', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم المورد', req: true },
@@ -464,7 +464,7 @@ const Crud = {
   },
 
   async editProcurement(id) {
-    const rows = await API.request('procurements', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('procurements', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const p = rows[0];
     const [projects, vendors] = await Promise.all([
@@ -524,7 +524,7 @@ const Crud = {
   },
 
   async editEmp(id) {
-    const rows = await API.request('employees', 'GET', null, '?select=*&id=eq.' + id);
+    const rows = await API.request('employees', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم الموظف', req: true },
@@ -635,7 +635,7 @@ const Crud = {
   async addOfficeExpense() {
     const [employees, sectors] = await Promise.all([
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-      API.request('sectors', 'GET', null, '?select=id,name&order=name.asc')
+      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
     const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
@@ -707,7 +707,7 @@ const Crud = {
   },
 
   async editTx(id) {
-    const txRows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id);
+    const txRows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!txRows.length) return;
     const tx = txRows[0];
 
@@ -785,7 +785,7 @@ const Crud = {
     } else if (tx.type === 'office_expense') {
       const [employees, sectors] = await Promise.all([
         API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-        API.request('sectors', 'GET', null, '?select=id,name&order=name.asc')
+        API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
       ]);
       const fields = [
         { name: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...employees.map(e => ({ v: e.id, l: e.name }))] },
@@ -908,7 +908,7 @@ const Crud = {
   },
 
   async editSector(id) {
-    const rows = await API.request('sectors', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('sectors', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم التصنيف', req: true },
@@ -953,7 +953,7 @@ const Crud = {
   },
 
   async editItem(id) {
-    const rows = await API.request('items', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('items', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم الصنف', req: true },
@@ -1000,7 +1000,7 @@ const Crud = {
   },
 
   async editWorkSection(id) {
-    const rows = await API.request('work_sections', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('work_sections', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم القسم', req: true },
@@ -1049,7 +1049,7 @@ const Crud = {
 
   async editWorkItem(id) {
     const [rows, sections] = await Promise.all([
-      API.request('work_items', 'GET', null, `?select=*&id=eq.${id}`),
+      API.request('work_items', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`),
       API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     if (!rows.length) return;
@@ -1106,14 +1106,14 @@ const Crud = {
 
   async projectStatement(projectId) {
     const [project, txs] = await Promise.all([
-      API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}`),
+      API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}&deleted_at=is.null`),
       API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = project[0]?.name || 'مشروع';
     let totalDep = 0, totalExp = 0;
     const rows = txs.map((t, i) => {
       const amt = +t.amount || 0;
-      if (['project_deposit','owner_deposit','income','deposit'].includes(t.type)) totalDep += amt;
+      if (['project_deposit','income','deposit'].includes(t.type)) totalDep += amt;
       else totalExp += amt;
       return [i+1, t.date || '-', App.fmtTxType(t.type), t.description || '-', App.fmtMoney(amt)];
     });
@@ -1127,16 +1127,20 @@ const Crud = {
   },
 
   async projectBudget(projectId) {
-    const [project, txs] = await Promise.all([
-      API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}`),
-      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null`)
+    const [project, txs, procs] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}&deleted_at=is.null`),
+      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&limit=200`),
+      API.request('procurements', 'GET', null, `?select=total_price&project_id=eq.${projectId}&deleted_at=is.null&limit=200`)
     ]);
     const p = project[0];
     if (!p) return UI.toast('المشروع غير موجود', 'error');
     const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-    const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-    const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const txExpenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+    const txConstr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
     const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const procTotal = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
+    const expenses = txExpenses + procTotal;
+    const constr = txConstr + procTotal;
     const supervision = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
     const balance = deposits - expenses - supervision;
     const html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
@@ -1203,7 +1207,7 @@ const Crud = {
   },
 
   async editProjectTask(id) {
-    const rows = await API.request('project_tasks', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('project_tasks', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم المهمة *', req: true },
@@ -1232,7 +1236,7 @@ const Crud = {
 
   delProjectTask(id) {
     UI.confirm('هل أنت متأكد من حذف هذه المهمة؟', async () => {
-      const rows = await API.request('project_tasks', 'GET', null, `?select=project_id&id=eq.${id}`);
+      const rows = await API.request('project_tasks', 'GET', null, `?select=project_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('project_tasks', id);
       UI.toast('تم الحذف');
       if (rows.length) this.loadProjectTasks(rows[0].project_id);
@@ -1273,7 +1277,7 @@ const Crud = {
   async vendorPurchases(vendorId) {
     const [vendor, procs] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=name&id=eq.${vendorId}`),
-      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`)
+      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = vendor[0]?.name || 'مورد';
     let total = 0;
@@ -1348,7 +1352,7 @@ const Crud = {
   },
 
   async editCustody(id) {
-    const rows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
@@ -1373,7 +1377,7 @@ const Crud = {
 
   delCustody(id) {
     UI.confirm('هل أنت متأكد من حذف هذه العهدة؟', async () => {
-      const rows = await API.request('custody_records', 'GET', null, `?select=employee_id&id=eq.${id}`);
+      const rows = await API.request('custody_records', 'GET', null, `?select=employee_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('custody_records', id);
       UI.toast('تم الحذف');
       if (rows.length) this.employeeCustody(rows[0].employee_id);
@@ -1421,7 +1425,7 @@ const Crud = {
   },
 
   async editAttendance(id) {
-    const rows = await API.request('attendance_records', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('attendance_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
@@ -1455,7 +1459,7 @@ const Crud = {
 
   // ─── PAYROLL CRUD ───
   async editPayroll(id) {
-    const rows = await API.request('payroll_records', 'GET', null, `?select=*&id=eq.${id}`);
+    const rows = await API.request('payroll_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
       { name: 'base_salary', label: 'الراتب الأساسي', type: 'number', req: true },
