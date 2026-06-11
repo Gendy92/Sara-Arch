@@ -257,7 +257,7 @@ Object.assign(App, {
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
         return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
-      document.getElementById('vendors-tbl').innerHTML = html + this._paginationHtml('vendors', page, limit, total);
+      document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
     } catch (e) {
       console.error(e);
@@ -479,7 +479,7 @@ Object.assign(App, {
         const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
         return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
-      document.getElementById('emp-tbl').innerHTML = html + this._paginationHtml('employees', page, limit, total);
+      document.getElementById('emp-tbl').innerHTML = html + (data.length ? this._paginationHtml('employees', page, limit, total) : '');
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
       await this.loadEmpPayroll();
     } catch (e) {
