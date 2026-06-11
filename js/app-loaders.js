@@ -737,32 +737,37 @@ Object.assign(App, {
 
   async loadUsers() {
     try {
-      const [authData, profiles] = await Promise.all([
-        API.authListUsers(),
-        API.request('profiles', 'GET', null, '?select=*&order=created_at.desc')
-      ]);
-      const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
-      const users = (authData.users || []).map(u => {
-        const p = profileMap[u.id];
-        const rawName = p?.name || u.user_metadata?.name || '';
+      let authUsers = [];
+      try {
+        const authData = await API.authListUsers();
+        authUsers = authData.users || [];
+      } catch (authErr) {
+        console.log('[Users] authListUsers failed (no service key):', authErr.message);
+      }
+      const profiles = await API.request('profiles', 'GET', null, '?select=*&order=created_at.desc');
+      const authMap = Object.fromEntries(authUsers.map(u => [u.id, u]));
+      const users = profiles.map(p => {
+        const authU = authMap[p.id];
+        const rawName = p.name || authU?.user_metadata?.name || '';
         const safeName = Auth.safeName(rawName, '');
         return {
-          id: u.id,
-          email: u.email,
-          name: safeName || Auth.fromEmail(u.email),
-          role: p?.role || u.user_metadata?.role || 'user',
-          email_confirmed_at: u.email_confirmed_at,
-          created_at: u.created_at
+          id: p.id,
+          email: authU?.email || p.username || p.id.slice(0, 8),
+          name: safeName || (authU ? Auth.fromEmail(authU.email) : p.id.slice(0, 8)),
+          role: p.role || authU?.user_metadata?.role || 'user',
+          email_confirmed_at: authU?.email_confirmed_at,
+          created_at: p.created_at
         };
       });
-      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
+      const noKeyWarning = authUsers.length === 0 ? '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">⚠️ Admin key غير متوفر — البيانات من profiles فقط. ضع Service Key في Settings لعرض الإيميلات.</p>' : '';
+      document.getElementById('users-tbl').innerHTML = noKeyWarning + (users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         Auth.fromEmail(u.email),
         u.name,
         u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
-        u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-red">غير مفعل</span>',
+        u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-gray">—</span>',
         this.fmtDate(u.created_at),
         `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
-      ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
+      ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>');
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
   },
