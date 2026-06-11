@@ -912,9 +912,11 @@ Object.assign(App, {
   clearAppCache() {
     try {
       const token = localStorage.getItem('sara_token');
+      const serviceKey = localStorage.getItem('sara_service_key');
       localStorage.clear();
       sessionStorage.clear();
       if (token) localStorage.setItem('sara_token', token); // preserve login
+      if (serviceKey) localStorage.setItem('sara_service_key', serviceKey); // preserve admin key
       const url = new URL(location.href);
       url.searchParams.set('_', Date.now());
       location.href = url.toString();
