@@ -897,6 +897,10 @@ const Crud = {
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('إضافة تصنيفات', cols, async (rows) => {
+      const existing = await API.request('sectors', 'GET', null, '?select=name&deleted_at=is.null');
+      const existingNames = new Set(existing.map(s => String(s.name || '').trim().toLowerCase()));
+      const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} تصنيفات موجودة مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
       await this.bulkSave('sectors', rows);
       UI.toast(`تم حفظ ${rows.length} تصنيف`);
       App.loadMasterData();
@@ -912,6 +916,11 @@ const Crud = {
     ];
     UI.openModal('تعديل تصنيف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      if (newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase()) {
+        const existing = await API.request('sectors', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم التصنيف موجود مسبقاً', 'error'); return; }
+      }
       await this.save('sectors', { name: fd.get('name'), description: fd.get('description') || null }, id);
       UI.toast('تم التحديث'); App.loadMasterData();
     });
@@ -933,6 +942,10 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة أصناف', cols, async (rows) => {
+      const existing = await API.request('items', 'GET', null, '?select=name&deleted_at=is.null');
+      const existingNames = new Set(existing.map(i => String(i.name || '').trim().toLowerCase()));
+      const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} أصناف موجودة مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
       await this.bulkSave('items', rows);
       UI.toast(`تم حفظ ${rows.length} صنف`);
       App.loadMasterData();
@@ -951,6 +964,11 @@ const Crud = {
     ];
     UI.openModal('تعديل صنف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      if (newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase()) {
+        const existing = await API.request('items', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم الصنف موجود مسبقاً', 'error'); return; }
+      }
       await this.save('items', { name: fd.get('name'), specification: fd.get('specification') || null, brand: fd.get('brand') || null, unit: fd.get('unit') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadMasterData();
     });
@@ -971,6 +989,10 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة أقسام المشاريع', cols, async (rows) => {
+      const existing = await API.request('work_sections', 'GET', null, '?select=name&deleted_at=is.null');
+      const existingNames = new Set(existing.map(s => String(s.name || '').trim().toLowerCase()));
+      const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} أقسام موجودة مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
       await this.bulkSave('work_sections', rows);
       UI.toast(`تم حفظ ${rows.length} قسم`);
       App.loadMasterData();
@@ -986,6 +1008,11 @@ const Crud = {
     ];
     UI.openModal('تعديل قسم', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      if (newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase()) {
+        const existing = await API.request('work_sections', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم القسم موجود مسبقاً', 'error'); return; }
+      }
       await this.save('work_sections', { name: fd.get('name'), notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadMasterData();
     });
@@ -1007,6 +1034,9 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة بنود الأعمال', cols, async (rows) => {
+      const existing = await API.request('work_items', 'GET', null, '?select=name,section_id&deleted_at=is.null');
+      const dupes = rows.filter(r => existing.some(e => String(e.name || '').trim().toLowerCase() === String(r.name || '').trim().toLowerCase() && String(e.section_id) === String(r.section_id)));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} بنود موجودة مسبقاً في نفس القسم`, 'error'); return; }
       const enriched = rows.map(r => {
         const sec = sections.find(s => s.id === r.section_id);
         return { ...r, section_id: r.section_id || null, section_name: sec ? sec.name : null };
@@ -1030,6 +1060,14 @@ const Crud = {
     ];
     UI.openModal('تعديل بند', `<form>${UI.form(fields, { ...rows[0], section_id: rows[0].section_id || '' })}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      const newSection = fd.get('section_id');
+      const nameChanged = newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase();
+      const sectionChanged = String(newSection) !== String(rows[0].section_id);
+      if (nameChanged || sectionChanged) {
+        const existing = await API.request('work_items', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&section_id=eq.${newSection}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم البند موجود مسبقاً في هذا القسم', 'error'); return; }
+      }
       const sec = sections.find(s => s.id === fd.get('section_id'));
       await this.save('work_items', { section_id: fd.get('section_id'), section_name: sec ? sec.name : null, name: fd.get('name'), notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadMasterData();
