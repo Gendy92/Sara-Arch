@@ -18,12 +18,12 @@ Object.assign(App, {
     try {
       const [clients, projects, employees, txs, vendorExpenses, vendorProcs, allProjTxs, vendors] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
-        API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null'),
+        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&limit=1000'),
+        API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null&limit=1000'),
         API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null&order=created_at.desc&limit=200'),
-        API.request('transactions', 'GET', null, '?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null'),
-        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=client_id,amount,type&deleted_at=is.null&type=in.(project_deposit,project_expense)'),
+        API.request('transactions', 'GET', null, '?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null&limit=1000'),
+        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null&limit=1000'),
+        API.request('transactions', 'GET', null, '?select=client_id,amount,type&deleted_at=is.null&type=in.(project_deposit,project_expense)&limit=1000'),
         API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
       ]);
       const activeProjects = projects.filter(p => p.status === 'active').length;
@@ -139,7 +139,7 @@ Object.assign(App, {
         const balance = (serviceCost + merchandise) - (servicePaid + merchPaid);
         if (balance <= 0) return null;
         return { name: v.name, balance };
-      }).filter(Boolean).sort((a, b) => b.balance - a.balance).slice(0, 5).map(v => [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance)}</span>`]);
+      }).filter(Boolean).sort((a, b) => b.balance - a.balance).slice(0, 10).map(v => [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance)}</span>`]);
       document.getElementById('dash-vendors').innerHTML = vendorBalances.length
         ? this.table(['المورد', 'المبلغ المستحق'], vendorBalances)
         : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
@@ -164,7 +164,7 @@ Object.assign(App, {
         })
         .filter(c => c.balance !== 0)
         .sort((a, b) => b.balance - a.balance)
-        .slice(0, 5)
+        .slice(0, 10)
         .map(c => [c.name, this.fmtMoney(c.dep), this.fmtMoney(c.exp), `<span style="color:${c.balance >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance)}</span>`]);
       document.getElementById('dash-clients').innerHTML = clientBalances.length
         ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientBalances)
@@ -216,11 +216,14 @@ Object.assign(App, {
           const design = designByProject[p.id] || 0;
           const constr = exp - design;
           const dep = depByProject[p.id] || 0;
+          const balance = dep - exp;
           const supAmt = constr * (p.supervision_percentage || 0) / 100;
+          const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
+          const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-          return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+          return [p.name, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
         });
-        const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
+        const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
         return `<div class="card" style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
             <div>
