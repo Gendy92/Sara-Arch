@@ -826,6 +826,7 @@ const Crud = {
 
   // ─── USERS (admin only) ───
   addUser() {
+    const hasServiceKey = !!SUPABASE_SERVICE_KEY;
     const cols = [
       { key: 'username', label: 'اسم المستخدم *', req: true },
       { key: 'name', label: 'الاسم الكامل *', req: true },
@@ -836,7 +837,14 @@ const Crud = {
       let created = 0, failed = 0;
       for (const row of rows) {
         try {
-          const authData = await API.authSignUp(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+          let authData;
+          if (hasServiceKey) {
+            // Admin API: creates confirmed user immediately
+            authData = await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+          } else {
+            // Public signup: works without service key (user may need email confirm depending on Supabase settings)
+            authData = await API.authSignUp(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+          }
           if (authData.user?.id) {
             await API.request('profiles', 'POST', { id: authData.user.id, name: row.name, username: row.username, role: row.role || 'user' });
             created++;
@@ -848,8 +856,8 @@ const Crud = {
           failed++;
         }
       }
-      if (failed) UI.toast(`تم إنشاء ${created} مستخدم، فشل ${failed}`, 'error');
-      else UI.toast(`تم إنشاء ${created} مستخدم`);
+      if (failed) UI.toast(`Created ${created}, failed ${failed}`, 'error');
+      else UI.toast(`Created ${created} users`);
       App.loadUsers();
     }, {}, {}, 'none');
   },

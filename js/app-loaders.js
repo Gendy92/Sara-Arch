@@ -723,16 +723,40 @@ Object.assign(App, {
     }
   },
 
-  saveServiceKey() {
-    const key = document.getElementById('settings-service-key')?.value?.trim();
-    if (!key) { UI.toast('الصق المفتاح أولاً', 'error'); return; }
+  async saveServiceKey() {
+    let key = document.getElementById('settings-service-key')?.value || '';
+    // Clean: remove ALL whitespace including newlines that often sneak in when copying from Supabase UI
+    key = key.replace(/\s/g, '');
+    if (!key) { UI.toast('Paste the key first', 'error'); return; }
+    if (!key.startsWith('eyJ')) { UI.toast('Key looks wrong — Supabase keys start with "eyJ". Make sure you copied the SERVICE_ROLE key, not the anon key.', 'error'); return; }
+
+    UI.toast('Testing key against Supabase...', 'info');
+    try {
+      const testRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1`, {
+        headers: { 'apikey': key, 'Authorization': 'Bearer ' + key }
+      });
+      if (testRes.status === 401 || testRes.status === 403) {
+        UI.toast('Key is INVALID (401/403). Go to Supabase → Project Settings → API → copy the SERVICE_ROLE key (starts with eyJ...), not the anon key.', 'error');
+        return;
+      }
+      if (!testRes.ok) {
+        UI.toast(`Key test failed: HTTP ${testRes.status}. Check your internet or Supabase status.`, 'error');
+        return;
+      }
+    } catch (e) {
+      UI.toast('Network error testing key. Check your connection.', 'error');
+      return;
+    }
+
     localStorage.setItem('sara_service_key', key);
-    UI.toast('تم حفظ المفتاح — أعد تحميل الصفحة', 'success');
+    UI.toast('Key is VALID and saved — reloading now...', 'success');
+    setTimeout(() => location.reload(), 1200);
   },
 
   clearServiceKey() {
     localStorage.removeItem('sara_service_key');
-    UI.toast('تم مسح المفتاح — أعد تحميل الصفحة', 'success');
+    UI.toast('Key cleared — reloading now...', 'success');
+    setTimeout(() => location.reload(), 800);
   },
 
   async loadUsers() {
@@ -771,9 +795,14 @@ Object.assign(App, {
             email_confirmed_at: null,
             created_at: p.created_at
           }));
-      const noKeyWarning = authFailed
-        ? '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">⚠️ Admin key غير متوفر أو باطل — اضغط مسح المفتاح في Settings ثم أعد إدخال المفتاح الجديد.</p>'
-        : '';
+      let noKeyWarning = '';
+      if (authFailed) {
+        if (SUPABASE_SERVICE_KEY) {
+          noKeyWarning = '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">⚠️ Admin key is INVALID (401). Go to Settings, clear the old key, paste your new SERVICE_ROLE key from Supabase, save, and let it reload.</p>';
+        } else {
+          noKeyWarning = '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">ℹ️ No admin key stored — showing profiles only. To see auth emails, add your SERVICE_ROLE key in Settings.</p>';
+        }
+      }
       document.getElementById('users-tbl').innerHTML = noKeyWarning + (users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         Auth.fromEmail(u.email),
         u.name,
