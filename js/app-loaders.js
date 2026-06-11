@@ -13,6 +13,38 @@ Object.assign(App, {
     </div>`;
   },
 
+  _vendorBalanceMap(vendors, vendorExpenses, vendorProcs) {
+    const serviceCostByVendor = {};
+    const servicePaidByVendor = {};
+    vendorExpenses.forEach(t => {
+      if (!t.vendor_id) return;
+      const amt = +t.amount || 0;
+      const isNew = t.payment_term !== undefined && t.payment_term !== null;
+      const paid = isNew ? (+t.paid_amount || 0) : amt;
+      serviceCostByVendor[t.vendor_id] = (serviceCostByVendor[t.vendor_id] || 0) + amt;
+      servicePaidByVendor[t.vendor_id] = (servicePaidByVendor[t.vendor_id] || 0) + paid;
+    });
+    const merchByVendor = {};
+    const merchPaidByVendor = {};
+    vendorProcs.forEach(p => {
+      if (!p.vendor_id) return;
+      const amt = +p.total_price || 0;
+      const isNew = p.payment_term !== undefined && p.payment_term !== null;
+      const paid = isNew ? (+p.paid_amount || 0) : amt;
+      merchByVendor[p.vendor_id] = (merchByVendor[p.vendor_id] || 0) + amt;
+      merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + paid;
+    });
+    const map = {};
+    vendors.forEach(v => {
+      const serviceCost = serviceCostByVendor[v.id] || 0;
+      const servicePaid = servicePaidByVendor[v.id] || 0;
+      const merchandise = merchByVendor[v.id] || 0;
+      const merchPaid = merchPaidByVendor[v.id] || 0;
+      map[v.id] = (serviceCost + merchandise) - (servicePaid + merchPaid);
+    });
+    return map;
+  },
+
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
@@ -110,33 +142,10 @@ Object.assign(App, {
         pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
       }
       document.getElementById('expense-chart').innerHTML = pieHtml;
-      // ─── Top 5 Vendor Outstanding Balances ───
-      const serviceCostByVendor = {};
-      const servicePaidByVendor = {};
-      vendorExpenses.forEach(t => {
-        if (!t.vendor_id) return;
-        const amt = +t.amount || 0;
-        const isNew = t.payment_term !== undefined && t.payment_term !== null;
-        const paid = isNew ? (+t.paid_amount || 0) : amt;
-        serviceCostByVendor[t.vendor_id] = (serviceCostByVendor[t.vendor_id] || 0) + amt;
-        servicePaidByVendor[t.vendor_id] = (servicePaidByVendor[t.vendor_id] || 0) + paid;
-      });
-      const merchByVendor = {};
-      const merchPaidByVendor = {};
-      vendorProcs.forEach(p => {
-        if (!p.vendor_id) return;
-        const amt = +p.total_price || 0;
-        const isNew = p.payment_term !== undefined && p.payment_term !== null;
-        const paid = isNew ? (+p.paid_amount || 0) : amt;
-        merchByVendor[p.vendor_id] = (merchByVendor[p.vendor_id] || 0) + amt;
-        merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + paid;
-      });
+      // ─── Top 10 Vendor Outstanding Balances ───
+      const balanceMap = this._vendorBalanceMap(vendors, vendorExpenses, vendorProcs);
       const vendorBalances = vendors.map(v => {
-        const serviceCost = serviceCostByVendor[v.id] || 0;
-        const servicePaid = servicePaidByVendor[v.id] || 0;
-        const merchandise = merchByVendor[v.id] || 0;
-        const merchPaid = merchPaidByVendor[v.id] || 0;
-        const balance = (serviceCost + merchandise) - (servicePaid + merchPaid);
+        const balance = balanceMap[v.id] || 0;
         if (balance <= 0) return null;
         return { name: v.name, balance };
       }).filter(Boolean).sort((a, b) => b.balance - a.balance).slice(0, 10).map(v => [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance)}</span>`]);
@@ -251,14 +260,21 @@ Object.assign(App, {
       const page = this.pageState.vendors || 1;
       const limit = this.PAGE_SIZE;
       const offset = (page - 1) * limit;
-      const [data, total] = await Promise.all([
+      const [data, total, vendorExpenses, vendorProcs] = await Promise.all([
         API.request('vendors', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
-        API.count('vendors', '?deleted_at=is.null')
+        API.count('vendors', '?deleted_at=is.null'),
+        API.request('transactions', 'GET', null, '?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null&limit=1000'),
+        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null&limit=1000')
       ]);
-      const html = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الإجراءات'], data.map(v => {
+      const balanceMap = this._vendorBalanceMap(data, vendorExpenses, vendorProcs);
+      const html = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الرصيد', 'الإجراءات'], data.map(v => {
         const typeBadge = v.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
+        const balance = balanceMap[v.id] || 0;
+        const balColor = balance > 0 ? 'var(--red)' : balance < 0 ? 'var(--green)' : 'var(--text3)';
+        const balLabel = balance > 0 ? 'مستحق' : balance < 0 ? 'زيادة' : 'تسوية';
+        const balanceCell = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`;
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
-        return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', actions];
+        return [v.name, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', balanceCell, actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
