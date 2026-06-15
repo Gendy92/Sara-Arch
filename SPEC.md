@@ -1,8 +1,8 @@
 # Sara-Arch — Product Specification Document (SPEC)
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Date:** 2026-06-15  
-**Status:** Draft — pending approval  
+**Status:** Draft — Phase 1 updated, pending final approval  
 **Author:** Project documentation analysis  
 
 ---
@@ -82,24 +82,32 @@ Sara-Arch aims to provide a single, centralized, easy-to-use financial and opera
 
 ### 3.1 Runtime Version
 
-The application is currently at **runtime version v162** with active branch `dev.2`.
+The application is currently at **runtime version v163** with active branch `dev.2`. The `main` branch has been fast-forwarded to match `dev.2`.
 
-### 3.2 Known High-Impact Issues
+### 3.2 High-Impact Issues (Resolved in v163)
 
-The following issues are documented and must be addressed in upcoming development:
+The following issues were resolved in the v163 development cycle. They are kept here for traceability.
 
-| # | Issue | Impact |
-|---|-------|--------|
-| 1 | Exposed Supabase service-role key in `.env`, `scripts/backup.js`, and `js/config.js`. | Security breach risk; keys must be rotated. |
-| 2 | Service-role key is stored in browser `localStorage` and used for admin API calls. | Full database takeover if XSS occurs. |
-| 3 | All tables use open RLS policy `authenticated_all`. | Any logged-in user can read/write/delete any row. |
-| 4 | `Auth.can()` defaults to `true` when no permission row exists. | New users get full access until permissions are configured. |
-| 5 | User-controlled data is rendered via `innerHTML` without escaping. | Stored/cross-site scripting (XSS) vulnerability. |
-| 6 | `procurements.total_price` is a generated column, but code tries to write it. | Procurement save fails or behaves inconsistently. |
-| 7 | Client/project statements exclude procurements; project budget includes them. | Financial reports disagree. |
-| 8 | Schema drift between `schema.sql`, `schema_full_fix.sql`, and migrations. | App may break depending on initialization order. |
-| 9 | Procurement and item-catalog CRUD exist but are not exposed in the UI. | Features are effectively unusable. |
-| 10 | Audit log `old_data` is always `null` on UPDATE/DELETE. | No before/after audit trail. |
+| # | Issue | Status | Resolution |
+|---|-------|--------|------------|
+| 1 | Exposed Supabase service-role key in `.env`, `scripts/backup.js`, and `js/config.js`. | ✅ Resolved | Keys removed from source; workflow now reads from GitHub Secrets; keys must be rotated in Supabase Dashboard. |
+| 2 | Service-role key is stored in browser `localStorage` and used for admin API calls. | ✅ Resolved | Admin auth endpoints now throw in the browser; service-role key is never stored or used client-side. |
+| 3 | All tables use open RLS policy `authenticated_all`. | ✅ Resolved | `schema_full_fix.sql` applies admin/full-access + owner-restricted policies via `is_app_admin()`. |
+| 4 | `Auth.can()` defaults to `true` when no permission row exists. | ✅ Resolved | `Auth.can()` now default-denies when no permission row exists. |
+| 5 | User-controlled data is rendered via `innerHTML` without escaping. | ✅ Resolved | Key screens now use `App.esc()` before injecting user-controlled values into HTML. |
+| 6 | `procurements.total_price` is a generated column, but code tries to write it. | ✅ Resolved | Procurement POST/PATCH payloads no longer include `total_price`. |
+| 7 | Client/project statements exclude procurements; project budget includes them. | ✅ Resolved | `clientStatement` and `projectStatement` now include procurements as expenses. |
+| 8 | Schema drift between `schema.sql`, `schema_full_fix.sql`, and migrations. | ✅ Resolved | `schema_full_fix.sql` reconciles missing columns (`due_date`, `username`, `notes`, etc.) and adds required triggers/indexes. |
+| 9 | Procurement and item-catalog CRUD exist but are not exposed in the UI. | ✅ Resolved | Procurement add/edit/delete UI is exposed inside vendor purchases; items catalog card is exposed in Master Data. |
+| 10 | Audit log `old_data` is always `null` on UPDATE/DELETE. | ✅ Resolved | `Crud.save` and `Crud.softDelete` now capture `old_data` before writing. |
+
+### 3.2a Remaining High-Impact Items
+
+| # | Issue | Impact | Planned Phase |
+|---|-------|--------|---------------|
+| A | Client/project/vendor statement layout redesign (summary header + print/PDF) is in `Claude/` and not merged. | Statements do not yet match the exact acceptance criteria. | Phase 2 |
+| B | Procurement paid amount is not reflected as a project expense transaction. | Vendor/project balances may diverge from transaction ledger. | Phase 3 |
+| C | No Content-Security-Policy meta tag. | XSS mitigation relies only on escaping. | Phase 4 |
 
 ### 3.3 Pending Design Updates
 
@@ -114,8 +122,9 @@ These changes must be reviewed, approved, and reflected in the specification bef
 
 ### 3.4 Baseline Assumptions
 
-- The canonical database baseline is `schema.sql` followed by migrations in version order (`migration_v109.sql`, `migration_v119_drop_tax.sql`, `migration_v130_fix_transactions.sql`).
-- `schema_full_fix.sql` must not be used as the sole baseline until `project_tasks.due_date`, `profiles.username`, and `payroll_records.notes` are reconciled.
+- The canonical runtime baseline is `schema_full_fix.sql`, which is idempotent and safe to rerun in the Supabase SQL Editor.
+- Legacy migrations remain in the repo for historical reference but should not be applied independently to a fresh project.
+- Supabase credentials are provided via `js/config.local.js` (browser) and GitHub Secrets / environment variables (server-side backup). `js/config.js` contains only placeholders.
 
 ---
 
@@ -167,7 +176,7 @@ The following screens are restricted to administrators regardless of `user_permi
 |----|-------------|----------|
 | AUTH-001 | The system shall allow users to log in with a username and password. | Must |
 | AUTH-002 | Usernames shall be mapped internally to an email format for Supabase Auth. | Must |
-| AUTH-003 | The system shall maintain a session via JWT stored in `localStorage`. | Must |
+| AUTH-003 | The system shall maintain a session via JWT stored in `sessionStorage` (scoped to the tab, cleared on close). | Must |
 | AUTH-004 | The system shall load the user profile and permissions after login. | Must |
 | AUTH-005 | The system shall prevent non-admin users from accessing admin-only screens. | Must |
 | AUTH-006 | The system shall hide navigation items that the user cannot view. | Must |
@@ -202,46 +211,52 @@ The following screens are restricted to administrators regardless of `user_permi
 | CLNT-012 | Client and project statements shall support print/PDF. | Should |
 | CLNT-013 | The system shall detect and warn about duplicate client names. | Should |
 
-### 6.4 Transactions
+### 6.4 Project Transactions
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | TXN-001 | The system shall support project deposit transactions. | Must |
 | TXN-002 | The system shall support project expense transactions categorized as construction or design. | Must |
-| TXN-003 | The system shall support office expense transactions linked to an employee and sector. | Must |
-| TXN-004 | The system shall support owner deposit and withdrawal transactions. | Must |
-| TXN-005 | The system shall auto-generate supervision transaction rows based on construction expenses and project supervision percentage. | Must |
-| TXN-006 | Each transaction shall support payment term: immediate, credit, or settlement, with partial paid amount. | Should |
-| TXN-007 | Transactions shall be linkable to work sections and work items. | Should |
+| TXN-005 | The system shall auto-generate supervision transaction rows based on construction expenses and project supervision percentage except if expense is design cost. | Must |
+| TXN-006 | Each transaction shall support `payment_method` (cash / bank / transfer) and `payment_term` (immediate / credit / settlement), with optional partial `paid_amount`. | Should |
+| TXN-007 | Transactions shall be linkable to work sections and work items. | must |
 | TXN-008 | The expenses tab shall display paginated project expenses with paid/balance columns. | Must |
 | TXN-009 | The transactions "All" tab shall not silently truncate data beyond a fixed row limit. | Must |
 
-### 6.5 Vendors & Procurements
+### 6.5 Office Transactions
+| TXN-003 | The system shall support office expense transactions linked to an employee and sector. | Must |
+| TXN-004 | The system shall support owner deposit and withdrawal transactions. | Must |
+| TXN-010 | The system shall custody to employee as office expense transactions. | Must |
+| TXN-011 | The system shall Salaries as office expense transactions. | Must |
+
+
+
+### 6.6 Vendors & Procurements
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| VEND-001 | Users shall be able to create, edit, and soft-delete vendors. | Must |
+| VEND-001 | Users shall be able to create, edit, and only admins can soft-delete vendors. | Must |
 | VEND-002 | Vendors shall be classified as `service` or `merchandise`. | Must |
-| VEND-003 | Vendor records shall include name, contact person, phone, email, address, sector, type, and notes. | Must |
+| VEND-003 | Vendor records shall include name, contact person, phone, address, sector, type, and notes. | Must |
 | VEND-004 | The system shall generate a vendor statement showing service expenses and procurements with paid vs. owed balances. | Must |
-| VEND-005 | The system shall display vendor outstanding balance in the vendors list. | Must |
-| PROC-001 | Users shall be able to create, edit, and soft-delete procurement records from the vendor UI. | Must |
+| VEND-005 | The system shall display vendor non-zero balance in the vendors list. | Must |
+| PROC-001 | Users shall be able to create, edit, and only admins can soft-delete procurement records from the vendor UI. | Must |
 | PROC-002 | Procurement records shall link to a project, vendor, and item. | Must |
 | PROC-003 | Procurement records shall include quantity, unit price, and total price. | Must |
 | PROC-004 | Total price shall be computed by the database or application and shall not conflict with generated columns. | Must |
-| PROC-005 | Procurement records shall support payment term and paid amount. | Should |
-| PROC-006 | Vendor statements and purchases shall support Excel export and print/PDF. | Should |
+| PROC-005 | Procurement records shall support payment term and paid amount & to be reflected as project expense transaction. | Should |
+| PROC-006 | Vendor statements and purchases shall support print/PDF. | Should |
 
-### 6.6 Office Cash Flow
+### 6.7 Office Cash Flow
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| OFFC-001 | The system shall display office income from owner deposits and supervision fees. | Must |
+| OFFC-001 | The system shall display office income from owner deposits and supervision fees & services where the office itself is the vendor . | Must |
 | OFFC-002 | The system shall display office expenses and owner withdrawals. | Must |
 | OFFC-003 | The system shall calculate and display the current office balance. | Must |
 | OFFC-004 | The system shall provide an office ledger Excel export. | Should |
 
-### 6.7 Employees
+### 6.8 Employees // Hold for now
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
@@ -256,16 +271,16 @@ The following screens are restricted to administrators regardless of `user_permi
 | EMP-009 | The system shall provide a UI to record custody expenses against custody records. | Should |
 | EMP-010 | Salary changes shall be logged in `employee_salary_history`. | Should |
 
-### 6.8 Tasks
+### 6.9 Tasks
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | TASK-001 | The system shall provide a global task list across projects. | Should |
 | TASK-002 | Tasks shall support status: pending, in_progress, done. | Should |
 | TASK-003 | Tasks shall support priority and assignee fields. | Should |
-| TASK-004 | The `updated_at` column on tasks shall be maintained by a database trigger. | Should |
+| TASK-004 | The `updated at` column on tasks shall be maintained by a database trigger. | Should |
 
-### 6.9 Master Data
+### 6.10 Master Data
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
@@ -276,8 +291,10 @@ The following screens are restricted to administrators regardless of `user_permi
 | MSTR-005 | The system shall support bulk import of work sections and items via Excel paste/upload. | Should |
 | MSTR-006 | The system shall expose an items catalog (materials) in the UI. | Should |
 | MSTR-007 | The system shall detect and prevent duplicate master-data entries. | Should |
+| MSTR-008 | The system shall detect and warn for potential duplicate master-data entries. | Should |
 
-### 6.10 Administration
+
+### 6.11 Administration
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
@@ -288,7 +305,7 @@ The following screens are restricted to administrators regardless of `user_permi
 | ADMN-005 | Admins shall be able to export all tables as a ZIP of JSON files. | Must |
 | ADMN-006 | User creation shall not depend on a browser-stored service-role key. | Must |
 
-### 6.11 Reports & Exports
+### 6.12 Reports & Exports
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
@@ -296,9 +313,9 @@ The following screens are restricted to administrators regardless of `user_permi
 | RPT-002 | The system shall export statements to Excel. | Should |
 | RPT-003 | The system shall support print-to-PDF for statements. | Should |
 | RPT-004 | Reports shall include all relevant data without silent truncation. | Must |
-| RPT-005 | Large reports shall use server-side pagination or aggregation. | Should |
+| RPT-005 | Large reports shall use server-side pagination or aggregation. | Must |
 
-### 6.12 Security
+### 6.13 Security
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
@@ -317,7 +334,7 @@ The following screens are restricted to administrators regardless of `user_permi
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | PERF-001 | All screen loads shall complete within 3 seconds under normal network conditions. | Must |
-| PERF-002 | Lists with more than 50 rows shall use server-side pagination. | Must |
+| PERF-002 | Lists with more than 15 rows shall use server-side pagination. | Must |
 | PERF-003 | Dashboard KPI queries shall be bounded to avoid loading unbounded datasets. | Must |
 | PERF-004 | Excel export of statements shall complete within 10 seconds for up to 1,000 rows. | Should |
 | PERF-005 | Backup export shall handle large tables via chunking or server-side processing. | Should |
