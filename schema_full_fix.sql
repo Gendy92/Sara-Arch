@@ -773,9 +773,9 @@ BEGIN
     GROUP BY p.vendor_id
   ),
   grouped AS (
-    SELECT vendor_id, SUM(bal) AS balance
-    FROM vendor_net
-    GROUP BY vendor_id
+    SELECT vn.vendor_id, SUM(vn.bal) AS balance
+    FROM vendor_net vn
+    GROUP BY vn.vendor_id
   )
   SELECT g.vendor_id, v.name AS vendor_name, g.balance
   FROM grouped g
