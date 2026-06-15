@@ -693,22 +693,22 @@ BEGIN
     GROUP BY to_char(p.created_at, 'YYYY-MM')
   ),
   owner_dep AS (
-    SELECT to_char(date, 'YYYY-MM') AS mk,
-           SUM(amount) AS amt
-    FROM transactions
-    WHERE deleted_at IS NULL
-      AND type = 'owner_deposit'
-      AND date >= start_date
-    GROUP BY to_char(date, 'YYYY-MM')
+    SELECT to_char(t.date, 'YYYY-MM') AS mk,
+           SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL
+      AND t.type = 'owner_deposit'
+      AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   office_exp AS (
-    SELECT to_char(date, 'YYYY-MM') AS mk,
-           SUM(amount) AS amt
-    FROM transactions
-    WHERE deleted_at IS NULL
-      AND type IN ('office_expense','withdrawal')
-      AND date >= start_date
-    GROUP BY to_char(date, 'YYYY-MM')
+    SELECT to_char(t.date, 'YYYY-MM') AS mk,
+           SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL
+      AND t.type IN ('office_expense','withdrawal')
+      AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
   )
   SELECT m.mk::TEXT,
          COALESCE(s.amt, 0) + COALESCE(o.amt, 0) AS revenue,
@@ -725,12 +725,12 @@ CREATE OR REPLACE FUNCTION dashboard_office_expense_sectors()
 RETURNS TABLE(sector TEXT, amount NUMERIC) AS $$
 BEGIN
   RETURN QUERY
-  SELECT COALESCE(sector_name, 'غير مصنف') AS sector,
-         SUM(amount) AS amount
-  FROM transactions
-  WHERE deleted_at IS NULL AND type = 'office_expense'
-  GROUP BY COALESCE(sector_name, 'غير مصنف')
-  ORDER BY SUM(amount) DESC;
+  SELECT COALESCE(t.sector_name, 'غير مصنف') AS sector,
+         SUM(t.amount) AS amount
+  FROM transactions t
+  WHERE t.deleted_at IS NULL AND t.type = 'office_expense'
+  GROUP BY COALESCE(t.sector_name, 'غير مصنف')
+  ORDER BY SUM(t.amount) DESC;
 END;
 $$ LANGUAGE plpgsql;
 
