@@ -10,8 +10,8 @@
 
 const localCfg = (typeof window !== 'undefined' && window.SARA_LOCAL_CONFIG) ? window.SARA_LOCAL_CONFIG : {};
 
-// Public project URL — safe to commit.
-const SUPABASE_URL = 'https://tvjkctttcijymqvaetsv.supabase.co';
+// Public project URL — safe to commit, but can be overridden by config.local.js.
+const SUPABASE_URL = localCfg.SUPABASE_URL || 'https://tvjkctttcijymqvaetsv.supabase.co';
 
 // Anon key is provided by config.local.js so it can be rotated without editing source.
 const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
