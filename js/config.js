@@ -1,7 +1,27 @@
 // Supabase Config
-const SUPABASE_URL = 'https://tvjkctttcijymqvaetsv.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amtjdHR0Y2lqeW1xdmFldHN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDEzNzYsImV4cCI6MjA5NjQxNzM3Nn0.olCeWxIJuAUTTQdXBuy6ftKHEDE4t3SXa3kXeEDtvs4';
-// Admin operations (authListUsers, authCreateUser) require a service_role key.
-// The key is loaded from localStorage only — never hardcoded in the bundle.
-// Store it via Settings → Admin Key, or move admin ops to Edge Functions.
-const SUPABASE_SERVICE_KEY = localStorage.getItem('sara_service_key') || ''; // empty = admin features disabled
+// IMPORTANT: Do not commit real keys to source control.
+// Create js/config.local.js (gitignored) with your actual values:
+//
+//   window.SARA_LOCAL_CONFIG = {
+//     SUPABASE_URL: 'https://your-project.supabase.co',
+//     SUPABASE_ANON_KEY: 'your-anon-key'
+//   };
+//
+// For local development without config.local.js, replace the placeholders below
+// temporarily, but never commit them.
+
+const localCfg = (typeof window !== 'undefined' && window.SARA_LOCAL_CONFIG) ? window.SARA_LOCAL_CONFIG : {};
+
+const SUPABASE_URL = localCfg.SUPABASE_URL || 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
+
+// Admin operations (authListUsers, authCreateUser) historically required a service_role key.
+// The service-role key MUST NOT be stored in the browser or in source control.
+// This constant is intentionally left empty; admin user creation falls back to public signup
+// or must be implemented via a secure backend/Edge Function.
+const SUPABASE_SERVICE_KEY = '';
+
+// Convenience check so the app fails fast with a clear message if keys are not configured.
+if (SUPABASE_URL.includes('YOUR_PROJECT') || SUPABASE_ANON_KEY.includes('YOUR_ANON_KEY')) {
+  console.warn('[Config] Supabase keys are placeholders. Create js/config.local.js with real values.');
+}

@@ -13,7 +13,8 @@ const UI = {
   openModal(title, content, onSubmit) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
-    overlay.innerHTML = `<div class="modal"><div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="UI.closeModal()">&times;</button></div><div class="modal-body">${content}</div></div>`;
+    const safeTitle = App.esc ? App.esc(title) : String(title).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    overlay.innerHTML = `<div class="modal"><div class="modal-header"><h3>${safeTitle}</h3><button class="modal-close" onclick="UI.closeModal()">&times;</button></div><div class="modal-body">${content}</div></div>`;
     document.body.appendChild(overlay);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) UI.closeModal(); });
     if (onSubmit) {
@@ -53,8 +54,9 @@ const UI = {
   },
 
   searchableSelectHTML(selectAttrs, options, value) {
-    const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${value == o.v ? 'selected' : ''}>${o.l}</option>`).join('');
-    const dropdownOpts = options.map(o => `<div class="searchable-select-option" data-value="${this._escAttr(o.v)}">${o.l}</div>`).join('');
+    const esc = (s) => App.esc ? App.esc(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${value == o.v ? 'selected' : ''}>${esc(o.l)}</option>`).join('');
+    const dropdownOpts = options.map(o => `<div class="searchable-select-option" data-value="${this._escAttr(o.v)}">${esc(o.l)}</div>`).join('');
     return `<div class="searchable-select">
       <input type="text" class="searchable-select-input" placeholder="🔍 اكتب للبحث..." autocomplete="off">
       <select ${selectAttrs} style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;">${optsHtml}</select>
@@ -140,8 +142,9 @@ const UI = {
   },
 
   actions(id, onEdit, onDel, canEdit = true, canDelete = true) {
-    const editBtn = canEdit ? `<button class="btn btn-sm btn-secondary" onclick="${onEdit}('${id}')">تعديل</button>` : '';
-    const delBtn = canDelete ? `<button class="btn btn-sm btn-red" onclick="${onDel}('${id}')">حذف</button>` : '';
+    const safeId = App.esc ? App.esc(id) : String(id).replace(/&/g,'&amp;').replace(/'/g,'&#39;');
+    const editBtn = canEdit ? `<button class="btn btn-sm btn-secondary" onclick="${onEdit}('${safeId}')">تعديل</button>` : '';
+    const delBtn = canDelete ? `<button class="btn btn-sm btn-red" onclick="${onDel}('${safeId}')">حذف</button>` : '';
     return `<div class="table-actions">${editBtn}${delBtn}</div>`;
   }
 };

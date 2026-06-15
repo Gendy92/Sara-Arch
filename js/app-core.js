@@ -31,6 +31,17 @@ const App = {
   },
 
   async start() {
+    // Surface silent API/runtime failures instead of letting them disappear.
+    window.addEventListener('unhandledrejection', (ev) => {
+      console.error('Unhandled rejection:', ev.reason);
+      const msg = ev.reason?.message || 'حدث خطأ غير متوقع';
+      if (typeof UI !== 'undefined' && UI.toast) UI.toast('خطأ: ' + msg, 'error');
+    });
+    window.addEventListener('error', (ev) => {
+      console.error('Global error:', ev.error);
+      const msg = ev.error?.message || 'حدث خطأ غير متوقع';
+      if (typeof UI !== 'undefined' && UI.toast) UI.toast('خطأ: ' + msg, 'error');
+    });
     window.addEventListener('hashchange', () => {
       const { screen, opts } = this._routeFromHash();
       if (screen !== this.screen) this.go(screen, opts);
@@ -223,7 +234,7 @@ const App = {
     if (screen === 'client') return `<div class="page-header"><h1 id="client-detail-name">👤 تفاصيل العميل</h1><button class="btn btn-secondary" onclick="App.go('clients')">← العودة للعملاء</button></div><div id="client-detail"><div class="skeleton skeleton-card"></div></div>`;
     if (screen === 'project') return `<div class="page-header"><h1 id="project-detail-name">🏗️ تفاصيل المشروع</h1><button class="btn btn-secondary" onclick="App.go('clients')">← العودة للعملاء</button></div><div id="project-detail"><div class="skeleton skeleton-card"></div></div>`;
     if (screen === 'vendor') return `<div class="page-header"><h1 id="vendor-detail-name">🚚 تفاصيل المورد</h1><button class="btn btn-secondary" onclick="App.go('vendors')">← العودة للموردين</button></div><div id="vendor-detail"><div class="skeleton skeleton-card"></div></div>`;
-    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
+    if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📦 الأصناف / المواد</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة صنف</button>` : ''}<div id="items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
 
 
     return '';

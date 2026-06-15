@@ -1,4 +1,5 @@
 .env
+js/config.local.js
 *.xlsx
 *.xls
 *.pdf

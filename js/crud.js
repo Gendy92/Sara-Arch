@@ -462,11 +462,10 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
-      const total_price = qty * up;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
-        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price,
+        item_name: fd.get('item_name'), quantity: qty, unit_price: up,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       });
       UI.toast('تمت الإضافة');
@@ -499,21 +498,26 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
-      const total_price = qty * up;
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
-        item_name: fd.get('item_name'), quantity: qty, unit_price: up, total_price,
+        item_name: fd.get('item_name'), quantity: qty, unit_price: up,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       }, id);
-      UI.toast('تم التحديث'); App.loadVendors();
+      UI.toast('تم التحديث');
+      if (p.vendor_id) this.vendorPurchases(p.vendor_id);
+      else App.loadVendors();
     });
   },
 
   delProcurement(id) {
     UI.confirm('هل أنت متأكد من حذف هذه المشتريات؟', async () => {
+      const rows = await API.request('procurements', 'GET', null, `?select=vendor_id&id=eq.${id}`);
+      const vendorId = rows[0]?.vendor_id;
       await this.softDelete('procurements', id);
-      UI.toast('تم الحذف'); App.loadVendors();
+      UI.toast('تم الحذف');
+      if (vendorId) this.vendorPurchases(vendorId);
+      else App.loadVendors();
     });
   },
 
@@ -529,6 +533,10 @@ const Crud = {
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة موظفين', cols, async (rows) => {
+      const existing = await API.request('employees', 'GET', null, '?select=name&deleted_at=is.null');
+      const existingNames = new Set(existing.map(e => String(e.name || '').trim().toLowerCase()));
+      const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
+      if (dupes.length) { UI.toast(`⚠️ ${dupes.length} موظفين موجودين مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
       await this.bulkSave('employees', rows);
       UI.toast(`تم حفظ ${rows.length} موظف`);
       App.loadEmployees();
@@ -549,6 +557,11 @@ const Crud = {
     ];
     UI.openModal('تعديل موظف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newName = String(fd.get('name') || '').trim();
+      if (newName.toLowerCase() !== String(rows[0].name || '').trim().toLowerCase()) {
+        const existing = await API.request('employees', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
+        if (existing.length) { UI.toast('⚠️ اسم الموظف موجود مسبقاً', 'error'); return; }
+      }
       await this.save('employees', { name: fd.get('name'), job_title: fd.get('job_title') || null, salary: +fd.get('salary') || 0, phone: fd.get('phone') || null, email: fd.get('email') || null, hire_date: fd.get('hire_date') || null, notes: fd.get('notes') || null }, id);
       UI.toast('تم التحديث'); App.loadEmployees();
     });
@@ -1095,11 +1108,16 @@ const Crud = {
 
   // ─── CLIENT & PROJECT STATEMENTS / BUDGET / TASKS ───
   async clientStatement(clientId) {
-    const [client, txs] = await Promise.all([
+    const [client, txs, projects, procs] = await Promise.all([
       API.request('clients', 'GET', null, `?select=name&id=eq.${clientId}`),
-      API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc&limit=200`)
+      API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc&limit=200`),
+      API.request('projects', 'GET', null, `?select=id,name&client_id=eq.${clientId}&deleted_at=is.null`),
+      API.request('procurements', 'GET', null, `?select=*,project_id,item_name,vendor_name&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = client[0]?.name || 'عميل';
+    const projectIds = new Set(projects.map(p => p.id));
+    const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]));
+    const clientProcs = procs.filter(p => projectIds.has(p.project_id));
 
     const txData = txs.map((t, i) => ({
       i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
@@ -1107,10 +1125,17 @@ const Crud = {
       description: t.description || '-', amount: +t.amount || 0,
       isDeposit: t.type === 'project_deposit'
     }));
-    const totalDep = txData.reduce((s, t) => s + (t.isDeposit ? t.amount : 0), 0);
-    const totalExp = txData.reduce((s, t) => s + (t.isDeposit ? 0 : t.amount), 0);
+    const procData = clientProcs.map((p, i) => ({
+      i: txData.length + i + 1, date: p.date || '-', type: 'مشتريات',
+      project: projectMap[p.project_id] || p.project_name || '-',
+      description: `صنف: ${p.item_name || '-'} / مورد: ${p.vendor_name || '-'}`,
+      amount: +p.total_price || 0, isDeposit: false
+    }));
+    const allData = [...txData, ...procData];
+    const totalDep = allData.reduce((s, t) => s + (t.isDeposit ? t.amount : 0), 0);
+    const totalExp = allData.reduce((s, t) => s + (t.isDeposit ? 0 : t.amount), 0);
 
-    const rows = txData.map(t => [t.i, t.date, t.type, t.project, t.description, App.fmtMoney(t.amount)]);
+    const rows = allData.map(t => [t.i, t.date, t.type, App.esc(t.project), App.esc(t.description), App.fmtMoney(t.amount)]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
@@ -1124,7 +1149,7 @@ const Crud = {
       <button class="btn btn-sm btn-secondary" onclick="Crud._printClientStatement('${clientId}')">🖨️ طباعة / PDF</button>
     </div>`;
     this._clientStatementData = this._clientStatementData || {};
-    this._clientStatementData[clientId] = { txData, totalDep, totalExp, name };
+    this._clientStatementData[clientId] = { txData: allData, totalDep, totalExp, name };
 
     UI.openModal(`كشف حساب: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
   },
@@ -1167,17 +1192,25 @@ const Crud = {
   },
 
   async projectStatement(projectId) {
-    const [project, txs] = await Promise.all([
+    const [project, txs, procs] = await Promise.all([
       API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}&deleted_at=is.null`),
-      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`)
+      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`),
+      API.request('procurements', 'GET', null, `?select=*,vendor_name&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`)
     ]);
     const name = project[0]?.name || 'مشروع';
     let totalDep = 0, totalExp = 0;
-    const rows = txs.map((t, i) => {
+    const rows = [];
+    txs.forEach((t, i) => {
       const amt = +t.amount || 0;
       if (['project_deposit','income','deposit'].includes(t.type)) totalDep += amt;
       else totalExp += amt;
-      return [i+1, t.date || '-', App.fmtTxType(t.type), t.description || '-', App.fmtMoney(amt)];
+      rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), App.fmtMoney(amt)]);
+    });
+    const procStart = rows.length;
+    procs.forEach((p, i) => {
+      const amt = +p.total_price || 0;
+      totalExp += amt;
+      rows.push([procStart + i + 1, p.date || '-', 'مشتريات', App.esc(`صنف: ${p.item_name || '-'} / مورد: ${p.vendor_name || '-'}`), App.fmtMoney(amt)]);
     });
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
@@ -1541,19 +1574,22 @@ const Crud = {
     const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
     const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
-    const rows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), p.project]);
+    const rows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), App.esc(p.project), UI.actions(procs[p.i-1].id, 'Crud.editProcurement', 'Crud.delProcurement', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete'))]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد (${balLabel})</div><div class="kpi-value" style="color:${balColor}">${App.fmtMoney(Math.abs(netBalance))}</div></div>
     </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
+    const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع', ''], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
 
-    const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorPurchases('${vendorId}')">📥 تحميل Excel</button></div>`;
+    const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+      ${Auth.can('vendors', 'add') ? `<button class="btn btn-sm btn-primary" onclick="Crud.addProcurement('${vendorId}')">+ إضافة مشتريات</button>` : ''}
+      <button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorPurchases('${vendorId}')">📥 تحميل Excel</button>
+    </div>`;
     this._vendorPurchasesData = this._vendorPurchasesData || {};
     this._vendorPurchasesData[vendorId] = { procData, total, totalPaid, netBalance, name };
 
-    UI.openModal(`💰 مشتريات مورد: ${App.esc(name)}`, downloadBtn + summary + table, null);
+    UI.openModal(`💰 مشتريات مورد: ${App.esc(name)}`, actionsHtml + summary + table, null);
   },
 
   _exportVendorPurchases(vendorId) {

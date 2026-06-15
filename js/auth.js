@@ -2,7 +2,10 @@
 
 const Auth = {
   user: null,
-  token: localStorage.getItem('sara_token') || null,
+  // Store the JWT in sessionStorage instead of localStorage so it is scoped
+  // to the tab and cleared when the tab closes. This reduces (but does not
+  // eliminate) XSS exposure; full protection requires httpOnly cookies.
+  token: sessionStorage.getItem('sara_token') || null,
 
   toEmail(username) {
     return username.trim().toLowerCase() + '@local';
@@ -18,6 +21,12 @@ const Auth = {
   },
 
   async init() {
+    // One-time migration of legacy localStorage token to sessionStorage
+    if (!this.token && localStorage.getItem('sara_token')) {
+      this.token = localStorage.getItem('sara_token');
+      sessionStorage.setItem('sara_token', this.token);
+      localStorage.removeItem('sara_token');
+    }
     if (this.token) {
       const user = await API.authGetUser(this.token);
       if (user) {
@@ -55,8 +64,9 @@ const Auth = {
       this.user.displayName = this.safeName(data.user?.user_metadata?.name, username);
       this.user.role = data.user?.user_metadata?.role || 'user';
     }
-    localStorage.setItem('sara_token', this.token);
-    console.log('[Auth] Saved to localStorage');
+    sessionStorage.setItem('sara_token', this.token);
+    localStorage.removeItem('sara_token');
+    console.log('[Auth] Saved to sessionStorage');
     await this.loadPermissions();
     return data;
   },
@@ -77,6 +87,7 @@ const Auth = {
   logout() {
     this.user = null;
     this.token = null;
+    sessionStorage.removeItem('sara_token');
     localStorage.removeItem('sara_token');
   },
 
@@ -118,7 +129,8 @@ const Auth = {
   can(screen, action = 'view') {
     if (this.isAdmin()) return true;
     const p = this.permissions[screen];
-    if (!p) return true; // backward compatibility: no restrictions = full access
+    // Default-deny: if no permission row exists, the user cannot access the screen.
+    if (!p) return false;
     return !!p[action];
   }
 };

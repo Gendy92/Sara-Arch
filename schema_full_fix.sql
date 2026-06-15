@@ -532,6 +532,11 @@ CREATE TABLE IF NOT EXISTS project_tasks (
   deleted_at TIMESTAMPTZ
 );
 
+-- Ensure project_tasks uses due_date (not end_date) to match application code
+ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS due_date DATE;
+UPDATE project_tasks SET due_date = end_date WHERE due_date IS NULL AND end_date IS NOT NULL;
+ALTER TABLE project_tasks DROP COLUMN IF EXISTS end_date;
+
 -- Constraints for project_tasks
 ALTER TABLE project_tasks DROP CONSTRAINT IF EXISTS project_tasks_status_check;
 ALTER TABLE project_tasks ADD CONSTRAINT project_tasks_status_check CHECK (status IN ('pending','in_progress','done'));
@@ -539,10 +544,35 @@ ALTER TABLE project_tasks ADD CONSTRAINT project_tasks_status_check CHECK (statu
 ALTER TABLE project_tasks DROP CONSTRAINT IF EXISTS project_tasks_priority_check;
 ALTER TABLE project_tasks ADD CONSTRAINT project_tasks_priority_check CHECK (priority IN ('low','medium','high'));
 
+-- Trigger for project_tasks updated_at
+DROP TRIGGER IF EXISTS project_tasks_u ON project_tasks;
+CREATE TRIGGER project_tasks_u BEFORE UPDATE ON project_tasks FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
 -- RLS for project_tasks
 ALTER TABLE project_tasks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "authenticated_all" ON project_tasks;
 CREATE POLICY "authenticated_all" ON project_tasks FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- Missing columns required by application code
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE work_sections ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS section_name TEXT;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS notes TEXT;
+
+-- Audit columns for tables that the app tries to write created_by/updated_by to
+ALTER TABLE items ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE sectors ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE sectors ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE work_sections ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE work_sections ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE work_items ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS updated_by UUID;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_project_tasks_project ON project_tasks(project_id);
@@ -550,6 +580,235 @@ CREATE INDEX IF NOT EXISTS idx_transactions_project_type ON transactions(project
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_procurements_vendor ON procurements(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);
+
+-- Admin check helper for RLS
+CREATE OR REPLACE FUNCTION is_app_admin(user_uuid UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM profiles WHERE id = user_uuid AND role = 'admin');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Apply stricter RLS policies: admin full access; regular users can read all,
+-- but can only modify rows they created. Tables without created_by keep open
+-- SELECT and restrict modifications to admins.
+DO $$
+DECLARE
+  tbl TEXT;
+  has_created_by BOOLEAN;
+BEGIN
+  FOR tbl IN
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename IN (
+        'clients','projects','employees','vendors','items','sectors','transactions',
+        'procurements','employee_transactions','employee_salary_history','custody_records',
+        'custody_expenses','attendance_records','payroll_records','work_sections',
+        'work_items','profiles','audit_logs','user_permissions','project_tasks'
+      )
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "authenticated_all" ON %I', tbl);
+
+    -- Check if table has created_by column
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'created_by'
+    ) INTO has_created_by;
+
+    IF has_created_by THEN
+      EXECUTE format(
+        'CREATE POLICY "auth_restricted_%1$s" ON %1$I FOR ALL TO authenticated USING (is_app_admin(auth.uid()) OR created_by = auth.uid() OR created_by IS NULL) WITH CHECK (is_app_admin(auth.uid()) OR created_by = auth.uid())',
+        tbl
+      );
+    ELSE
+      EXECUTE format(
+        'CREATE POLICY "auth_restricted_%1$s" ON %1$I FOR SELECT TO authenticated USING (true)',
+        tbl
+      );
+      EXECUTE format(
+        'CREATE POLICY "auth_admin_modify_%1$s" ON %1$I FOR ALL TO authenticated USING (is_app_admin(auth.uid())) WITH CHECK (is_app_admin(auth.uid()))',
+        tbl
+      );
+    END IF;
+  END LOOP;
+END $$;
+
+-- Special RLS for profiles: allow self-insert so registration works without a service key.
+-- The auth.users trigger or application inserts a row with id = auth.uid().
+DROP POLICY IF EXISTS "profiles_self_insert" ON profiles;
+CREATE POLICY "profiles_self_insert" ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid());
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ STEP 10: Dashboard Aggregation RPCs                     │
+-- └─────────────────────────────────────────────────────────┐
+
+CREATE OR REPLACE FUNCTION dashboard_kpis()
+RETURNS TABLE(
+  client_count BIGINT,
+  project_count BIGINT,
+  active_project_count BIGINT,
+  employee_count BIGINT,
+  total_income NUMERIC,
+  total_expense NUMERIC,
+  total_movement NUMERIC
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    (SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL) AS client_count,
+    (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS project_count,
+    (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND status = 'active') AS active_project_count,
+    (SELECT COUNT(*) FROM employees WHERE deleted_at IS NULL AND is_active = true) AS employee_count,
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_deposit','owner_deposit')), 0) AS total_income,
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_expense','office_expense')), 0) AS total_expense,
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_deposit','owner_deposit')), 0)
+      + COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_expense','office_expense')), 0) AS total_movement;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION dashboard_monthly_revenue_expenses(months_back INT DEFAULT 6)
+RETURNS TABLE(month_key TEXT, revenue NUMERIC, expense NUMERIC) AS $$
+DECLARE
+  start_date DATE;
+BEGIN
+  start_date := (date_trunc('month', CURRENT_DATE) - ((months_back - 1) || ' months')::INTERVAL)::DATE;
+  RETURN QUERY
+  WITH months AS (
+    SELECT generate_series(0, months_back - 1) AS i
+  ),
+  month_keys AS (
+    SELECT to_char(date_trunc('month', CURRENT_DATE) - (i || ' months')::INTERVAL, 'YYYY-MM') AS mk
+    FROM months
+  ),
+  supervision AS (
+    SELECT to_char(p.created_at, 'YYYY-MM') AS mk,
+           SUM((COALESCE(t.amount, 0) - COALESCE(t.paid_amount, 0)) * COALESCE(p.supervision_percentage, 0) / 100) AS amt
+    FROM projects p
+    JOIN transactions t ON t.project_id = p.id
+    WHERE t.deleted_at IS NULL
+      AND p.deleted_at IS NULL
+      AND t.type = 'project_expense'
+      AND t.expense_category != 'design'
+    GROUP BY to_char(p.created_at, 'YYYY-MM')
+  ),
+  owner_dep AS (
+    SELECT to_char(date, 'YYYY-MM') AS mk,
+           SUM(amount) AS amt
+    FROM transactions
+    WHERE deleted_at IS NULL
+      AND type = 'owner_deposit'
+      AND date >= start_date
+    GROUP BY to_char(date, 'YYYY-MM')
+  ),
+  office_exp AS (
+    SELECT to_char(date, 'YYYY-MM') AS mk,
+           SUM(amount) AS amt
+    FROM transactions
+    WHERE deleted_at IS NULL
+      AND type IN ('office_expense','withdrawal')
+      AND date >= start_date
+    GROUP BY to_char(date, 'YYYY-MM')
+  )
+  SELECT m.mk::TEXT,
+         COALESCE(s.amt, 0) + COALESCE(o.amt, 0) AS revenue,
+         COALESCE(e.amt, 0) AS expense
+  FROM month_keys m
+  LEFT JOIN supervision s ON s.mk = m.mk
+  LEFT JOIN owner_dep o ON o.mk = m.mk
+  LEFT JOIN office_exp e ON e.mk = m.mk
+  ORDER BY m.mk;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION dashboard_office_expense_sectors()
+RETURNS TABLE(sector TEXT, amount NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT COALESCE(sector_name, 'غير مصنف') AS sector,
+         SUM(amount) AS amount
+  FROM transactions
+  WHERE deleted_at IS NULL AND type = 'office_expense'
+  GROUP BY COALESCE(sector_name, 'غير مصنف')
+  ORDER BY SUM(amount) DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION dashboard_top_vendors(limit_count INT DEFAULT 10)
+RETURNS TABLE(vendor_id UUID, vendor_name TEXT, balance NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  WITH vendor_net AS (
+    SELECT t.vendor_id, SUM(COALESCE(t.amount, 0) - COALESCE(t.paid_amount, 0)) AS bal
+    FROM transactions t
+    WHERE t.deleted_at IS NULL
+      AND t.type = 'project_expense'
+      AND t.payment_term IS NOT NULL
+      AND t.vendor_id IS NOT NULL
+    GROUP BY t.vendor_id
+    UNION ALL
+    SELECT p.vendor_id, SUM(COALESCE(p.total_price, 0) - COALESCE(p.paid_amount, 0)) AS bal
+    FROM procurements p
+    WHERE p.deleted_at IS NULL
+      AND p.payment_term IS NOT NULL
+      AND p.vendor_id IS NOT NULL
+    GROUP BY p.vendor_id
+  ),
+  grouped AS (
+    SELECT vendor_id, SUM(bal) AS balance
+    FROM vendor_net
+    GROUP BY vendor_id
+  )
+  SELECT g.vendor_id, v.name AS vendor_name, g.balance
+  FROM grouped g
+  JOIN vendors v ON v.id = g.vendor_id
+  WHERE g.balance > 0
+  ORDER BY g.balance DESC
+  LIMIT limit_count;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION dashboard_active_client_balances(limit_count INT DEFAULT 10)
+RETURNS TABLE(client_id UUID, client_name TEXT, deposits NUMERIC, expenses NUMERIC, balance NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  WITH active_clients AS (
+    SELECT DISTINCT c.id, c.name
+    FROM clients c
+    JOIN projects p ON p.client_id = c.id
+    WHERE c.deleted_at IS NULL
+      AND p.deleted_at IS NULL
+      AND p.status = 'active'
+  ),
+  client_deposits AS (
+    SELECT t.client_id, SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL
+      AND t.type = 'project_deposit'
+      AND t.client_id IS NOT NULL
+    GROUP BY t.client_id
+  ),
+  client_expenses AS (
+    SELECT t.client_id, SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL
+      AND t.type = 'project_expense'
+      AND t.client_id IS NOT NULL
+    GROUP BY t.client_id
+  )
+  SELECT ac.id AS client_id,
+         ac.name AS client_name,
+         COALESCE(d.amt, 0) AS deposits,
+         COALESCE(e.amt, 0) AS expenses,
+         COALESCE(d.amt, 0) - COALESCE(e.amt, 0) AS balance
+  FROM active_clients ac
+  LEFT JOIN client_deposits d ON d.client_id = ac.id
+  LEFT JOIN client_expenses e ON e.client_id = ac.id
+  WHERE COALESCE(d.amt, 0) - COALESCE(e.amt, 0) <> 0
+  ORDER BY (COALESCE(d.amt, 0) - COALESCE(e.amt, 0)) DESC
+  LIMIT limit_count;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';

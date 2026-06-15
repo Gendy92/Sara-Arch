@@ -48,25 +48,21 @@ Object.assign(App, {
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
-      const [clients, projects, employees, txs, vendorExpenses, vendorProcs, allProjTxs, vendors] = await Promise.all([
-        API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&limit=1000'),
-        API.request('employees', 'GET', null, '?select=id&is_active=eq.true&deleted_at=is.null&limit=1000'),
-        API.request('transactions', 'GET', null, '?select=type,amount,date,project_id,client_id,expense_category,sector_name,created_at&deleted_at=is.null&order=created_at.desc&limit=200'),
-        API.request('transactions', 'GET', null, '?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null&limit=1000'),
-        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null&limit=1000'),
-        API.request('transactions', 'GET', null, '?select=client_id,amount,type&deleted_at=is.null&type=in.(project_deposit,project_expense)&limit=1000'),
-        API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
+      const [[kpi], monthly, sectors, vendorBalances, clientBalances] = await Promise.all([
+        API.rpc('dashboard_kpis'),
+        API.rpc('dashboard_monthly_revenue_expenses', { months_back: 6 }),
+        API.rpc('dashboard_office_expense_sectors'),
+        API.rpc('dashboard_top_vendors', { limit_count: 10 }),
+        API.rpc('dashboard_active_client_balances', { limit_count: 10 })
       ]);
-      const activeProjects = projects.filter(p => p.status === 'active').length;
-      const totalIncome = txs.filter(t => ['project_deposit','owner_deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
-      const totalExp = txs.filter(t => ['project_expense','office_expense'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      const k = kpi || {};
       document.getElementById('kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-icon">👥</div><div class="kpi-label">العملاء</div><div class="kpi-value">${clients.length}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">📁</div><div class="kpi-label">المشاريع</div><div class="kpi-value">${projects.length}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${activeProjects}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${employees.length}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome + totalExp)}</div></div>`;
+        <div class="kpi-card"><div class="kpi-icon">👥</div><div class="kpi-label">العملاء</div><div class="kpi-value">${k.client_count || 0}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">📁</div><div class="kpi-label">المشاريع</div><div class="kpi-value">${k.project_count || 0}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${k.active_project_count || 0}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${k.employee_count || 0}</div></div>
+        <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(k.total_movement || 0)}</div></div>`;
       // ─── Monthly Office Revenue vs Expenses Chart (last 6 months) ───
       const months = [];
       for (let i = 5; i >= 0; i--) {
@@ -75,32 +71,10 @@ Object.assign(App, {
       }
       const monthlyRev = {}; const monthlyExp = {};
       months.forEach(m => { monthlyRev[m.key] = 0; monthlyExp[m.key] = 0; });
-      // Office income: owner_deposits + supervision (calculated like loadOffice)
-      const projectExpenses = txs.filter(t => t.type === 'project_expense');
-      const _expByProject = {}; const _designByProject = {};
-      projectExpenses.forEach(t => {
-        const amt = +t.amount || 0;
-        _expByProject[t.project_id] = (_expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          _designByProject[t.project_id] = (_designByProject[t.project_id] || 0) + amt;
-        }
-      });
-      projects.forEach(p => {
-        const exp = _expByProject[p.id] || 0;
-        const design = _designByProject[p.id] || 0;
-        const supAmt = (exp - design) * (p.supervision_percentage || 0) / 100;
-        if (supAmt > 0 && p.created_at) {
-          const mk = p.created_at.slice(0, 7);
-          if (months.some(m => m.key === mk)) monthlyRev[mk] += supAmt;
-        }
-      });
-      txs.forEach(t => {
-        if (!t.date) return;
-        const mk = t.date.slice(0, 7);
-        if (months.some(m => m.key === mk)) {
-          if (t.type === 'owner_deposit') monthlyRev[mk] += (+t.amount || 0);
-          if (['office_expense','withdrawal'].includes(t.type)) monthlyExp[mk] += (+t.amount || 0);
-        }
+      (monthly || []).forEach(r => {
+        if (!r.month_key) return;
+        monthlyRev[r.month_key] = +r.revenue || 0;
+        monthlyExp[r.month_key] = +r.expense || 0;
       });
       const maxVal = Math.max(...months.map(m => Math.max(monthlyRev[m.key], monthlyExp[m.key])), 1);
       const barChartHtml = `<div class="bar-chart">${months.map(m => {
@@ -110,13 +84,7 @@ Object.assign(App, {
       }).join('')}</div><div class="bar-chart-legend"><span><span class="dot" style="background:var(--green)"></span> إيرادات المكتب</span><span><span class="dot" style="background:var(--red)"></span> مصروفات المكتب</span></div>`;
       document.getElementById('monthly-chart').innerHTML = barChartHtml;
       // ─── Office Expense Breakdown by Sector (Pie Chart) ───
-      const officeExp = txs.filter(t => t.type === 'office_expense');
-      const expBySector = {};
-      officeExp.forEach(t => {
-        const sector = t.sector_name || 'غير مصنف';
-        expBySector[sector] = (expBySector[sector] || 0) + (+t.amount || 0);
-      });
-      const sectorRows = Object.entries(expBySector).sort((a, b) => b[1] - a[1]);
+      const sectorRows = (sectors || []).map(s => [s.sector || 'غير مصنف', +s.amount || 0]).sort((a, b) => b[1] - a[1]);
       const pieColors = ['#e53935', '#43a047', '#1e88e5', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#26a69a', '#ef5350'];
       let pieHtml = '<p style="color:var(--text3)">لا توجد مصروفات مكتبية</p>';
       if (sectorRows.length) {
@@ -137,46 +105,25 @@ Object.assign(App, {
         }).join('');
         const legend = sectorRows.map(([label, amt], i) => {
           const pct = Math.round((amt / total) * 100);
-          return `<div class="pie-legend-item"><span class="pie-legend-color" style="background:${pieColors[i % pieColors.length]}"></span><span>${label}</span><span>${pct}% · ${this.fmtMoney(amt)}</span></div>`;
+          return `<div class="pie-legend-item"><span class="pie-legend-color" style="background:${pieColors[i % pieColors.length]}"></span><span>${App.esc(label)}</span><span>${pct}% · ${this.fmtMoney(amt)}</span></div>`;
         }).join('');
         pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
       }
       document.getElementById('expense-chart').innerHTML = pieHtml;
       // ─── Top 10 Vendor Outstanding Balances ───
-      const balanceMap = this._vendorBalanceMap(vendors, vendorExpenses, vendorProcs);
-      const vendorBalances = vendors.map(v => {
-        const balance = balanceMap[v.id] || 0;
-        if (balance <= 0) return null;
-        return { name: v.name, balance };
-      }).filter(Boolean).sort((a, b) => b.balance - a.balance).slice(0, 10).map(v => [v.name, `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance)}</span>`]);
-      document.getElementById('dash-vendors').innerHTML = vendorBalances.length
-        ? this.table(['المورد', 'المبلغ المستحق'], vendorBalances)
-        : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
-      // ─── Top 5 Active Customer Balances ───
-      const clientMap = {};
-      clients.forEach(c => clientMap[c.id] = c.name);
-      const activeClientIds = new Set(projects.filter(p => p.status === 'active').map(p => p.client_id));
-      const clientDeposits = {};
-      const clientExpenses = {};
-      allProjTxs.forEach(t => {
-        if (!t.client_id) return;
-        if (t.type === 'project_deposit') clientDeposits[t.client_id] = (clientDeposits[t.client_id] || 0) + (+t.amount || 0);
-        if (t.type === 'project_expense') clientExpenses[t.client_id] = (clientExpenses[t.client_id] || 0) + (+t.amount || 0);
-      });
-      const clientBalances = Object.keys(clientMap)
-        .filter(cid => activeClientIds.has(cid))
-        .map(cid => {
-          const dep = clientDeposits[cid] || 0;
-          const exp = clientExpenses[cid] || 0;
-          const balance = dep - exp;
-          return { name: clientMap[cid], balance, dep, exp };
-        })
-        .filter(c => c.balance !== 0)
-        .sort((a, b) => b.balance - a.balance)
+      const vendorRows = (vendorBalances || [])
+        .filter(v => (v.balance || 0) > 0)
+        .sort((a, b) => (b.balance || 0) - (a.balance || 0))
         .slice(0, 10)
-        .map(c => [c.name, this.fmtMoney(c.dep), this.fmtMoney(c.exp), `<span style="color:${c.balance >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance)}</span>`]);
-      document.getElementById('dash-clients').innerHTML = clientBalances.length
-        ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientBalances)
+        .map(v => [App.esc(v.vendor_name || '-'), `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`]);
+      document.getElementById('dash-vendors').innerHTML = vendorRows.length
+        ? this.table(['المورد', 'المبلغ المستحق'], vendorRows)
+        : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
+      // ─── Top 10 Active Customer Balances ───
+      const clientRows = (clientBalances || [])
+        .map(c => [App.esc(c.client_name || '-'), this.fmtMoney(c.deposits || 0), this.fmtMoney(c.expenses || 0), `<span style="color:${(c.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance || 0)}</span>`]);
+      document.getElementById('dash-clients').innerHTML = clientRows.length
+        ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientRows)
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
     } catch (e) {
       console.error(e);
@@ -230,14 +177,14 @@ Object.assign(App, {
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-          return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${p.name}</a>`, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+          return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
         return `<div class="card" style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
             <div>
-              <h3 style="margin-bottom:4px"><a href="#" onclick="App.go('client',{clientId:'${c.id}'});return false;" style="color:var(--gold);text-decoration:none">${c.name}</a></h3>
-              <div style="font-size:12px;color:var(--text2)">${c.phone || '-'} · ${c.email || '-'} · ${c.address || '-'}</div>
+              <h3 style="margin-bottom:4px"><a href="#" onclick="App.go('client',{clientId:'${c.id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(c.name)}</a></h3>
+              <div style="font-size:12px;color:var(--text2)">${App.esc(c.phone || '-')} · ${App.esc(c.email || '-')} · ${App.esc(c.address || '-')}</div>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
           </div>
@@ -299,15 +246,15 @@ Object.assign(App, {
         const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
         const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
         const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-        return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${p.name}</a>`, p.address || '-', this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+        return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
       });
       const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
 
       const html = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>
-            <h3 style="margin-bottom:4px">${client.name}</h3>
-            <div style="font-size:12px;color:var(--text2)">${client.phone || '-'} · ${client.email || '-'} · ${client.address || '-'}</div>
+            <h3 style="margin-bottom:4px">${App.esc(client.name)}</h3>
+            <div style="font-size:12px;color:var(--text2)">${App.esc(client.phone || '-')} · ${App.esc(client.email || '-')} · ${App.esc(client.address || '-')}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
         </div>
@@ -409,7 +356,7 @@ Object.assign(App, {
         const balLabel = balance > 0 ? 'مستحق' : balance < 0 ? 'زيادة' : 'تسوية';
         const balanceCell = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`;
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
-        return [`<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${v.name}</a>`, typeBadge, v.sector || '-', v.contact_person || '-', v.phone || '-', balanceCell, actions];
+        return [`<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.name)}</a>`, typeBadge, App.esc(v.sector || '-'), App.esc(v.contact_person || '-'), App.esc(v.phone || '-'), balanceCell, actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
@@ -467,8 +414,8 @@ Object.assign(App, {
       const info = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>
-            <h3 style="margin-bottom:4px">${vendor.name}</h3>
-            <div style="font-size:12px;color:var(--text2)">${typeBadge} · ${vendor.sector || '-'} · ${vendor.contact_person || '-'} · ${vendor.phone || '-'}</div>
+            <h3 style="margin-bottom:4px">${App.esc(vendor.name)}</h3>
+            <div style="font-size:12px;color:var(--text2)">${typeBadge} · ${App.esc(vendor.sector || '-')} · ${App.esc(vendor.contact_person || '-')} · ${App.esc(vendor.phone || '-')}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
         </div>
@@ -477,7 +424,7 @@ Object.assign(App, {
       const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], txRows) : '';
       const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], procRows) : '';
 
-      document.getElementById('vendor-detail-name').textContent = '🚚 ' + vendor.name;
+      document.getElementById('vendor-detail-name').textContent = '🚚 ' + App.esc(vendor.name);
       document.getElementById('vendor-detail').innerHTML = summary + info + txTable + procTable;
     } catch (e) {
       console.error(e);
@@ -494,10 +441,10 @@ Object.assign(App, {
       const expPerPage = 10;
 
       const [recentTxs, projects, projectExpenses, allProjTxs, totalTxCount, totalExpCount] = await Promise.all([
-        API.request('transactions', 'GET', null, "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc&limit=100"),
+        API.fetchAll('transactions', "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc"),
         API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
         API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
-        API.request('transactions', 'GET', null, '?select=type,amount,project_id,expense_category&type=in.(project_deposit,project_expense)&deleted_at=is.null&limit=1000'),
+        API.fetchAll('transactions', '?select=type,amount,project_id,expense_category&type=in.(project_deposit,project_expense)&deleted_at=is.null'),
         API.count('transactions', '?type=in.(project_deposit,project_expense)&deleted_at=is.null'),
         API.count('transactions', '?type=eq.project_expense&deleted_at=is.null')
       ]);
@@ -723,7 +670,7 @@ Object.assign(App, {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
         const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
-        return [e.name, e.job_title || '-', this.fmtMoney(e.salary), custodyBadge, actions];
+        return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), custodyBadge, actions];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
       document.getElementById('emp-tbl').innerHTML = html + (data.length ? this._paginationHtml('employees', page, limit, total) : '');
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
@@ -775,7 +722,7 @@ Object.assign(App, {
       const colOut = findCol(['out', 'check out', 'time out', 'الخروج', 'انصراف', 'logout', 'exit']);
 
       if (colName < 0 || colDate < 0) {
-        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على الأعمدة المطلوبة. العناوين المكتشفة: ${headers.join(' | ')}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود الاسم + عمود التاريخ (اختياري: دخول/خروج)</p>`;
+        preview.innerHTML = `<p style="color:var(--red)">لم يتم التعرف على الأعمدة المطلوبة. العناوين المكتشفة: ${App.esc(headers.join(' | '))}</p><p style="color:var(--text3);font-size:12px">المطلوب: عمود الاسم + عمود التاريخ (اختياري: دخول/خروج)</p>`;
         return;
       }
 
@@ -987,114 +934,49 @@ Object.assign(App, {
   },
 
   async loadSettings() {
-    const keyStatus = localStorage.getItem('sara_service_key') ? '✅ مخصص (مخزن محلياً)' : '⚠️ افتراضي — غير آمن';
-    const settingsHtml = `<div class="card" style="margin-top:16px;border:1px solid var(--red)">
-      <h3 style="color:var(--red)">🔐 مفتاح Admin (Service Role)</h3>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">للأمان، ضع مفتاح Service Role هنا بدلاً من تركه في الكود. بعد التدوير في Supabase، الصق المفتاح الجديد:</p>
-      <div class="form-group"><input type="password" id="settings-service-key" placeholder="الصق مفتاح Service Role الجديد" style="width:100%;max-width:400px" /></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="App.saveServiceKey()">💾 حفظ المفتاح</button>
-        <button class="btn btn-red" onclick="App.clearServiceKey()">🗑️ مسح المفتاح</button>
-      </div>
-      <p style="font-size:12px;margin-top:8px">الحالة: <strong>${keyStatus}</strong></p>
+    const settingsHtml = `<div class="card" style="margin-top:16px;border:1px solid var(--gold)" id="settings-security-card">
+      <h3 style="color:var(--gold)">🔐 الأمان</h3>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">لم يعد مفتاح Service Role يُخزّن في المتصفح أو يُرسل منه. لإدارة المستخدمين، يستخدم النظام التسجيل العام (public signup) من شاشة "تسجيل مستخدم جديد".</p>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px">لتدوير المفاتيح، اذهب إلى Supabase Dashboard → Project Settings → API.</p>
     </div>`;
     const container = document.querySelector('.main-content');
     if (container && !document.getElementById('settings-security-card')) {
       const div = document.createElement('div');
-      div.id = 'settings-security-card';
       div.innerHTML = settingsHtml;
       container.appendChild(div);
     }
   },
 
+  // Deprecated: service-role keys are no longer stored in the browser.
   async saveServiceKey() {
-    let key = document.getElementById('settings-service-key')?.value || '';
-    // Clean: remove ALL whitespace including newlines that often sneak in when copying from Supabase UI
-    key = key.replace(/\s/g, '');
-    if (!key) { UI.toast('Paste the key first', 'error'); return; }
-    if (!key.startsWith('eyJ')) { UI.toast('Key looks wrong — Supabase keys start with "eyJ". Make sure you copied the SERVICE_ROLE key, not the anon key.', 'error'); return; }
-
-    UI.toast('Testing key against Supabase...', 'info');
-    try {
-      const testRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1`, {
-        headers: { 'apikey': key, 'Authorization': 'Bearer ' + key }
-      });
-      if (testRes.status === 401 || testRes.status === 403) {
-        UI.toast('Key is INVALID (401/403). Go to Supabase → Project Settings → API → copy the SERVICE_ROLE key (starts with eyJ...), not the anon key.', 'error');
-        return;
-      }
-      if (!testRes.ok) {
-        UI.toast(`Key test failed: HTTP ${testRes.status}. Check your internet or Supabase status.`, 'error');
-        return;
-      }
-    } catch (e) {
-      UI.toast('Network error testing key. Check your connection.', 'error');
-      return;
-    }
-
-    localStorage.setItem('sara_service_key', key);
-    UI.toast('Key is VALID and saved — reloading now...', 'success');
-    setTimeout(() => location.reload(), 1200);
+    UI.toast('تخزين مفتاح Service Role في المتصفح متوقف لأسباب أمنية.', 'info');
   },
 
   clearServiceKey() {
     localStorage.removeItem('sara_service_key');
-    UI.toast('Key cleared — reloading now...', 'success');
+    UI.toast('تم مسح أي مفتاح قديم — سيتم إعادة التحميل', 'success');
     setTimeout(() => location.reload(), 800);
   },
 
   async loadUsers() {
     try {
-      let authUsers = [];
-      let authFailed = false;
-      try {
-        const authData = await API.authListUsers();
-        authUsers = authData.users || [];
-      } catch (authErr) {
-        authFailed = true;
-        console.log('[Users] authListUsers failed:', authErr.message);
-      }
+      // Service-role admin endpoints are disabled in the browser for security.
+      // User management is based on the profiles table.
       const profiles = await API.request('profiles', 'GET', null, '?select=*&order=created_at.desc');
-      const profileMap = Object.fromEntries(profiles.map(p => [p.id, p]));
-      // Build user list from auth first; fallback to profiles only if auth unavailable
-      const users = authUsers.length
-        ? authUsers.map(u => {
-            const p = profileMap[u.id];
-            const rawName = p?.name || u.user_metadata?.name || '';
-            const safeName = Auth.safeName(rawName, '');
-            return {
-              id: u.id,
-              email: u.email,
-              name: safeName || Auth.fromEmail(u.email),
-              role: p?.role || u.user_metadata?.role || 'user',
-              email_confirmed_at: u.email_confirmed_at,
-              created_at: u.created_at
-            };
-          })
-        : profiles.map(p => ({
-            id: p.id,
-            email: p.username || p.id.slice(0, 8),
-            name: p.name || p.id.slice(0, 8),
-            role: p.role || 'user',
-            email_confirmed_at: null,
-            created_at: p.created_at
-          }));
-      let noKeyWarning = '';
-      if (authFailed) {
-        if (SUPABASE_SERVICE_KEY) {
-          noKeyWarning = '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">⚠️ Admin key is INVALID (401). Go to Settings, clear the old key, paste your new SERVICE_ROLE key from Supabase, save, and let it reload.</p>';
-        } else {
-          noKeyWarning = '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">ℹ️ No admin key stored — showing profiles only. To see auth emails, add your SERVICE_ROLE key in Settings.</p>';
-        }
-      }
-      document.getElementById('users-tbl').innerHTML = noKeyWarning + (users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'الحالة', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
-        Auth.fromEmail(u.email),
-        u.name,
+      const users = profiles.map(p => ({
+        id: p.id,
+        username: p.username || p.id.slice(0, 8),
+        name: p.name || p.id.slice(0, 8),
+        role: p.role || 'user',
+        created_at: p.created_at
+      }));
+      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
+        App.esc(u.username),
+        App.esc(u.name),
         u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
-        u.email_confirmed_at ? '<span class="badge badge-green">مفعل</span>' : '<span class="badge badge-red">غير مفعل</span>',
         this.fmtDate(u.created_at),
         `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
-      ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>');
+      ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
   },
@@ -1105,7 +987,7 @@ Object.assign(App, {
       document.getElementById('backup-last').innerHTML = last
         ? `آخر نسخة يدوية: <strong>${new Date(last).toLocaleString('ar-EG')}</strong>`
         : 'لم يتم عمل نسخة يدوية بعد';
-      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions'];
+      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks'];
       // Check which tables actually exist
       const results = await Promise.all(tables.map(async t => {
         try { await API.request(t, 'GET', null, '?select=id&limit=1'); return { table: t, ok: true }; }
@@ -1119,22 +1001,30 @@ Object.assign(App, {
   },
 
   async downloadLocalBackup() {
-    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions'];
+    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks'];
     const progress = document.getElementById('backup-progress');
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
     const zip = new JSZip();
     const folder = zip.folder('Sara_Backup_' + new Date().toISOString().slice(0,10));
-    let ok = 0, skip = 0;
+    let ok = 0, skip = 0, fail = 0;
+    const failed = [];
     for (const table of tables) {
       try {
-        const data = await API.request(table, 'GET', null, '?select=*');
+        const data = await API.fetchAll(table, '?select=*');
         folder.file(`${table}.json`, JSON.stringify(data, null, 2));
         ok++;
-        progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول...</p>`;
       } catch (e) {
-        // Table doesn't exist — skip gracefully, no error file
-        skip++;
+        const msg = (e?.message || '').toLowerCase();
+        const isMissing = msg.includes('does not exist') || msg.includes('relation') || msg.includes('pgrst116');
+        if (isMissing) {
+          skip++;
+        } else {
+          fail++;
+          failed.push(table);
+          console.error(`[Backup] failed for ${table}:`, e);
+        }
       }
+      progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول${skip ? ` (تخطي ${skip})` : ''}${fail ? ` — فشل ${fail}` : ''}...</p>`;
     }
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري ضغط الملف...</p>';
     const blob = await zip.generateAsync({ type: 'blob' });
@@ -1148,18 +1038,20 @@ Object.assign(App, {
     URL.revokeObjectURL(url);
     localStorage.setItem('sara_last_backup', new Date().toISOString());
     const skipMsg = skip > 0 ? ` (تم تخطي ${skip} جدول غير منشأ)` : '';
-    progress.innerHTML = `<p style="color:var(--green)">✅ تم التحميل بنجاح — ${ok} جدول${skipMsg}</p>`;
+    const failMsg = fail > 0 ? ` <span style="color:var(--red)">(${fail} جدول فشل: ${failed.join(', ')})</span>` : '';
+    progress.innerHTML = `<p style="color:${fail ? 'var(--red)' : 'var(--green)'}">${fail ? '⚠️' : '✅'} تم التحميل — ${ok} جدول${skipMsg}${failMsg}</p>`;
     this.loadBackup();
   },
 
   clearAppCache() {
     try {
-      const token = localStorage.getItem('sara_token');
-      const serviceKey = localStorage.getItem('sara_service_key');
+      // Tokens are stored in sessionStorage; preserve login across cache clear.
+      const token = sessionStorage.getItem('sara_token');
+      // Service-role keys are no longer preserved in the browser.
+      localStorage.removeItem('sara_service_key');
       localStorage.clear();
       sessionStorage.clear();
-      if (token) localStorage.setItem('sara_token', token); // preserve login
-      if (serviceKey) localStorage.setItem('sara_service_key', serviceKey); // preserve admin key
+      if (token) sessionStorage.setItem('sara_token', token);
       const url = new URL(location.href);
       url.searchParams.set('_', Date.now());
       location.href = url.toString();
@@ -1295,13 +1187,22 @@ Object.assign(App, {
 
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
       document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
-        s.name, s.notes || s.description || '-', UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        App.esc(s.name), App.esc(s.notes || s.description || '-'), UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : `<p style="color:var(--text3);padding:16px">لا يوجد أقسام</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkSection()">+ إضافة أول قسم</button>':''}`;
       this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
       document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
-        i.name, sectionMap[i.section_id] || '-', i.notes || i.description || '-', UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        App.esc(i.name), App.esc(sectionMap[i.section_id] || '-'), App.esc(i.notes || i.description || '-'), UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
       ])) : `<p style="color:var(--text3);padding:16px">لا توجد بنود</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkItem()">+ إضافة أول بند</button>':''}`;
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
+
+      let items = [];
+      try {
+        items = await API.request('items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+      } catch (e) { console.log('[MasterData] items not ready:', e.message); }
+      document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'العلامة', 'الوحدة', 'الإجراءات'], items.map(i => [
+        App.esc(i.name), App.esc(i.specification || '-'), App.esc(i.brand || '-'), App.esc(i.unit || '-'), UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+      ])) : `<p style="color:var(--text3);padding:16px">لا توجد أصناف</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addItem()">+ إضافة أول صنف</button>':''}`;
+      this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
     } catch (e) {
       console.error(e);
       UI.toast('Master data load failed: ' + e.message, 'error');

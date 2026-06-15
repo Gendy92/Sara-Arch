@@ -5,7 +5,6 @@ const API = {
 
   getHeaders() {
     const token = (typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY;
-    console.log('[API] Using token:', token ? token.substring(0, 20) + '...' : 'ANON');
     return {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + token,
@@ -14,17 +13,60 @@ const API = {
     };
   },
 
+  _parseError(text, status) {
+    try {
+      const parsed = JSON.parse(text);
+      return parsed.message || parsed.error || parsed.msg || JSON.stringify(parsed);
+    } catch (e) {
+      return text || `HTTP ${status}`;
+    }
+  },
+
   async request(table, method = 'GET', body = null, query = '') {
     const url = `${this.base}/${table}${query}`;
     const opts = { method, headers: this.getHeaders() };
     if (body) opts.body = JSON.stringify(body);
-    console.log('[API]', method, url);
-    const res = await fetch(url, opts);
-    console.log('[API] Response:', res.status);
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (networkErr) {
+      throw new Error('Network error: ' + (networkErr.message || 'Unable to reach server'));
+    }
     if (!res.ok) {
       const text = await res.text();
-      console.error('[API] Error:', text);
-      throw new Error(text || `HTTP ${res.status}`);
+      throw new Error(this._parseError(text, res.status));
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : [];
+  },
+
+  // Fetch all rows for a query by paginating automatically. Use for statements/exports.
+  async fetchAll(table, baseQuery = '', pageSize = 1000) {
+    let offset = 0;
+    let all = [];
+    const sep = baseQuery.includes('?') ? '&' : '?';
+    while (true) {
+      const chunk = await this.request(table, 'GET', null, `${baseQuery}${sep}limit=${pageSize}&offset=${offset}`);
+      if (!Array.isArray(chunk)) throw new Error('Unexpected response while fetching data');
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break;
+      offset += pageSize;
+      // Safety cap to avoid infinite loops
+      if (offset > 1000000) break;
+    }
+    return all;
+  },
+
+  // Call a PostgreSQL function exposed via PostgREST RPC.
+  async rpc(name, args = {}) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(args)
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(this._parseError(text, res.status));
     }
     const text = await res.text();
     return text ? JSON.parse(text) : [];
@@ -37,7 +79,10 @@ const API = {
       headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ email, password })
     });
-    if (!res.ok) throw new Error('Invalid login');
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(this._parseError(text, res.status) || 'Invalid login');
+    }
     return res.json();
   },
 
@@ -47,7 +92,10 @@ const API = {
       headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ email, password, data })
     });
-    if (!res.ok) throw new Error('Registration failed');
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(this._parseError(text, res.status) || 'Registration failed');
+    }
     return res.json();
   },
 
@@ -59,33 +107,18 @@ const API = {
     return res.json();
   },
 
-  // Admin endpoints (require service_role key)
+  // Admin endpoints historically required a service_role key.
+  // Service-role keys are no longer stored or used in the browser.
   async authListUsers() {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Accept': 'application/json', 'Accept-Charset': 'utf-8' }
-    });
-    if (!res.ok) throw new Error('Failed to list users');
-    return res.json();
+    throw new Error('Admin user listing is disabled in the browser. Use the profiles table or a secure Edge Function.');
   },
 
   async authCreateUser(email, password, metadata) {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json', 'Accept-Charset': 'utf-8' },
-      body: JSON.stringify({ email, password, email_confirm: true, user_metadata: metadata })
-    });
-    if (!res.ok) throw new Error('Failed to create user');
-    return res.json();
+    throw new Error('Admin user creation is disabled in the browser. Use public signup or a secure Edge Function.');
   },
 
   async authUpdateUser(id, metadata) {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, {
-      method: 'PUT',
-      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json', 'Accept-Charset': 'utf-8' },
-      body: JSON.stringify({ user_metadata: metadata })
-    });
-    if (!res.ok) throw new Error('Failed to update user');
-    return res.json();
+    throw new Error('Admin user update is disabled in the browser. Use a secure Edge Function.');
   },
 
   async count(table, query = '') {
@@ -101,6 +134,9 @@ const API = {
         return isNaN(total) ? 0 : total;
       }
       return 0;
-    } catch (e) { return 0; }
+    } catch (e) {
+      console.error('[API.count] Error:', e.message);
+      return 0;
+    }
   }
 };

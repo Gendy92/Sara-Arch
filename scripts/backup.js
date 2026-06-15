@@ -1,8 +1,15 @@
 // Database Backup Script - exports all data via Supabase REST API
-const SUPABASE_URL = 'https://tvjkctttcijymqvaetsv.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amtjdHR0Y2lqeW1xdmFldHN2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDg0MTM3NiwiZXhwIjoyMDk2NDE3Mzc2fQ.zH-yB4Ip_y7Ojsu541MMRD_P9FWO9E2dacALbRKBlmQ';
+// Usage: SUPABASE_URL=<url> SUPABASE_KEY=<service_role_key> node scripts/backup.js
 
-const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions'];
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || ''; // service_role key
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY environment variables.');
+  process.exit(1);
+}
+
+const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks'];
 
 async function backup() {
   const fs = require('fs');

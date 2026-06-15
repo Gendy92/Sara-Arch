@@ -61,13 +61,26 @@
     // Load CDN scripts in parallel (no dependencies between them)
     var cdnPromise = Promise.all(cdnScripts.map(loadScript));
 
+    // Optionally load local config overrides (gitignored) before config.js
+    function loadOptionalLocalConfig() {
+      return new Promise(function(resolve) {
+        var s = document.createElement('script');
+        s.src = 'js/config.local.js?v=' + version;
+        s.onload = function() { resolve(); };
+        s.onerror = function() { resolve(); }; // optional file; continue if missing
+        document.head.appendChild(s);
+      });
+    }
+
     // Load local scripts sequentially (each depends on previous)
     var localPromise = cdnPromise.then(function() {
-      return localScripts.reduce(function(chain, file) {
-        return chain.then(function() {
-          return loadScript('js/' + file + '?v=' + version);
-        });
-      }, Promise.resolve());
+      return loadOptionalLocalConfig().then(function() {
+        return localScripts.reduce(function(chain, file) {
+          return chain.then(function() {
+            return loadScript('js/' + file + '?v=' + version);
+          });
+        }, Promise.resolve());
+      });
     });
 
     localPromise
