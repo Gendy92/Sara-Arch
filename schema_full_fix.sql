@@ -752,6 +752,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+CREATE OR REPLACE FUNCTION dashboard_office_income_expense_sectors()
+RETURNS TABLE(label TEXT, amount NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 'إيرادات المكتب'::TEXT AS label,
+         COALESCE(SUM(t.amount), 0) AS amount
+  FROM transactions t
+  WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'
+  UNION ALL
+  SELECT COALESCE(t.sector_name, 'مصروفات أخرى')::TEXT AS label,
+         SUM(t.amount) AS amount
+  FROM transactions t
+  WHERE t.deleted_at IS NULL AND t.type = 'office_expense'
+  GROUP BY COALESCE(t.sector_name, 'مصروفات أخرى')
+  ORDER BY 2 DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 CREATE OR REPLACE FUNCTION dashboard_top_vendors(limit_count INT DEFAULT 10)
 RETURNS TABLE(vendor_id UUID, vendor_name TEXT, balance NUMERIC) AS $$
 BEGIN

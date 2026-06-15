@@ -45,14 +45,41 @@ Object.assign(App, {
     return map;
   },
 
+  _renderPie(rows, size = 160, emptyMsg = 'لا توجد بيانات') {
+    if (!rows || !rows.length) return `<p style="color:var(--text3)">${emptyMsg}</p>`;
+    const total = rows.reduce((s, r) => s + (+r[1] || 0), 0);
+    if (total <= 0) return `<p style="color:var(--text3)">${emptyMsg}</p>`;
+    const cx = size / 2, cy = size / 2, r = size / 2 - 4;
+    let startAngle = 0;
+    const pieColors = ['#e53935', '#43a047', '#1e88e5', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#26a69a', '#ef5350'];
+    const paths = rows.map(([label, amt], i) => {
+      const angle = (amt / total) * 2 * Math.PI;
+      const x1 = cx + r * Math.cos(startAngle);
+      const y1 = cy + r * Math.sin(startAngle);
+      const x2 = cx + r * Math.cos(startAngle + angle);
+      const y2 = cy + r * Math.sin(startAngle + angle);
+      const largeArc = angle > Math.PI ? 1 : 0;
+      const color = pieColors[i % pieColors.length];
+      const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+      startAngle += angle;
+      return `<path d="${d}" fill="${color}" stroke="var(--card)" stroke-width="2"/>`;
+    }).join('');
+    const legend = rows.map(([label, amt], i) => {
+      const pct = Math.round((amt / total) * 100);
+      return `<div class="pie-legend-item"><span class="pie-legend-color" style="background:${pieColors[i % pieColors.length]}"></span><span>${App.esc(label)}</span><span>${pct}% · ${this.fmtMoney(amt)}</span></div>`;
+    }).join('');
+    return `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
+  },
+
   // ─── DATA LOADING ───
   async loadDashboard() {
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
-      const [[kpi], monthly, sectors, vendorBalances, clientBalances] = await Promise.all([
+      const [[kpi], monthly, sectors, incomeExpense, vendorBalances, clientBalances] = await Promise.all([
         API.rpc('dashboard_kpis'),
         API.rpc('dashboard_monthly_revenue_expenses', { months_back: 6 }),
         API.rpc('dashboard_office_expense_sectors'),
+        API.rpc('dashboard_office_income_expense_sectors'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
         API.rpc('dashboard_active_client_balances', { limit_count: 10 })
       ]);
@@ -85,31 +112,13 @@ Object.assign(App, {
       document.getElementById('monthly-chart').innerHTML = barChartHtml;
       // ─── Office Expense Breakdown by Sector (Pie Chart) ───
       const sectorRows = (sectors || []).map(s => [s.sector || 'غير مصنف', +s.amount || 0]).sort((a, b) => b[1] - a[1]);
-      const pieColors = ['#e53935', '#43a047', '#1e88e5', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#26a69a', '#ef5350'];
-      let pieHtml = '<p style="color:var(--text3)">لا توجد مصروفات مكتبية</p>';
-      if (sectorRows.length) {
-        const total = sectorRows.reduce((s, r) => s + r[1], 0);
-        const size = 160, cx = size / 2, cy = size / 2, r = size / 2 - 4;
-        let startAngle = 0;
-        const paths = sectorRows.map(([label, amt], i) => {
-          const angle = (amt / total) * 2 * Math.PI;
-          const x1 = cx + r * Math.cos(startAngle);
-          const y1 = cy + r * Math.sin(startAngle);
-          const x2 = cx + r * Math.cos(startAngle + angle);
-          const y2 = cy + r * Math.sin(startAngle + angle);
-          const largeArc = angle > Math.PI ? 1 : 0;
-          const color = pieColors[i % pieColors.length];
-          const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-          startAngle += angle;
-          return `<path d="${d}" fill="${color}" stroke="var(--card)" stroke-width="2"/>`;
-        }).join('');
-        const legend = sectorRows.map(([label, amt], i) => {
-          const pct = Math.round((amt / total) * 100);
-          return `<div class="pie-legend-item"><span class="pie-legend-color" style="background:${pieColors[i % pieColors.length]}"></span><span>${App.esc(label)}</span><span>${pct}% · ${this.fmtMoney(amt)}</span></div>`;
-        }).join('');
-        pieHtml = `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
-      }
-      document.getElementById('expense-chart').innerHTML = pieHtml;
+      document.getElementById('expense-chart').innerHTML = this._renderPie(sectorRows, 160, 'لا توجد مصروفات مكتبية');
+      // ─── Office Income vs Expenses (Pie Chart) ───
+      const ieRows = (incomeExpense || [])
+        .filter(r => (+r.amount || 0) > 0)
+        .map(r => [r.label || 'غير مصنف', +r.amount])
+        .sort((a, b) => b[1] - a[1]);
+      document.getElementById('income-expense-chart').innerHTML = this._renderPie(ieRows, 160, 'لا توجد إيرادات أو مصروفات مكتبية');
       // ─── Top 10 Vendor Outstanding Balances ───
       const vendorRows = (vendorBalances || [])
         .filter(v => (v.balance || 0) > 0)
