@@ -534,8 +534,16 @@ CREATE TABLE IF NOT EXISTS project_tasks (
 
 -- Ensure project_tasks uses due_date (not end_date) to match application code
 ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS due_date DATE;
-UPDATE project_tasks SET due_date = end_date WHERE due_date IS NULL AND end_date IS NOT NULL;
-ALTER TABLE project_tasks DROP COLUMN IF EXISTS end_date;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'project_tasks' AND column_name = 'end_date'
+  ) THEN
+    UPDATE project_tasks SET due_date = end_date WHERE due_date IS NULL AND end_date IS NOT NULL;
+    ALTER TABLE project_tasks DROP COLUMN IF EXISTS end_date;
+  END IF;
+END $$;
 
 -- Constraints for project_tasks
 ALTER TABLE project_tasks DROP CONSTRAINT IF EXISTS project_tasks_status_check;
