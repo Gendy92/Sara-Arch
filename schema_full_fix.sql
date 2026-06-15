@@ -683,7 +683,7 @@ BEGIN
     COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_deposit','owner_deposit')), 0)
       + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','office_expense')), 0) AS total_movement;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION dashboard_monthly_revenue_expenses(months_back INT DEFAULT 6)
 RETURNS TABLE(month_key TEXT, revenue NUMERIC, expense NUMERIC) AS $$
@@ -737,7 +737,7 @@ BEGIN
   LEFT JOIN office_exp e ON e.mk = m.mk
   ORDER BY m.mk;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION dashboard_office_expense_sectors()
 RETURNS TABLE(sector TEXT, amount NUMERIC) AS $$
@@ -750,7 +750,7 @@ BEGIN
   GROUP BY COALESCE(t.sector_name, 'غير مصنف')
   ORDER BY SUM(t.amount) DESC;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION dashboard_top_vendors(limit_count INT DEFAULT 10)
 RETURNS TABLE(vendor_id UUID, vendor_name TEXT, balance NUMERIC) AS $$
@@ -784,7 +784,7 @@ BEGIN
   ORDER BY g.balance DESC
   LIMIT limit_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION dashboard_active_client_balances(limit_count INT DEFAULT 10)
 RETURNS TABLE(client_id UUID, client_name TEXT, deposits NUMERIC, expenses NUMERIC, balance NUMERIC) AS $$
@@ -826,7 +826,7 @@ BEGIN
   ORDER BY (COALESCE(d.amt, 0) - COALESCE(e.amt, 0)) DESC
   LIMIT limit_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
