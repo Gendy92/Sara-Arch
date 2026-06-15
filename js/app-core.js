@@ -46,6 +46,12 @@ const App = {
       const { screen, opts } = this._routeFromHash();
       if (screen !== this.screen) this.go(screen, opts);
     });
+    // Fail fast if Supabase keys are still placeholders.
+    if (typeof SUPABASE_URL === 'undefined' || typeof SUPABASE_ANON_KEY === 'undefined' ||
+        SUPABASE_URL.includes('YOUR_PROJECT') || SUPABASE_ANON_KEY.includes('YOUR_ANON_KEY')) {
+      this.showError('مفاتيح Supabase غير مكونة.<br>يرجى تحديث <code>js/config.local.js</code> بقيم المشروع الصحيحة.');
+      return;
+    }
     try {
       await Auth.init();
       this.bindNav();
@@ -121,7 +127,7 @@ const App = {
   },
 
   async go(screen, opts = {}) {
-    const isAdmin = Auth.user?.user_metadata?.role === 'admin';
+    const isAdmin = Auth.isAdmin();
     if (screen !== 'login' && !Auth.isLoggedIn()) { screen = 'login'; }
     if ((screen === 'register' || screen === 'settings' || screen === 'users' || screen === 'permissions' || screen === 'audit' || screen === 'backup') && !isAdmin) { screen = 'dashboard'; }
     if (!Auth.can(screen, 'view')) { screen = 'dashboard'; }
@@ -191,7 +197,7 @@ const App = {
   layout(content) {
     const user = Auth.user || {};
     const name = user.displayName || user.user_metadata?.name || 'المستخدم';
-    const isAdmin = user.user_metadata?.role === 'admin';
+    const isAdmin = Auth.isAdmin();
     const navItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button data-nav="${screen}" class="nav-item ${this.screen === screen ? 'active' : ''}"><span>${icon}</span> ${label}</button>` : '';
     const bnavItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button class="bottom-nav-item ${this.screen === screen ? 'active' : ''}" onclick="App.go('${screen}')"><span class="bottom-nav-icon">${icon}</span><span class="bottom-nav-label">${label}</span></button>` : '';
     const bottomNav = `<div class="bottom-nav"><div class="bottom-nav-inner">
@@ -270,7 +276,7 @@ const App = {
     try {
       await Auth.register(fd.get('username'), fd.get('password'), fd.get('name'));
       UI.toast('تم إنشاء الحساب');
-      if (Auth.user?.user_metadata?.role === 'admin') this.go('users');
+      if (Auth.isAdmin()) this.go('users');
       else this.renderLogin();
     } catch (e) {
       UI.toast('خطأ: ' + e.message, 'error');
