@@ -82,10 +82,8 @@ Object.assign(App, {
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
-      const [[kpi], sectors, incomeExpense, vendorBalances, clientBalances] = await Promise.all([
+      const [[kpi], vendorBalances, clientBalances] = await Promise.all([
         API.rpc('dashboard_kpis'),
-        API.rpc('dashboard_office_expense_sectors'),
-        API.rpc('dashboard_office_income_expense_sectors'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
         API.rpc('dashboard_active_client_balances', { limit_count: 10 })
       ]);
@@ -96,15 +94,12 @@ Object.assign(App, {
         <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${k.active_project_count || 0}</div></div>
         <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${k.employee_count || 0}</div></div>
         <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(k.total_movement || 0)}</div></div>`;
-      // ─── Office Expense Breakdown by Sector (Pie Chart) ───
-      const sectorRows = (sectors || []).map(s => [s.sector || 'غير مصنف', +s.amount || 0]).sort((a, b) => b[1] - a[1]);
-      document.getElementById('expense-chart').innerHTML = this._renderPie(sectorRows, 160, 'لا توجد مصروفات مكتبية');
-      // ─── Office Income vs Expenses (Pie Chart) ───
-      const ieRows = (incomeExpense || [])
-        .filter(r => (+r.amount || 0) > 0)
-        .map(r => [r.label || 'غير مصنف', +r.amount])
-        .sort((a, b) => b[1] - a[1]);
-      document.getElementById('income-expense-chart').innerHTML = this._renderPie(ieRows, 160, 'لا توجد إيرادات أو مصروفات مكتبية');
+      // ─── Income vs Expenses Totals (Pie Chart) ───
+      const totalRows = [
+        ['إيرادات', +k.total_income || 0],
+        ['مصروفات', +k.total_expense || 0]
+      ].filter(r => r[1] > 0);
+      document.getElementById('income-expense-total-chart').innerHTML = this._renderPie(totalRows, 160, 'لا توجد إيرادات أو مصروفات');
       // ─── Top 10 Vendor Outstanding Balances ───
       const vendorRows = (vendorBalances || [])
         .filter(v => (v.balance || 0) > 0)
