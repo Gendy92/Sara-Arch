@@ -439,6 +439,41 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id); UI.toast('تم الحذف'); App.go('vendors'); });
   },
 
+  async _syncProcurementTransaction(procurementId) {
+    const rows = await API.request('procurements', 'GET', null, `?select=*,projects(client_id)&id=eq.${procurementId}&deleted_at=is.null`);
+    const pr = rows[0];
+    if (!pr) return;
+    const clientId = pr.project_id ? (pr.projects?.client_id || pr.client_id) : null;
+    if (!pr.project_id) {
+      if (pr.linked_transaction_id) {
+        await this.softDelete('transactions', pr.linked_transaction_id);
+        await API.request('procurements', 'PATCH', { linked_transaction_id: null }, `?id=eq.${pr.id}`);
+      }
+      return;
+    }
+    const txPayload = {
+      type: 'project_expense',
+      project_id: pr.project_id,
+      client_id: clientId,
+      vendor_id: pr.vendor_id,
+      amount: +pr.total_price || 0,
+      paid_amount: +pr.paid_amount || 0,
+      expense_category: 'merchandise',
+      description: pr.item_name || 'مشتريات',
+      date: pr.date
+    };
+    if (pr.linked_transaction_id) {
+      await this.save('transactions', txPayload, pr.linked_transaction_id);
+    } else {
+      const result = await this.save('transactions', txPayload);
+      const txId = Array.isArray(result) ? result[0]?.id : result?.id;
+      if (txId) {
+        try { await API.request('procurements', 'PATCH', { linked_transaction_id: txId }, `?id=eq.${pr.id}`); }
+        catch (e) { console.warn('Failed to link procurement to transaction', e); }
+      }
+    }
+  },
+
   async addProcurement(vendorId) {
     const [projects, vendors] = await Promise.all([
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
@@ -462,12 +497,14 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
-      await this.save('procurements', {
+      const result = await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
         item_name: fd.get('item_name'), quantity: qty, unit_price: up,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       });
+      const procId = Array.isArray(result) ? result[0]?.id : result?.id;
+      if (procId) await this._syncProcurementTransaction(procId);
       UI.toast('تمت الإضافة');
       if (vendorId) this.vendorPurchases(vendorId);
       else App.loadVendors();
@@ -504,6 +541,7 @@ const Crud = {
         item_name: fd.get('item_name'), quantity: qty, unit_price: up,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       }, id);
+      await this._syncProcurementTransaction(id);
       UI.toast('تم التحديث');
       if (p.vendor_id) this.vendorPurchases(p.vendor_id);
       else App.loadVendors();
@@ -512,9 +550,11 @@ const Crud = {
 
   delProcurement(id) {
     UI.confirm('هل أنت متأكد من حذف هذه المشتريات؟', async () => {
-      const rows = await API.request('procurements', 'GET', null, `?select=vendor_id&id=eq.${id}`);
+      const rows = await API.request('procurements', 'GET', null, `?select=vendor_id,linked_transaction_id&id=eq.${id}`);
       const vendorId = rows[0]?.vendor_id;
+      const txId = rows[0]?.linked_transaction_id;
       await this.softDelete('procurements', id);
+      if (txId) await this.softDelete('transactions', txId);
       UI.toast('تم الحذف');
       if (vendorId) this.vendorPurchases(vendorId);
       else App.loadVendors();
@@ -1108,29 +1148,21 @@ const Crud = {
 
   // ─── CLIENT & PROJECT STATEMENTS / BUDGET / TASKS ───
   async clientStatement(clientId) {
-    const [client, projects, txs, procs] = await Promise.all([
+    const [client, projects, txs] = await Promise.all([
       API.request('clients', 'GET', null, `?select=name&id=eq.${clientId}`),
       API.request('projects', 'GET', null, `?select=id,name&client_id=eq.${clientId}&deleted_at=is.null&order=created_at.desc`),
-      API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`),
-      API.fetchAll('procurements', `?select=*,project_id,item_name,vendor_name&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`)
+      API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`)
     ]);
     const clientName = client[0]?.name || 'عميل';
 
-    // Build per-project chapters (transactions + procurements)
+    // Build per-project chapters from transactions (procurements are reflected via linked project_expense transactions)
     const chapters = projects.map(p => {
       const pTxs = txs.filter(t => String(t.project_id) === String(p.id));
-      const pProcs = procs.filter(pr => String(pr.project_id) === String(p.id));
-      const txRows = pTxs.map((t, i) => ({
+      const rows = pTxs.map((t, i) => ({
         i: i + 1, date: t.date || '-', type: App.fmtTxType(t.type),
         desc: t.description || '-', amount: +t.amount || 0,
         isDeposit: t.type === 'project_deposit'
       }));
-      const procRows = pProcs.map((pr, i) => ({
-        i: txRows.length + i + 1, date: pr.date || '-', type: 'مشتريات',
-        desc: `صنف: ${pr.item_name || '-'} / مورد: ${pr.vendor_name || '-'}`,
-        amount: +pr.total_price || 0, isDeposit: false
-      }));
-      const rows = [...txRows, ...procRows];
       const dep = rows.reduce((s, r) => s + (r.isDeposit ? r.amount : 0), 0);
       const exp = rows.reduce((s, r) => s + (r.isDeposit ? 0 : r.amount), 0);
       return { project: p, rows, dep, exp };
@@ -1220,10 +1252,9 @@ const Crud = {
   },
 
   async projectStatement(projectId) {
-    const [project, txs, procs] = await Promise.all([
+    const [project, txs] = await Promise.all([
       API.request('projects', 'GET', null, `?select=name,client_id,client_name&id=eq.${projectId}&deleted_at=is.null`),
-      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`),
-      API.fetchAll('procurements', `?select=*,vendor_name&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
+      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
     ]);
     const p = project[0];
     const name = p?.name || 'مشروع';
@@ -1253,12 +1284,6 @@ const Crud = {
       if (['project_deposit','income','deposit'].includes(t.type)) totalDep += amt;
       else totalExp += amt;
       rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), App.fmtMoney(amt)]);
-    });
-    const procStart = rows.length;
-    procs.forEach((pr, i) => {
-      const amt = +pr.total_price || 0;
-      totalExp += amt;
-      rows.push([procStart + i + 1, pr.date || '-', 'مشتريات', App.esc(`صنف: ${pr.item_name || '-'} / مورد: ${pr.vendor_name || '-'}`), App.fmtMoney(amt)]);
     });
     const summary = `<h4 style="margin:0 0 8px">تفاصيل المشروع: ${App.esc(name)}</h4>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
@@ -1327,20 +1352,16 @@ const Crud = {
   },
 
   async projectBudget(projectId) {
-    const [project, txs, procs] = await Promise.all([
+    const [project, txs] = await Promise.all([
       API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}&deleted_at=is.null`),
-      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&limit=200`),
-      API.request('procurements', 'GET', null, `?select=total_price&project_id=eq.${projectId}&deleted_at=is.null&limit=200`)
+      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&limit=200`)
     ]);
     const p = project[0];
     if (!p) return UI.toast('المشروع غير موجود', 'error');
     const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-    const txExpenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-    const txConstr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+    const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
     const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-    const procTotal = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
-    const expenses = txExpenses + procTotal;
-    const constr = txConstr + procTotal;
     const supervision = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
     const balance = deposits - expenses - supervision;
     const html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">

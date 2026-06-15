@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   payment_method TEXT,
   date DATE DEFAULT CURRENT_DATE,
   created_by UUID,
+  linked_procurement_id UUID REFERENCES procurements(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
@@ -151,6 +152,7 @@ CREATE TABLE IF NOT EXISTS procurements (
   quantity NUMERIC DEFAULT 1,
   unit_price NUMERIC DEFAULT 0,
   total_price NUMERIC GENERATED ALWAYS AS (quantity * unit_price) STORED,
+  linked_transaction_id UUID REFERENCES transactions(id),
   expense_type TEXT DEFAULT 'أخرى',
   date DATE DEFAULT CURRENT_DATE,
   notes TEXT,
@@ -358,7 +360,7 @@ ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS custody_type TEXT DEFAULT '
 UPDATE transactions 
 SET expense_category = 'construction' 
 WHERE expense_category IS NULL 
-   OR expense_category NOT IN ('construction','design');
+   OR expense_category NOT IN ('construction','design','merchandise');
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 4: Constraints                                     │
@@ -370,7 +372,7 @@ ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN (
 
 -- Transactions expense_category constraint
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_expense_category_check;
-ALTER TABLE transactions ADD CONSTRAINT transactions_expense_category_check CHECK (expense_category IN ('construction','design'));
+ALTER TABLE transactions ADD CONSTRAINT transactions_expense_category_check CHECK (expense_category IN ('construction','design','merchandise'));
 
 -- Employee transactions type constraint
 ALTER TABLE employee_transactions DROP CONSTRAINT IF EXISTS employee_transactions_type_check;
@@ -656,6 +658,38 @@ END $$;
 -- The auth.users trigger or application inserts a row with id = auth.uid().
 DROP POLICY IF EXISTS "profiles_self_insert" ON profiles;
 CREATE POLICY "profiles_self_insert" ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid());
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ STEP 9b: Procurement → Transaction Linkage              │
+-- └─────────────────────────────────────────────────────────┘
+
+-- Linkage columns
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS linked_procurement_id UUID REFERENCES procurements(id);
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS linked_transaction_id UUID REFERENCES transactions(id);
+
+-- Backfill: create project_expense transactions for existing procurements that have a project
+INSERT INTO transactions (
+  type, project_id, client_id, vendor_id, amount, paid_amount,
+  expense_category, description, date, linked_procurement_id,
+  created_at, updated_at
+)
+SELECT
+  'project_expense', p.project_id, pr.client_id, p.vendor_id,
+  p.total_price, COALESCE(p.paid_amount, 0), 'merchandise',
+  p.item_name, p.date, p.id,
+  p.created_at, p.updated_at
+FROM procurements p
+LEFT JOIN projects pr ON pr.id = p.project_id
+WHERE p.deleted_at IS NULL
+  AND p.project_id IS NOT NULL
+  AND p.linked_transaction_id IS NULL
+ON CONFLICT DO NOTHING;
+
+UPDATE procurements p
+SET linked_transaction_id = t.id
+FROM transactions t
+WHERE t.linked_procurement_id = p.id
+  AND p.linked_transaction_id IS NULL;
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 10: Dashboard Aggregation RPCs                     │

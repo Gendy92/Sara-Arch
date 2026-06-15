@@ -283,22 +283,18 @@ Object.assign(App, {
 
   async loadProject(projectId) {
     try {
-      const [projectRows, txs, procs, tasks] = await Promise.all([
+      const [projectRows, txs, tasks] = await Promise.all([
         API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}&deleted_at=is.null`),
         API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=100`),
-        API.request('procurements', 'GET', null, `?select=total_price&project_id=eq.${projectId}&deleted_at=is.null&limit=100`),
         API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc&limit=50`)
       ]);
       const project = projectRows[0];
       if (!project) { document.getElementById('project-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المشروع غير موجود</p>'; return; }
 
       const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const txExpenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-      const txConstr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+      const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
+      const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
       const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-      const procTotal = procs.reduce((s, p) => s + (+p.total_price || 0), 0);
-      const expenses = txExpenses + procTotal;
-      const constr = txConstr + procTotal;
       const supervision = Math.max(0, constr) * (project.supervision_percentage || 0) / 100;
       const balance = deposits - expenses - supervision;
 
