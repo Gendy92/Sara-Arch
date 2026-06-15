@@ -660,10 +660,10 @@ BEGIN
     (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS project_count,
     (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND status = 'active') AS active_project_count,
     (SELECT COUNT(*) FROM employees WHERE deleted_at IS NULL AND is_active = true) AS employee_count,
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_deposit','owner_deposit')), 0) AS total_income,
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_expense','office_expense')), 0) AS total_expense,
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_deposit','owner_deposit')), 0)
-      + COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('project_expense','office_expense')), 0) AS total_movement;
+    COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_deposit','owner_deposit')), 0) AS total_income,
+    COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','office_expense')), 0) AS total_expense,
+    COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_deposit','owner_deposit')), 0)
+      + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','office_expense')), 0) AS total_movement;
 END;
 $$ LANGUAGE plpgsql;
 
