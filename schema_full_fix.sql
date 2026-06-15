@@ -625,6 +625,8 @@ BEGIN
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
     EXECUTE format('DROP POLICY IF EXISTS "authenticated_all" ON %I', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "auth_restricted_%1$s" ON %1$I', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "auth_admin_modify_%1$s" ON %1$I', tbl);
 
     -- Check if table has created_by column
     SELECT EXISTS (
