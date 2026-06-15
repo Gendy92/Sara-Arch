@@ -11,6 +11,29 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks'];
 
+async function fetchAll(table) {
+  const pageSize = 1000;
+  let offset = 0;
+  let all = [];
+  while (true) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&limit=${pageSize}&offset=${offset}`, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Unexpected response');
+    all = all.concat(data);
+    if (data.length < pageSize) break;
+    offset += pageSize;
+    // Safety cap
+    if (offset > 1000000) break;
+  }
+  return all;
+}
+
 async function backup() {
   const fs = require('fs');
   const dir = `backups/${new Date().toISOString().slice(0,10)}`;
@@ -18,10 +41,7 @@ async function backup() {
 
   for (const table of tables) {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-      });
-      const data = await res.json();
+      const data = await fetchAll(table);
       fs.writeFileSync(`${dir}/${table}.json`, JSON.stringify(data, null, 2));
       console.log(`✅ ${table}: ${data.length} rows`);
     } catch (e) {
