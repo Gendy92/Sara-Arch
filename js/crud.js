@@ -1108,50 +1108,72 @@ const Crud = {
 
   // ─── CLIENT & PROJECT STATEMENTS / BUDGET / TASKS ───
   async clientStatement(clientId) {
-    const [client, txs, projects, procs] = await Promise.all([
+    const [client, projects, txs, procs] = await Promise.all([
       API.request('clients', 'GET', null, `?select=name&id=eq.${clientId}`),
-      API.request('transactions', 'GET', null, `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc&limit=200`),
-      API.request('projects', 'GET', null, `?select=id,name&client_id=eq.${clientId}&deleted_at=is.null`),
-      API.request('procurements', 'GET', null, `?select=*,project_id,item_name,vendor_name&deleted_at=is.null&order=date.desc&limit=200`)
+      API.request('projects', 'GET', null, `?select=id,name&client_id=eq.${clientId}&deleted_at=is.null&order=created_at.desc`),
+      API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`),
+      API.fetchAll('procurements', `?select=*,project_id,item_name,vendor_name&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`)
     ]);
-    const name = client[0]?.name || 'عميل';
-    const projectIds = new Set(projects.map(p => p.id));
-    const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]));
-    const clientProcs = procs.filter(p => projectIds.has(p.project_id));
+    const clientName = client[0]?.name || 'عميل';
 
-    const txData = txs.map((t, i) => ({
-      i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
-      project: t.projects?.name || t.project_name || '-',
-      description: t.description || '-', amount: +t.amount || 0,
-      isDeposit: t.type === 'project_deposit'
-    }));
-    const procData = clientProcs.map((p, i) => ({
-      i: txData.length + i + 1, date: p.date || '-', type: 'مشتريات',
-      project: projectMap[p.project_id] || p.project_name || '-',
-      description: `صنف: ${p.item_name || '-'} / مورد: ${p.vendor_name || '-'}`,
-      amount: +p.total_price || 0, isDeposit: false
-    }));
-    const allData = [...txData, ...procData];
-    const totalDep = allData.reduce((s, t) => s + (t.isDeposit ? t.amount : 0), 0);
-    const totalExp = allData.reduce((s, t) => s + (t.isDeposit ? 0 : t.amount), 0);
+    // Build per-project chapters (transactions + procurements)
+    const chapters = projects.map(p => {
+      const pTxs = txs.filter(t => String(t.project_id) === String(p.id));
+      const pProcs = procs.filter(pr => String(pr.project_id) === String(p.id));
+      const txRows = pTxs.map((t, i) => ({
+        i: i + 1, date: t.date || '-', type: App.fmtTxType(t.type),
+        desc: t.description || '-', amount: +t.amount || 0,
+        isDeposit: t.type === 'project_deposit'
+      }));
+      const procRows = pProcs.map((pr, i) => ({
+        i: txRows.length + i + 1, date: pr.date || '-', type: 'مشتريات',
+        desc: `صنف: ${pr.item_name || '-'} / مورد: ${pr.vendor_name || '-'}`,
+        amount: +pr.total_price || 0, isDeposit: false
+      }));
+      const rows = [...txRows, ...procRows];
+      const dep = rows.reduce((s, r) => s + (r.isDeposit ? r.amount : 0), 0);
+      const exp = rows.reduce((s, r) => s + (r.isDeposit ? 0 : r.amount), 0);
+      return { project: p, rows, dep, exp };
+    });
 
-    const rows = allData.map(t => [t.i, t.date, t.type, App.esc(t.project), App.esc(t.description), App.fmtMoney(t.amount)]);
-    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
-    </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+    const totalDep = chapters.reduce((s, c) => s + c.dep, 0);
+    const totalExp = chapters.reduce((s, c) => s + c.exp, 0);
+    const balance = totalDep - totalExp;
+
+    const kpi = (label, value, color) => `<div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">${label}</div><div class="kpi-value" style="color:${color}">${App.fmtMoney(value)}</div></div>`;
+    const clientSummary = `<h3 style="margin:0 0 12px">ملخص العميل: ${App.esc(clientName)}</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        ${kpi('إجمالي الإيداعات', totalDep, 'var(--green)')}
+        ${kpi('إجمالي المصروفات', totalExp, 'var(--red)')}
+        ${kpi('الرصيد', balance, 'var(--text)')}
+      </div>
+      <hr style="border-color:var(--border);margin:16px 0">`;
+
+    const chapterHtml = chapters.map(c => {
+      const rowsHtml = c.rows.length
+        ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], c.rows.map(r => [r.i, r.date, r.type, App.esc(r.desc), App.fmtMoney(r.amount)]))
+        : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      return `<div style="margin-bottom:24px">
+        <h4 style="margin:16px 0 8px;color:var(--gold)">📁 ${App.esc(c.project.name)}</h4>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+          ${kpi('إيداعات', c.dep, 'var(--green)')}
+          ${kpi('مصروفات', c.exp, 'var(--red)')}
+          ${kpi('رصيد', c.dep - c.exp, 'var(--text)')}
+        </div>
+        ${rowsHtml}
+      </div>`;
+    }).join('');
 
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
     const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm btn-secondary" onclick="Crud._exportClientStatement('${clientId}')">📥 تحميل Excel</button>
       <button class="btn btn-sm btn-secondary" onclick="Crud._printClientStatement('${clientId}')">🖨️ طباعة / PDF</button>
     </div>`;
-    this._clientStatementData = this._clientStatementData || {};
-    this._clientStatementData[clientId] = { txData: allData, totalDep, totalExp, name };
 
-    UI.openModal(`كشف حساب: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
+    this._clientStatementData = this._clientStatementData || {};
+    this._clientStatementData[clientId] = { clientName, chapters, totalDep, totalExp };
+
+    UI.openModal(`كشف حساب العميل: ${App.esc(clientName)}`, logoHtml + actionsHtml + clientSummary + chapterHtml, null);
   },
 
   _exportClientStatement(clientId) {
@@ -1160,15 +1182,21 @@ const Crud = {
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
     const sheet = [
-      ['كشف حساب عميل: ' + data.name],
-      ['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ'],
-      ...data.txData.map(t => [t.i, t.date, t.type, t.project, t.description, t.amount]),
-      ['', '', '', '', 'إجمالي الإيداعات', data.totalDep],
-      ['', '', '', '', 'إجمالي المصروفات', data.totalExp],
-      ['', '', '', '', 'الرصيد', data.totalDep - data.totalExp]
+      ['كشف حساب العميل: ' + data.clientName],
+      ['إجمالي الإيداعات', data.totalDep],
+      ['إجمالي المصروفات', data.totalExp],
+      ['الرصيد', data.totalDep - data.totalExp],
+      []
     ];
+    data.chapters.forEach(c => {
+      sheet.push(['المشروع: ' + c.project.name], ['إيداعات', c.dep], ['مصروفات', c.exp], ['رصيد', c.dep - c.exp]);
+      sheet.push(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ']);
+      c.rows.forEach(r => sheet.push([r.i, r.date, r.type, r.desc, r.amount]));
+      sheet.push([]);
+    });
+
     const ws = XLSX.utils.aoa_to_sheet(sheet);
-    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 14 }];
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب العميل');
@@ -1178,7 +1206,7 @@ const Crud = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `كشف-حساب-عميل-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.download = `كشف-حساب-عميل-${data.clientName}-${new Date().toISOString().slice(0,10)}.xlsx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1188,16 +1216,36 @@ const Crud = {
   _printClientStatement(clientId) {
     const data = this._clientStatementData?.[clientId];
     if (!data) { UI.toast('لا توجد بيانات للطباعة', 'error'); return; }
-    App.printReport(`كشف-حساب-عميل-${data.name}`);
+    App.printReport(`كشف-حساب-عميل-${data.clientName}`);
   },
 
   async projectStatement(projectId) {
     const [project, txs, procs] = await Promise.all([
-      API.request('projects', 'GET', null, `?select=name&id=eq.${projectId}&deleted_at=is.null`),
-      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`),
-      API.request('procurements', 'GET', null, `?select=*,vendor_name&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=200`)
+      API.request('projects', 'GET', null, `?select=name,client_id,client_name&id=eq.${projectId}&deleted_at=is.null`),
+      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`),
+      API.fetchAll('procurements', `?select=*,vendor_name&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
     ]);
-    const name = project[0]?.name || 'مشروع';
+    const p = project[0];
+    const name = p?.name || 'مشروع';
+    const clientId = p?.client_id || null;
+    const clientName = p?.client_name || '-';
+
+    // Client summary header across all client projects
+    let clientSummaryHtml = '';
+    let clientTotals = { dep: 0, exp: 0 };
+    if (clientId) {
+      const clientTxs = await API.fetchAll('transactions', `?select=amount,type&client_id=eq.${clientId}&deleted_at=is.null`);
+      clientTotals.dep = clientTxs.filter(t => ['project_deposit','income','deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      clientTotals.exp = clientTxs.filter(t => !['project_deposit','income','deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      clientSummaryHtml = `<h4 style="margin:0 0 8px">ملخص العميل: ${App.esc(clientName)} (كل المشاريع)</h4>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(clientTotals.dep)}</div></div>
+          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(clientTotals.exp)}</div></div>
+          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد العميل الإجمالي</div><div class="kpi-value">${App.fmtMoney(clientTotals.dep - clientTotals.exp)}</div></div>
+        </div>
+        <hr style="border-color:var(--border);margin:16px 0">`;
+    }
+
     let totalDep = 0, totalExp = 0;
     const rows = [];
     txs.forEach((t, i) => {
@@ -1207,16 +1255,17 @@ const Crud = {
       rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), App.fmtMoney(amt)]);
     });
     const procStart = rows.length;
-    procs.forEach((p, i) => {
-      const amt = +p.total_price || 0;
+    procs.forEach((pr, i) => {
+      const amt = +pr.total_price || 0;
       totalExp += amt;
-      rows.push([procStart + i + 1, p.date || '-', 'مشتريات', App.esc(`صنف: ${p.item_name || '-'} / مورد: ${p.vendor_name || '-'}`), App.fmtMoney(amt)]);
+      rows.push([procStart + i + 1, pr.date || '-', 'مشتريات', App.esc(`صنف: ${pr.item_name || '-'} / مورد: ${pr.vendor_name || '-'}`), App.fmtMoney(amt)]);
     });
-    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
-    </div>`;
+    const summary = `<h4 style="margin:0 0 8px">تفاصيل المشروع: ${App.esc(name)}</h4>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد المشروع</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
+      </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
 
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
@@ -1225,9 +1274,9 @@ const Crud = {
       <button class="btn btn-sm btn-secondary" onclick="Crud._printProjectStatement('${projectId}')">🖨️ طباعة / PDF</button>
     </div>`;
     this._projectStatementData = this._projectStatementData || {};
-    this._projectStatementData[projectId] = { rows, totalDep, totalExp, name };
+    this._projectStatementData[projectId] = { rows, totalDep, totalExp, name, clientName, clientTotals, hasClient: !!clientId };
 
-    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
+    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + clientSummaryHtml + summary + table, null);
   },
 
   _exportProjectStatement(projectId) {
@@ -1235,14 +1284,24 @@ const Crud = {
     if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
-    const sheet = [
-      ['كشف حساب مشروع: ' + data.name],
+    const sheet = [['كشف حساب مشروع: ' + data.name], []];
+    if (data.hasClient) {
+      sheet.push(
+        ['ملخص العميل: ' + data.clientName],
+        ['إجمالي إيداعات العميل (كل المشاريع)', data.clientTotals.dep],
+        ['إجمالي مصروفات العميل (كل المشاريع)', data.clientTotals.exp],
+        ['رصيد العميل الإجمالي', data.clientTotals.dep - data.clientTotals.exp],
+        []
+      );
+    }
+    sheet.push(
+      ['تفاصيل المشروع: ' + data.name],
       ['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'],
       ...data.rows.map((row, i) => [i+1, row[1], row[2], row[3], row[4]]),
       ['', '', '', 'إجمالي الإيداعات', data.totalDep],
       ['', '', '', 'إجمالي المصروفات', data.totalExp],
       ['', '', '', 'الرصيد', data.totalDep - data.totalExp]
-    ];
+    );
     const ws = XLSX.utils.aoa_to_sheet(sheet);
     ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }];
 
@@ -1585,6 +1644,7 @@ const Crud = {
     const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
       ${Auth.can('vendors', 'add') ? `<button class="btn btn-sm btn-primary" onclick="Crud.addProcurement('${vendorId}')">+ إضافة مشتريات</button>` : ''}
       <button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorPurchases('${vendorId}')">📥 تحميل Excel</button>
+      <button class="btn btn-sm btn-secondary" onclick="Crud._printVendorPurchases('${vendorId}')">🖨️ طباعة / PDF</button>
     </div>`;
     this._vendorPurchasesData = this._vendorPurchasesData || {};
     this._vendorPurchasesData[vendorId] = { procData, total, totalPaid, netBalance, name };
@@ -1619,6 +1679,12 @@ const Crud = {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  },
+
+  _printVendorPurchases(vendorId) {
+    const data = this._vendorPurchasesData?.[vendorId];
+    if (!data) { UI.toast('لا توجد بيانات للطباعة', 'error'); return; }
+    App.printReport(`مشتريات-مورد-${data.name}`);
   },
 
   // ─── EMPLOYEE CUSTODY & ATTENDANCE ───
