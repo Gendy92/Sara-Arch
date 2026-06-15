@@ -82,9 +82,8 @@ Object.assign(App, {
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
-      const [[kpi], monthly, sectors, incomeExpense, vendorBalances, clientBalances] = await Promise.all([
+      const [[kpi], sectors, incomeExpense, vendorBalances, clientBalances] = await Promise.all([
         API.rpc('dashboard_kpis'),
-        API.rpc('dashboard_monthly_revenue_expenses', { months_back: 6 }),
         API.rpc('dashboard_office_expense_sectors'),
         API.rpc('dashboard_office_income_expense_sectors'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
@@ -97,26 +96,6 @@ Object.assign(App, {
         <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${k.active_project_count || 0}</div></div>
         <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${k.employee_count || 0}</div></div>
         <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(k.total_movement || 0)}</div></div>`;
-      // ─── Monthly Office Revenue vs Expenses Chart (last 6 months) ───
-      const months = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(); d.setMonth(d.getMonth() - i);
-        months.push({ key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleString('ar-EG', { month: 'short' }) });
-      }
-      const monthlyRev = {}; const monthlyExp = {};
-      months.forEach(m => { monthlyRev[m.key] = 0; monthlyExp[m.key] = 0; });
-      (monthly || []).forEach(r => {
-        if (!r.month_key) return;
-        monthlyRev[r.month_key] = +r.revenue || 0;
-        monthlyExp[r.month_key] = +r.expense || 0;
-      });
-      const maxVal = Math.max(...months.map(m => Math.max(monthlyRev[m.key], monthlyExp[m.key])), 1);
-      const barChartHtml = `<div class="bar-chart">${months.map(m => {
-        const rh = Math.round((monthlyRev[m.key] / maxVal) * 120);
-        const eh = Math.round((monthlyExp[m.key] / maxVal) * 120);
-        return `<div class="bar-chart-group"><div class="bar-chart-bars"><div class="bar-chart-bar revenue" style="height:${rh}px" title="إيرادات: ${this.fmtMoney(monthlyRev[m.key])}"></div><div class="bar-chart-bar expense" style="height:${eh}px" title="مصروفات: ${this.fmtMoney(monthlyExp[m.key])}"></div></div><div class="bar-chart-label">${m.label}</div></div>`;
-      }).join('')}</div><div class="bar-chart-legend"><span><span class="dot" style="background:var(--green)"></span> إيرادات المكتب</span><span><span class="dot" style="background:var(--red)"></span> مصروفات المكتب</span></div>`;
-      document.getElementById('monthly-chart').innerHTML = barChartHtml;
       // ─── Office Expense Breakdown by Sector (Pie Chart) ───
       const sectorRows = (sectors || []).map(s => [s.sector || 'غير مصنف', +s.amount || 0]).sort((a, b) => b[1] - a[1]);
       document.getElementById('expense-chart').innerHTML = this._renderPie(sectorRows, 160, 'لا توجد مصروفات مكتبية');
