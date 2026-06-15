@@ -488,6 +488,14 @@ DROP POLICY IF EXISTS "authenticated_all" ON profiles; CREATE POLICY "authentica
 DROP POLICY IF EXISTS "authenticated_all" ON audit_logs; CREATE POLICY "authenticated_all" ON audit_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON user_permissions; CREATE POLICY "authenticated_all" ON user_permissions FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+-- Attendance & salary modules are disabled for now; drop any restrictive policies from previous runs
+DROP POLICY IF EXISTS "auth_restricted_attendance_records" ON attendance_records;
+DROP POLICY IF EXISTS "auth_admin_modify_attendance_records" ON attendance_records;
+DROP POLICY IF EXISTS "auth_restricted_payroll_records" ON payroll_records;
+DROP POLICY IF EXISTS "auth_admin_modify_payroll_records" ON payroll_records;
+DROP POLICY IF EXISTS "auth_restricted_employee_salary_history" ON employee_salary_history;
+DROP POLICY IF EXISTS "auth_admin_modify_employee_salary_history" ON employee_salary_history;
+
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 7: Seed Data                                       │
 -- └─────────────────────────────────────────────────────────┘
@@ -610,8 +618,8 @@ BEGIN
     WHERE schemaname = 'public'
       AND tablename IN (
         'clients','projects','employees','vendors','items','sectors','transactions',
-        'procurements','employee_transactions','employee_salary_history','custody_records',
-        'custody_expenses','attendance_records','payroll_records','work_sections',
+        'procurements','employee_transactions','custody_records',
+        'custody_expenses','work_sections',
         'work_items','profiles','audit_logs','user_permissions','project_tasks'
       )
   LOOP
