@@ -45,6 +45,12 @@ Object.assign(App, {
     return map;
   },
 
+  _perfLog(label, start) {
+    if (typeof PERF_LOG !== 'undefined' && PERF_LOG) {
+      console.log(`[Perf] ${label}: ${(performance.now() - start).toFixed(1)}ms`);
+    }
+  },
+
   _renderPie(rows, size = 160, emptyMsg = 'لا توجد بيانات') {
     if (!rows || !rows.length) return `<p style="color:var(--text3)">${emptyMsg}</p>`;
     const total = rows.reduce((s, r) => s + (+r[1] || 0), 0);
@@ -73,6 +79,7 @@ Object.assign(App, {
 
   // ─── DATA LOADING ───
   async loadDashboard() {
+    const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
       const [[kpi], monthly, sectors, incomeExpense, vendorBalances, clientBalances] = await Promise.all([
@@ -134,6 +141,7 @@ Object.assign(App, {
       document.getElementById('dash-clients').innerHTML = clientRows.length
         ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientRows)
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
+      this._perfLog('loadDashboard', t0);
     } catch (e) {
       console.error(e);
       UI.toast('Dashboard load failed: ' + e.message, 'error');

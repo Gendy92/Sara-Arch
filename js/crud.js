@@ -1889,10 +1889,17 @@ const Crud = {
     ];
     UI.openModal('إضافة حضور', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
+      const status = fd.get('status') || 'present';
+      const validStatuses = ['present','absent','late','half_day','leave'];
+      if (!validStatuses.includes(status)) { UI.toast('حالة الحضور غير صالحة', 'error'); return; }
+      const date = fd.get('date');
+      if (!date) { UI.toast('التاريخ مطلوب', 'error'); return; }
+      const existing = await API.request('attendance_records', 'GET', null, `?select=id&employee_id=eq.${employeeId}&date=eq.${date}&deleted_at=is.null`);
+      if (existing.length) { UI.toast('يوجد سجل حضور لهذا الموظف في نفس التاريخ', 'error'); return; }
       await this.save('attendance_records', {
         employee_id: employeeId,
-        date: fd.get('date'),
-        status: fd.get('status') || 'present',
+        date,
+        status,
         check_in: fd.get('check_in') || null,
         check_out: fd.get('check_out') || null,
         notes: fd.get('notes') || null
@@ -1914,9 +1921,16 @@ const Crud = {
     ];
     UI.openModal('تعديل حضور', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
       const fd = new FormData(form);
+      const status = fd.get('status') || 'present';
+      const validStatuses = ['present','absent','late','half_day','leave'];
+      if (!validStatuses.includes(status)) { UI.toast('حالة الحضور غير صالحة', 'error'); return; }
+      const date = fd.get('date');
+      if (!date) { UI.toast('التاريخ مطلوب', 'error'); return; }
+      const existing = await API.request('attendance_records', 'GET', null, `?select=id&employee_id=eq.${rows[0].employee_id}&date=eq.${date}&deleted_at=is.null&id=neq.${id}`);
+      if (existing.length) { UI.toast('يوجد سجل حضور لهذا الموظف في نفس التاريخ', 'error'); return; }
       await this.save('attendance_records', {
-        date: fd.get('date'),
-        status: fd.get('status') || 'present',
+        date,
+        status,
         check_in: fd.get('check_in') || null,
         check_out: fd.get('check_out') || null,
         notes: fd.get('notes') || null

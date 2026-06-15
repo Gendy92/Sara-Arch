@@ -228,6 +228,10 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   deleted_at TIMESTAMPTZ
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_employee_date
+  ON attendance_records (employee_id, date)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS payroll_records (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   employee_id UUID REFERENCES employees(id),

@@ -16,6 +16,9 @@ const SUPABASE_URL = localCfg.SUPABASE_URL || 'https://tvjkctttcijymqvaetsv.supa
 // Anon key is provided by config.local.js so it can be rotated without editing source.
 const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
 
+// Debug / performance logging toggle.
+const PERF_LOG = localCfg.PERF_LOG || false;
+
 // Admin operations (authListUsers, authCreateUser) historically required a service_role key.
 // The service-role key MUST NOT be stored in the browser or in source control.
 // This constant is intentionally left empty; admin user creation falls back to public signup
