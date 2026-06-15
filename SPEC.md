@@ -2,7 +2,7 @@
 
 **Version:** 1.2  
 **Date:** 2026-06-15  
-**Status:** Draft — Phases 1–2 complete; Phases 3–5 in progress  
+**Status:** Draft — Phases 1–5 implemented; pending final deployment and acceptance sign-off  
 **Author:** Project documentation analysis  
 
 ---
@@ -188,10 +188,9 @@ The following screens are restricted to administrators regardless of `user_permi
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | DASH-001 | The dashboard shall display KPI cards: total clients, total projects, active projects. | Must |
-| DASH-002 | The dashboard shall display a monthly (project) revenue vs. expense bar chart. | Should |
-| DASH-003 | The dashboard shall display an office expense pie chart grouped by sector. | Should |
-| DASH-004 | The dashboard shall list top vendors with non-zero balances. | Should |
-| DASH-005 | The dashboard shall list active clients with non-zero balances. | Should |
+| DASH-002 | The dashboard shall display a pie chart of total income vs. total expenses. | Should |
+| DASH-003 | The dashboard shall list top vendors with non-zero balances. | Should |
+| DASH-004 | The dashboard shall list active clients with non-zero balances. | Should |
 | DASH-006 | Dashboard calculations shall use server-side aggregation where possible to avoid loading unbounded datasets. | Should |
 
 ### 6.3 Clients & Projects
@@ -591,7 +590,7 @@ The database shall contain the following tables:
 
 ## 11. Implementation Phases
 
-### Phase 3 — Procurement → Project Expense Linkage
+### Phase 3 — Procurement → Project Expense Linkage ✅ Complete
 
 | ID | Task | Acceptance Criteria |
 |----|------|---------------------|
@@ -600,7 +599,7 @@ The database shall contain the following tables:
 | P3-3 | On procurement update, sync the linked transaction amount/status. | Changing procurement `total_price` or `paid_amount` updates the linked transaction; deleting procurement soft-deletes the transaction. |
 | P3-4 | Update statements and balances to use linked transactions consistently. | Client/project statements and vendor balances reflect procurement totals via transactions without double counting. |
 
-### Phase 4 — Security, UX Polish & Validation
+### Phase 4 — Security, UX Polish & Validation ✅ Complete
 
 | ID | Task | Acceptance Criteria |
 |----|------|---------------------|
@@ -609,7 +608,7 @@ The database shall contain the following tables:
 | P4-3 | Add attendance record validation. | Attendance save rejects duplicate `employee_id` + `date` combinations and invalid `status` values. |
 | P4-4 | Add client-side performance logs toggle. | A `debug` flag in `config.js` optionally logs load timings to the console. |
 
-### Phase 5 — Acceptance Testing
+### Phase 5 — Acceptance Testing ✅ Checklist Created
 
 | ID | Task | Acceptance Criteria |
 |----|------|---------------------|
