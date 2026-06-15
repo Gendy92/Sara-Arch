@@ -2,7 +2,7 @@
 
 **Version:** 1.2  
 **Date:** 2026-06-15  
-**Status:** Draft — Phase 2 complete, pending final approval  
+**Status:** Draft — Phases 1–2 complete; Phases 3–5 in progress  
 **Author:** Project documentation analysis  
 
 ---
@@ -19,7 +19,8 @@
 8. [Database Requirements](#8-database-requirements)
 9. [Future Modules](#9-future-modules)
 10. [Acceptance Criteria](#10-acceptance-criteria)
-11. [Glossary](#11-glossary)
+11. [Implementation Phases](#11-implementation-phases)
+12. [Glossary](#12-glossary)
 
 ---
 
@@ -118,7 +119,7 @@ The statement redesign from the `Claude/` folder has been merged and adapted in 
 - Vendor purchases screen now supports print/PDF in addition to Excel.
 - `fetchAll()` pagination was already implemented in v163.
 
-Remaining pending design work: procurement-to-transaction auto-linkage (Phase 3) and CSP hardening (Phase 4).
+Remaining pending design work: procurement-to-transaction auto-linkage (Phase 3), CSP hardening and UX polish (Phase 4), and acceptance testing (Phase 5).
 
 ### 3.4 Baseline Assumptions
 
@@ -588,7 +589,36 @@ The database shall contain the following tables:
 
 ---
 
-## 11. Glossary
+## 11. Implementation Phases
+
+### Phase 3 — Procurement → Project Expense Linkage
+
+| ID | Task | Acceptance Criteria |
+|----|------|---------------------|
+| P3-1 | Add `linked_transaction_id` column to `procurements` table. | A procurement can reference the transaction created from it. |
+| P3-2 | On procurement save, auto-insert a `project_expense` transaction if the procurement belongs to a project. | `transactions` row appears with `type='project_expense'`, `project_id`, `vendor_id`, `amount=total_price`, `expense_category='merchandise'`, and `linked_procurement_id=procurement.id`. |
+| P3-3 | On procurement update, sync the linked transaction amount/status. | Changing procurement `total_price` or `paid_amount` updates the linked transaction; deleting procurement soft-deletes the transaction. |
+| P3-4 | Update statements and balances to use linked transactions consistently. | Client/project statements and vendor balances reflect procurement totals via transactions without double counting. |
+
+### Phase 4 — Security, UX Polish & Validation
+
+| ID | Task | Acceptance Criteria |
+|----|------|---------------------|
+| P4-1 | Add Content-Security-Policy (CSP) meta tag to `index.html`. | `Content-Security-Policy` meta tag is present and allows required sources (`self`, Supabase, fonts, inline styles). |
+| P4-2 | Add empty-state messages to all major lists. | Every list/grid shows a friendly Arabic empty state instead of blank space when there is no data. |
+| P4-3 | Add attendance record validation. | Attendance save rejects duplicate `employee_id` + `date` combinations and invalid `status` values. |
+| P4-4 | Add client-side performance logs toggle. | A `debug` flag in `config.js` optionally logs load timings to the console. |
+
+### Phase 5 — Acceptance Testing
+
+| ID | Task | Acceptance Criteria |
+|----|------|---------------------|
+| P5-1 | Create `tests/acceptance-checklist.md`. | Documented step-by-step checklist covering login, dashboard, clients, projects, transactions, office, vendors, employees, master data, users, and backup. |
+| P5-2 | Execute checklist against deployed `dev.2` build. | Each checklist item is marked pass/fail with notes. |
+| P5-3 | Record and triage defects. | Any failures are logged as issues with severity and owner. |
+| P5-4 | Merge `dev.2` to `main` after sign-off. | `main` is fast-forwarded to the signed-off `dev.2` commit. |
+
+## 12. Glossary
 
 | Term | Definition |
 |------|------------|
