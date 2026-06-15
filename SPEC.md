@@ -2,7 +2,7 @@
 
 **Version:** 1.2  
 **Date:** 2026-06-15  
-**Status:** Draft — Phase 1 updated, pending final approval  
+**Status:** Draft — Phase 2 complete, pending final approval  
 **Author:** Project documentation analysis  
 
 ---
@@ -82,7 +82,7 @@ Sara-Arch aims to provide a single, centralized, easy-to-use financial and opera
 
 ### 3.1 Runtime Version
 
-The application is currently at **runtime version v163** with active branch `dev.2`. The `main` branch has been fast-forwarded to match `dev.2`.
+The application is currently at **runtime version v164** with active branch `dev.2`. The `main` branch is kept in sync via fast-forward merges.
 
 ### 3.2 High-Impact Issues (Resolved in v163)
 
@@ -105,20 +105,20 @@ The following issues were resolved in the v163 development cycle. They are kept 
 
 | # | Issue | Impact | Planned Phase |
 |---|-------|--------|---------------|
-| A | Client/project/vendor statement layout redesign (summary header + print/PDF) is in `Claude/` and not merged. | Statements do not yet match the exact acceptance criteria. | Phase 2 |
+| A | ~~Client/project/vendor statement layout redesign (summary header + print/PDF) is in `Claude/` and not merged.~~ | ✅ Resolved in v164. | — |
 | B | Procurement paid amount is not reflected as a project expense transaction. | Vendor/project balances may diverge from transaction ledger. | Phase 3 |
 | C | No Content-Security-Policy meta tag. | XSS mitigation relies only on escaping. | Phase 4 |
 
 ### 3.3 Pending Design Updates
 
-The `Claude/` folder contains a redesign of statements and the API layer that addresses some of the issues above. Key pending changes include:
+The statement redesign from the `Claude/` folder has been merged and adapted in v164:
 
-- A `fetchAll()` helper to paginate large queries automatically.
-- Redesigned `projectStatement` with a client summary header plus project-only detail table.
-- Print/PDF buttons for client and project statements.
-- Consistent entity scoping for client, project, and vendor statements.
+- `clientStatement` now shows a client-level summary followed by per-project chapters.
+- `projectStatement` starts with a client summary header (all client projects) then project-specific details.
+- Vendor purchases screen now supports print/PDF in addition to Excel.
+- `fetchAll()` pagination was already implemented in v163.
 
-These changes must be reviewed, approved, and reflected in the specification before implementation.
+Remaining pending design work: procurement-to-transaction auto-linkage (Phase 3) and CSP hardening (Phase 4).
 
 ### 3.4 Baseline Assumptions
 
