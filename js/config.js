@@ -14,7 +14,8 @@ const localCfg = (typeof window !== 'undefined' && window.SARA_LOCAL_CONFIG) ? w
 const SUPABASE_URL = localCfg.SUPABASE_URL || 'https://tvjkctttcijymqvaetsv.supabase.co';
 
 // Anon key is provided by config.local.js so it can be rotated without editing source.
-const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
+// Fallback uses the project's publishable anon key (safe for public client apps).
+const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'sb_publishable_WMCxuBjVG8G_UpW5B6x-3A_0AbytzmU';
 
 // Debug / performance logging toggle.
 const PERF_LOG = localCfg.PERF_LOG || false;
