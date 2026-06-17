@@ -931,12 +931,24 @@ const Crud = {
               user_password: row.password,
               user_meta: { name: row.name, username: row.username, role: row.role || 'user' }
             });
-            if (result?.id) userId = result.id;
+            if (result?.id) {
+              userId = result.id;
+              console.log('[addUser] created via RPC:', userEmail);
+            } else {
+              throw new Error('RPC returned no user id');
+            }
           } catch (rpcErr) {
-            console.log('[addUser] RPC not available, falling back to public signup:', rpcErr.message);
-            // Fallback to public signup (requires Confirm email disabled to avoid rate limits).
-            const authData = await API.authSignUp(userEmail, row.password, { name: row.name, username: row.username, role: row.role || 'user' });
-            if (authData.user?.id) userId = authData.user.id;
+            const msg = rpcErr.message || '';
+            const isMissingFunction = /(could not find function|function .* does not exist|404)/i.test(msg);
+            if (isMissingFunction) {
+              console.log('[addUser] RPC missing, falling back to public signup');
+              const authData = await API.authSignUp(userEmail, row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+              if (authData.user?.id) userId = authData.user.id;
+            } else {
+              // Surface the real RPC error instead of silently falling back to email rate limits.
+              console.error('[addUser] RPC failed:', rpcErr);
+              throw new Error('فشل إنشاء المستخدم: ' + (msg || 'غير معروف'));
+            }
           }
           if (userId) {
             await API.request('profiles', 'POST', { id: userId, name: row.name, username: row.username, role: row.role || 'user' });
