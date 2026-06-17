@@ -537,6 +537,13 @@ INSERT INTO sectors (name, description) VALUES
   ('نثرية', 'مصروفات نثرية ومتنوعة')
 ON CONFLICT DO NOTHING;
 
+-- Deduplicate sectors by name (keep the oldest record) and enforce uniqueness
+DELETE FROM sectors
+WHERE id NOT IN (
+  SELECT MIN(id) FROM sectors GROUP BY LOWER(name)
+);
+ALTER TABLE sectors ADD CONSTRAINT IF NOT EXISTS sectors_name_unique UNIQUE (name);
+
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 8: Refresh PostgREST Schema Cache                  │
 -- └─────────────────────────────────────────────────────────┘
