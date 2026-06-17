@@ -1,8 +1,8 @@
 # Sara-Arch — Product Specification Document (SPEC)
 
-**Version:** 1.2  
-**Date:** 2026-06-15  
-**Status:** Draft — Phases 1–5 implemented; pending final deployment and acceptance sign-off  
+**Version:** 2.0  
+**Date:** 2026-06-17  
+**Status:** Draft — Restructured into chapters; design, layout, and screen-relations chapters added  
 **Author:** Project documentation analysis  
 
 ---
@@ -20,7 +20,10 @@
 9. [Future Modules](#9-future-modules)
 10. [Acceptance Criteria](#10-acceptance-criteria)
 11. [Implementation Phases](#11-implementation-phases)
-12. [Glossary](#12-glossary)
+12. [UI/UX Design & Layout](#12-uiux-design--layout)
+13. [Screen Relations & Navigation](#13-screen-relations--navigation)
+14. [Known UI Issues & Improvement Targets](#14-known-ui-issues--improvement-targets)
+15. [Glossary](#15-glossary)
 
 ---
 
@@ -617,7 +620,116 @@ The database shall contain the following tables:
 | P5-3 | Record and triage defects. | Any failures are logged as issues with severity and owner. |
 | P5-4 | Merge `dev.2` to `main` after sign-off. | `main` is fast-forwarded to the signed-off `dev.2` commit. |
 
-## 12. Glossary
+## 12. UI/UX Design & Layout
+
+### 12.1 Design Principles
+
+- **Right-to-left (RTL):** The entire interface is built for Arabic users; layout, tables, and modals flow from right to left.
+- **Dark-first theme:** The default theme uses a dark palette (`#3d2e22` primary, warm grays, gold accents) to reduce eye strain in office environments.
+- **Card-based layout:** Every screen uses cards, KPI grids, and tables to group related information.
+- **Responsive grids:** `content-grid` uses CSS `auto-fit`/`minmax` so cards reflow on smaller screens.
+
+### 12.2 Typography & Spacing
+
+- Primary Arabic font stack with system fallbacks.
+- Consistent padding inside cards (`16px`–`20px`).
+- Tables use `13px` font, `12px`–`14px` cell padding, and subtle row separators.
+- KPI values are large and bold; labels are small and muted.
+
+### 12.3 Color Semantics
+
+| Element | Color | Meaning |
+|---------|-------|---------|
+| Income / deposits | Green | Positive cash flow |
+| Expenses / dues | Red | Outflow or payable |
+| Warnings / attention | Gold / Orange | Needs review |
+| Neutral text | Light gray | Secondary information |
+
+### 12.4 Entry Pop-ups / Modals
+
+Current modal implementation uses a centered overlay with a fixed max-width and scrollable form.
+
+**Owner feedback:** The design and size of entry pop-ups are not satisfactory.
+
+**Target improvements:**
+- Larger, more spacious modals on desktop (up to `720px`–`900px` max-width).
+- Sticky modal header/title and footer actions so they remain visible while scrolling.
+- Better field grouping with visual separators and section labels.
+- Consistent action button placement: primary action on the left, cancel/close on the right (RTL).
+- Improve mobile behavior: full-screen modal or bottom sheet on narrow screens.
+
+### 12.5 Tables & Lists
+
+- Tables should be responsive with horizontal scroll only when necessary.
+- Empty states must show a friendly Arabic message and an add action when permissions allow.
+- Pagination controls are centered below each paginated table.
+
+### 12.6 Icons & Badges
+
+- Use emojis consistently for quick visual scanning.
+- Status badges use color-coded labels (`badge-green`, `badge-red`, `badge-gold`, `badge-gray`).
+
+---
+
+## 13. Screen Relations & Navigation
+
+### 13.1 Navigation Model
+
+The app uses a single-page application (SPA) model with a persistent side navigation menu and dynamic screen loading.
+
+```
+┌─────────────────────────────────────┐
+│  Side Nav  │  Main Content Area     │
+│  (screens) │  (cards, tables, KPIs) │
+└─────────────────────────────────────┘
+```
+
+### 13.2 Screen-to-Screen Relations
+
+| From Screen | Action | Goes To |
+|-------------|--------|---------|
+| **Dashboard** | Click client balance | Client statement modal |
+| **Dashboard** | Click vendor balance | Vendor statement / purchases |
+| **Clients** | Click client name | Client detail (projects list) |
+| **Clients** | Click project name | Project detail |
+| **Clients** | Click "كشف حساب" | Client statement modal |
+| **Projects** | Click project | Project detail |
+| **Project Detail** | Click "كشف حساب" | Project statement modal |
+| **Project Detail** | Click "ميزانية" | Project budget modal |
+| **Project Detail** | Click "مهام" | Project tasks modal |
+| **Vendors** | Click vendor name | Vendor detail |
+| **Vendor Detail** | Click "كشف حساب" | Vendor statement modal |
+| **Vendor Detail** | Click "مشتريات" | Vendor purchases modal |
+| **Employees** | Click "الحضور" | Attendance modal |
+| **Employees** | Click "العهدة" | Custody modal |
+| **Master Data** | Click actions | Edit modal for sector/item/etc. |
+
+### 13.3 Modal vs. Full Page
+
+- **Full page:** Dashboard, Clients, Projects, Vendors, Employees, Master Data, Users, Audit, Backup.
+- **Modal:** Statements, budgets, tasks, attendance, custody, add/edit forms.
+- **Target:** Reduce modal overcrowding by moving multi-section forms (e.g., procurement, payroll) to full-page overlays or step wizards.
+
+### 13.4 Deep Linking
+
+- Every screen has a hash route (`#/dashboard`, `#/clients`, `#/project?projectId=...`).
+- Refreshing a deep link reloads the app and restores the screen state from `sessionStorage` after login.
+
+---
+
+## 14. Known UI Issues & Improvement Targets
+
+| # | Issue | Location | Target Fix |
+|---|-------|----------|------------|
+| 1 | Entry pop-ups feel cramped and visually dated. | All add/edit modals | Redesign per Section 12.4 |
+| 2 | Some tables lack horizontal scroll hints on mobile. | Clients, Vendors, Transactions | Add `overflow-x: auto` and scroll shadow |
+| 3 | Long dropdowns (projects, vendors) are hard to scan. | Procurement, Transactions | Add search/filter inside selects |
+| 4 | Modal stacking can trap the user (no breadcrumbs). | Statements inside vendor detail | Use full-page overlays or breadcrumb trail |
+| 5 | Date pickers and time inputs are unstyled browser defaults. | Attendance, transactions | Add consistent styled inputs |
+
+---
+
+## 15. Glossary
 
 | Term | Definition |
 |------|------------|
