@@ -1,12 +1,29 @@
 # Sara Arch — Changelog
 
-> **Current version:** v162  
+> **Current version:** v172  
 > **Branch:** `dev.2`  
-> **Last updated:** 2026-06-15
+> **Last updated:** 2026-06-17
 
 ---
 
-## Version 162 (Current)
+## Version 172 (Current)
+
+### Added
+- Server-side user creation via `admin_create_auth_user` Postgres function; no service-role key in the browser.
+- Username-to-email mapping with `@gendy92.github.io` domain and legacy `@local` fallback.
+- Procurement form section grouping (`التعريف`, `القيمة`, `التفاصيل`).
+- `LOGIC_SPEC.md` and generated `LOGIC_SPEC-v1.xlsx` accounting reference workbook.
+
+### Changed
+- Modal redesign: sticky header/footer, scrollable body, RTL actions, mobile bottom-sheet.
+- Client/project balances now subtract supervision consistently across dashboard, lists, and detail views.
+- Overpayment validation rejects `paid_amount > amount` for transactions and `paid_amount > total_price` for procurements.
+- `schema_full_fix.sql` made idempotent with updated dashboard RPC signatures and deduplicated sectors.
+- Documentation (`README.md`, `DOCUMENTATION.md`) synchronized with auth, Pages Actions, and backup secrets.
+
+---
+
+## Version 162
 
 ### Added
 - Clickable client, project, and vendor detail views with deep summary cards.

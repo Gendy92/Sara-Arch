@@ -49,8 +49,9 @@ The following screens are **admin-only** regardless of `user_permissions`:
 ### 3.1 Login & Authentication
 
 - Users log in with a **username** and password.
-- The username is mapped internally to `user@local` for Supabase Auth.
-- JWT tokens are stored in `localStorage`.
+- The username is mapped internally to a valid email (`username@gendy92.github.io`) for Supabase Auth, with a legacy `@local` fallback for old accounts.
+- In **Authentication → Settings**, keep **Email provider** enabled but turn **Confirm email** off so logins work without confirmation loops.
+- JWT tokens are stored in `sessionStorage` (tab-scoped).
 - After login, the app loads the user's `profile` and permissions.
 
 ### 3.2 Dashboard (الرئيسية)
@@ -135,7 +136,7 @@ Additional fields: `expense_category` (`construction`/`design`), `payment_term` 
 
 Admin gateway containing:
 
-- **Users** — list Supabase users and profiles; add/edit users.
+- **Users** — list Supabase users and profiles; add/edit users through the server-side `admin_create_auth_user` Postgres function so no service-role key is exposed in the browser.
 - **Permissions** — configure per-user, per-screen access.
 - **Audit Log** — last 100 INSERT/UPDATE/DELETE records.
 - **Backup** — export all tables as JSON into a ZIP file.

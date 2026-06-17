@@ -20,10 +20,10 @@ const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'sb_publishable_WMCxuBjV
 // Debug / performance logging toggle.
 const PERF_LOG = localCfg.PERF_LOG || false;
 
-// Admin operations (authListUsers, authCreateUser) historically required a service_role key.
+// Admin operations (user creation) are handled server-side by the
+// admin_create_auth_user() Postgres function (SECURITY DEFINER).
 // The service-role key MUST NOT be stored in the browser or in source control.
-// This constant is intentionally left empty; admin user creation falls back to public signup
-// or must be implemented via a secure backend/Edge Function.
+// This constant is intentionally left empty.
 const SUPABASE_SERVICE_KEY = '';
 
 // Convenience check so the app fails fast if the anon key is not configured.

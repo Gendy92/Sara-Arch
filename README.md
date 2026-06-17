@@ -83,16 +83,11 @@ cd Sara-Arch
 
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard) and create a new project.
 2. Open the **SQL Editor**.
-3. Run the schema files in the following order:
+3. Apply the canonical schema. Open the SQL Editor and run:
    ```text
-   schema.sql
    schema_full_fix.sql
-   migration_v109.sql
-   migration_v119_drop_tax.sql
-   migration_v130_fix_transactions.sql
-   import_work_sections_items.sql
-   cleanup_duplicate_master_data.sql   -- if needed
    ```
+   This file is idempotent and includes all tables, RLS policies, triggers, dashboard functions, and the `admin_create_auth_user` helper. Apply any additional `migration_v*.sql` files only if you are upgrading from an earlier version.
 4. Go to **Authentication → Settings** and note your **Project URL** and **Anon Key**.
 
 ### 3. Configure the frontend
@@ -110,7 +105,7 @@ cd Sara-Arch
    ```
 3. `js/config.local.js` is gitignored and will override the placeholders in `js/config.js`.
 
-> **Security note:** Do not commit Supabase keys to source control. The app does not store service-role keys in the browser; admin user operations use public signup. Rotate your keys if they were ever exposed.
+> **Security note:** Do not commit Supabase service-role keys to source control. Admin user creation is handled server-side by the `admin_create_auth_user` Postgres function (SECURITY DEFINER) so no service key is needed in the browser. The anon key can be rotated by updating `js/config.local.js` or the `SUPABASE_ANON_KEY` GitHub secret.
 
 ### 4. Run locally
 
@@ -130,13 +125,21 @@ Then open: http://localhost:8000
 
 ### 5. Create the first admin user
 
-1. Open the app.
-2. Go to **تسجيل مستخدم جديد** (Register).
-3. Register the first user; by default, newly registered users receive the `user` role.
-4. In Supabase SQL Editor, update the role to `admin`:
+Because the app maps usernames to internal email addresses, the first admin must be created directly in Supabase or promoted via SQL:
+
+1. In the Supabase SQL Editor run:
+   ```sql
+   SELECT admin_create_auth_user(
+     'admin@gendy92.github.io',
+     'your-secure-password',
+     '{"name":"المشرف","username":"admin","role":"admin"}'::jsonb
+   );
+   ```
+2. Or register a user from the app and then promote the role:
    ```sql
    UPDATE profiles SET role = 'admin' WHERE username = 'your_username';
    ```
+3. In **Authentication → Settings**, leave **Email provider** enabled but turn **Confirm email** off so the username/password login works without confirmation loops.
 
 ---
 
@@ -146,9 +149,9 @@ Then open: http://localhost:8000
 
 1. Push the repository to GitHub.
 2. Go to **Settings → Pages**.
-3. Select the source branch (usually `main`).
-4. GitHub will deploy to `https://<username>.github.io/<repo>/`.
-5. Ensure `js/config.local.js` is created on the deployment target with real credentials (do not commit it).
+3. Under **Build and deployment → Source**, select **GitHub Actions** (not a branch).
+4. The `.github/workflows/pages.yml` workflow will build and deploy on every push to `main`.
+5. Ensure the `SUPABASE_ANON_KEY` repository secret is set (Settings → Secrets and variables → Actions). The workflow creates `js/config.local.js` at deploy time; do not commit that file.
 
 ### Automatic Backups
 
@@ -159,11 +162,12 @@ The repository includes `.github/workflows/backup.yml`:
 - Commits the backup to the repository.
 - Manual trigger: **Actions → Daily Database Backup → Run workflow**.
 
-To enable it, add `SUPABASE_SERVICE_ROLE_KEY` as a GitHub repository secret:
+To enable it, add these GitHub repository secrets under **Settings → Secrets and variables → Actions**:
 
-1. Go to **Settings → Secrets and variables → Actions**.
-2. Add a new repository secret named `SUPABASE_SERVICE_ROLE_KEY`.
-3. The workflow in `.github/workflows/backup.yml` will use it.
+1. `SUPABASE_URL` — your Supabase project URL (e.g. `https://tvjkctttcijymqvaetsv.supabase.co`).
+2. `SUPABASE_SERVICE_ROLE_KEY` — your service-role key.
+
+The workflow in `.github/workflows/backup.yml` reads both secrets.
 
 ### Supabase Native Backups
 
