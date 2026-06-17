@@ -298,7 +298,11 @@ const App = {
 
   // ─── UTILITIES ───
   table(headers, rows) {
-    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const cell = (c) => {
+      if (c && typeof c === 'object' && c.html !== undefined) return String(c.html);
+      return App.esc(c == null ? '' : String(c));
+    };
+    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
 
   attachSearch(containerId, placeholder = '🔍 بحث...') {

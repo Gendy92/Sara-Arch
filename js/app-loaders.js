@@ -105,13 +105,13 @@ Object.assign(App, {
         .filter(v => (v.balance || 0) > 0)
         .sort((a, b) => (b.balance || 0) - (a.balance || 0))
         .slice(0, 10)
-        .map(v => [App.esc(v.vendor_name || '-'), `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`]);
+        .map(v => [App.esc(v.vendor_name || '-'), {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
       document.getElementById('dash-vendors').innerHTML = vendorRows.length
         ? this.table(['المورد', 'المبلغ المستحق'], vendorRows)
         : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
       // ─── Top 10 Active Customer Balances ───
       const clientRows = (clientBalances || [])
-        .map(c => [App.esc(c.client_name || '-'), this.fmtMoney(c.deposits || 0), this.fmtMoney(c.expenses || 0), `<span style="color:${(c.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance || 0)}</span>`]);
+        .map(c => [App.esc(c.client_name || '-'), this.fmtMoney(c.deposits || 0), this.fmtMoney(c.expenses || 0), {html: `<span style="color:${(c.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance || 0)}</span>`}]);
       document.getElementById('dash-clients').innerHTML = clientRows.length
         ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientRows)
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
@@ -168,7 +168,7 @@ Object.assign(App, {
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-          return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+          return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
         return `<div class="card" style="margin-bottom:16px">
@@ -243,7 +243,7 @@ Object.assign(App, {
         const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
         const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
         const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-        return [`<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), balBadge, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${p.status}</span>`, pActions];
+        return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
       });
       const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
 
@@ -318,7 +318,7 @@ Object.assign(App, {
         const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
         return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
       };
-      const taskRows = tasks.map((t, i) => [i+1, t.name, t.assignee || '-', t.start_date || '-', t.due_date || '-', statusBadge(t.status), priorityBadge(t.priority)]);
+      const taskRows = tasks.map((t, i) => [i+1, App.esc(t.name), App.esc(t.assignee || '-'), t.start_date || '-', t.due_date || '-', {html: statusBadge(t.status)}, {html: priorityBadge(t.priority)}]);
       const taskTable = taskRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المهام</h4>' + this.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية'], taskRows) : '';
 
       document.getElementById('project-detail-name').textContent = '🏗️ ' + project.name;
@@ -349,7 +349,7 @@ Object.assign(App, {
         const balLabel = balance > 0 ? 'مستحق' : balance < 0 ? 'زيادة' : 'تسوية';
         const balanceCell = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`;
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
-        return [`<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.name)}</a>`, typeBadge, App.esc(v.sector || '-'), App.esc(v.contact_person || '-'), App.esc(v.phone || '-'), balanceCell, actions];
+        return [{html: `<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.name)}</a>`}, {html: typeBadge}, App.esc(v.sector || '-'), App.esc(v.contact_person || '-'), App.esc(v.phone || '-'), {html: balanceCell}, {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
@@ -382,14 +382,14 @@ Object.assign(App, {
         const amount = +t.amount || 0;
         const paid = isNew ? (+t.paid_amount || 0) : amount;
         totalOwed += amount; totalPaid += paid;
-        return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amount), App.fmtMoney(paid), balHtml(amount - paid)];
+        return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amount), App.fmtMoney(paid), {html: balHtml(amount - paid)}];
       });
       const procRows = procs.map((p, i) => {
         const isNew = p.payment_term !== undefined && p.payment_term !== null;
         const total = +p.total_price || 0;
         const paid = isNew ? (+p.paid_amount || 0) : total;
         totalOwed += total; totalPaid += paid;
-        return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(+p.unit_price || 0), App.fmtMoney(total), App.fmtMoney(paid), balHtml(total - paid), p.projects?.name || p.project_name || '-'];
+        return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(+p.unit_price || 0), App.fmtMoney(total), App.fmtMoney(paid), {html: balHtml(total - paid)}, p.projects?.name || p.project_name || '-'];
       });
 
       const netBalance = totalOwed - totalPaid;
@@ -513,7 +513,7 @@ Object.assign(App, {
           pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
         }
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.description || '-', party, clientName, t.project_name || '-', pt, actions];
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), t.description || '-', {html: party}, clientName, t.project_name || '-', {html: pt}, {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxDisplay);
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
@@ -530,7 +530,7 @@ Object.assign(App, {
         const sectionLabel = t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب');
         const itemLabel = t.item_name || '-';
         const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
-        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, itemLabel, this.fmtMoney(t.amount), pmBadge, this.fmtMoney(paid), `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`, this.fmtDate(t.date || t.created_at), UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')];
+        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, itemLabel, this.fmtMoney(t.amount), {html: pmBadge}, this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
@@ -621,7 +621,7 @@ Object.assign(App, {
       document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], allTxs.map(t => {
         const badgeColor = ['owner_deposit','supervision'].includes(t.type) ? 'green' : 'red';
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
-        return [this.fmtDate(t.created_at), `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', actions];
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
 
@@ -632,7 +632,7 @@ Object.assign(App, {
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const typeBadge = r.custody_type === 'project' ? '<span class="badge badge-blue">مشروع</span>' : '<span class="badge badge-gold">مكتب</span>';
         const related = r.custody_type === 'project' ? (r.project_name || '-') : (r.sector_name || '-');
-        return [i+1, r.date || '-', typeBadge, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`, statusLabels[r.status] || r.status, UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+        return [i+1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')}];
       });
       document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
       this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...');
@@ -663,7 +663,7 @@ Object.assign(App, {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
         const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
-        return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), custodyBadge, actions];
+        return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), {html: custodyBadge}, {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
       document.getElementById('emp-tbl').innerHTML = html + (data.length ? this._paginationHtml('employees', page, limit, total) : '');
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
@@ -786,7 +786,7 @@ Object.assign(App, {
       const fpMonth = +document.getElementById('fp-month').value;
       const fpYear = +document.getElementById('fp-year').value;
       const rows = parsed.map((p, idx) => [
-        idx + 1, p.rawName, p.matched ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>',
+        idx + 1, p.rawName, {html: p.matched ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>'},
         p.date || '-', p.status === 'present' ? 'حاضر' : p.status === 'absent' ? 'غائب' : p.status === 'late' ? 'متأخر' : p.status === 'half_day' ? 'نصف يوم' : p.status,
         p.check_in || '-', p.check_out || '-'
       ]);
@@ -849,13 +849,13 @@ Object.assign(App, {
       };
       const rows = employees.map(e => {
         const p = payrollMap[e.id];
-        if (!p) return [e.name, App.fmtMoney(e.salary), '-', '-', '-', '-', '-', '-', '-', '<span class="badge badge-gray">غير مولد</span>', '-'];
+        if (!p) return [e.name, App.fmtMoney(e.salary), '-', '-', '-', '-', '-', '-', '-', {html: '<span class="badge badge-gray">غير مولد</span>'}, '-'];
         const actions = p.status === 'draft'
           ? `<button class="btn btn-sm btn-primary" onclick="Crud.editPayroll('${p.id}')">تعديل</button> <button class="btn btn-sm btn-secondary" onclick="Crud.approvePayroll('${p.id}')">اعتماد</button>`
           : p.status === 'approved'
             ? `<button class="btn btn-sm btn-primary" onclick="Crud.payPayroll('${p.id}')">💰 دفع</button> <button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`
             : `<button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`;
-        return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), statusBadge(p.status), actions];
+        return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), {html: statusBadge(p.status)}, {html: actions}];
       });
       document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
     } catch (e) {
@@ -966,9 +966,9 @@ Object.assign(App, {
       document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         App.esc(u.username),
         App.esc(u.name),
-        u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>',
+        {html: u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>'},
         this.fmtDate(u.created_at),
-        `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`
+        {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`}
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
@@ -1146,7 +1146,7 @@ Object.assign(App, {
         this.fmtDate(l.created_at) + ' ' + new Date(l.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
         l.user_name || '-',
         l.table_name || '-',
-        `<span style="color:${actionColors[l.action] || 'var(--text)'};font-weight:600">${actionLabels[l.action] || l.action}</span>`,
+        {html: `<span style="color:${actionColors[l.action] || 'var(--text)'};font-weight:600">${actionLabels[l.action] || l.action}</span>`},
         (l.record_id || '').slice(0, 8) + '...',
         l.new_data ? JSON.stringify(l.new_data).slice(0, 60) + '...' : '-'
       ])) : '<p style="color:var(--text3)">لا توجد سجلات</p>';
@@ -1166,7 +1166,7 @@ Object.assign(App, {
     try {
       const sectors = await API.request('sectors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
-        s.name, s.description || '-', UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        s.name, s.description || '-', {html: UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
       ])) : `<p style="color:var(--text3);padding:16px">لا توجد تصنيفات</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addSector()">+ إضافة أول تصنيف</button>':''}`;
       this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...');
 
@@ -1180,11 +1180,11 @@ Object.assign(App, {
 
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
       document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
-        App.esc(s.name), App.esc(s.notes || s.description || '-'), UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        App.esc(s.name), App.esc(s.notes || s.description || '-'), {html: UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
       ])) : `<p style="color:var(--text3);padding:16px">لا يوجد أقسام</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkSection()">+ إضافة أول قسم</button>':''}`;
       this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
       document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
-        App.esc(i.name), App.esc(sectionMap[i.section_id] || '-'), App.esc(i.notes || i.description || '-'), UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        App.esc(i.name), App.esc(sectionMap[i.section_id] || '-'), App.esc(i.notes || i.description || '-'), {html: UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
       ])) : `<p style="color:var(--text3);padding:16px">لا توجد بنود</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkItem()">+ إضافة أول بند</button>':''}`;
       this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
 
@@ -1193,7 +1193,7 @@ Object.assign(App, {
         items = await API.request('items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
       } catch (e) { console.log('[MasterData] items not ready:', e.message); }
       document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'العلامة', 'الوحدة', 'الإجراءات'], items.map(i => [
-        App.esc(i.name), App.esc(i.specification || '-'), App.esc(i.brand || '-'), App.esc(i.unit || '-'), UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))
+        App.esc(i.name), App.esc(i.specification || '-'), App.esc(i.brand || '-'), App.esc(i.unit || '-'), {html: UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
       ])) : `<p style="color:var(--text3);padding:16px">لا توجد أصناف</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addItem()">+ إضافة أول صنف</button>':''}`;
       this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
     } catch (e) {
@@ -1227,14 +1227,14 @@ Object.assign(App, {
 
       const rows = filtered.map((t, i) => [
         i+1,
-        `<a href="#" onclick="App.go('clients');return false;" style="color:var(--gold);text-decoration:none">${App.esc(projectMap[t.project_id] || t.projects?.name || '-')}</a>`,
+        {html: `<a href="#" onclick="App.go('clients');return false;" style="color:var(--gold);text-decoration:none">${App.esc(projectMap[t.project_id] || t.projects?.name || '-')}</a>`},
         App.esc(t.name),
         t.assignee || '-',
         t.start_date || '-',
         t.due_date || '-',
-        statusBadge(t.status),
-        priorityBadge(t.priority),
-        `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`
+        {html: statusBadge(t.status)},
+        {html: priorityBadge(t.priority)},
+        {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`}
       ]);
 
       const table = rows.length ? App.table(['#', 'المشروع', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية', 'الإجراءات'], rows) : '<p style="color:var(--text3);padding:16px">لا توجد مهام مسجلة</p>';

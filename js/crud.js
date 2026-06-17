@@ -1495,8 +1495,8 @@ const Crud = {
       return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
     };
     const rows = tasks.map((t, i) => [
-      i+1, App.esc(t.name), App.esc(t.assignee || '-'), t.start_date || '-', t.due_date || '-', statusBadge(t.status), priorityBadge(t.priority),
-      `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`
+      i+1, App.esc(t.name), App.esc(t.assignee || '-'), t.start_date || '-', t.due_date || '-', {html: statusBadge(t.status)}, {html: priorityBadge(t.priority)},
+      {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`}
     ]);
     const table = rows.length ? App.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية', ''], rows) : '<p style="color:var(--text3)">لا توجد مهام مسجلة</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addProjectTask('${projectId}')">➕ إضافة مهمة</button></div>`;
@@ -1619,8 +1619,8 @@ const Crud = {
     const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
     // HTML rows (formatted)
-    const txRows = txData.map(t => [t.i, t.date, t.type, App.esc(t.project), App.esc(t.description), App.fmtMoney(t.amount), App.fmtMoney(t.paid), balHtml(t.balance)]);
-    const procRows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), App.esc(p.project)]);
+    const txRows = txData.map(t => [t.i, t.date, t.type, App.esc(t.project), App.esc(t.description), App.fmtMoney(t.amount), App.fmtMoney(t.paid), {html: balHtml(t.balance)}]);
+    const procRows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), {html: balHtml(p.balance)}, App.esc(p.project)]);
 
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المستحق</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalOwed)}</div></div>
@@ -1720,7 +1720,7 @@ const Crud = {
     const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
     const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
-    const rows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), App.esc(p.project), UI.actions(procs[p.i-1].id, 'Crud.editProcurement', 'Crud.delProcurement', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete'))]);
+    const rows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), {html: balHtml(p.balance)}, App.esc(p.project), {html: UI.actions(procs[p.i-1].id, 'Crud.editProcurement', 'Crud.delProcurement', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete'))}]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
@@ -1798,7 +1798,7 @@ const Crud = {
       total += amt;
       returned += ret;
       const bal = amt - ret;
-      return [i+1, r.date || '-', typeBadge(r.custody_type), App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), App.esc(r.sector_name || '-'), App.esc(r.projects?.name || r.project_name || '-'), App.esc(r.notes || '-'), UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+      return [i+1, r.date || '-', {html: typeBadge(r.custody_type)}, App.fmtMoney(amt), App.fmtMoney(ret), {html: `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`}, {html: statusBadge(r.status)}, App.esc(r.sector_name || '-'), App.esc(r.projects?.name || r.project_name || '-'), App.esc(r.notes || '-'), {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')}];
     });
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
@@ -1939,7 +1939,7 @@ const Crud = {
       const labels = { present: 'حاضر', absent: 'غائب', late: 'متأخر', half_day: 'نصف يوم', leave: 'إجازة' };
       return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
     };
-    const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', App.esc(r.notes || '-'), UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))]);
+    const rows = records.map((r, i) => [i+1, r.date || '-', {html: statusBadge(r.status)}, r.check_in || '-', r.check_out || '-', App.esc(r.notes || '-'), {html: UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))}]);
     const table = rows.length ? App.table(['#', 'التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addAttendance('${employeeId}')">➕ إضافة حضور</button></div>`;
     UI.openModal(`📋 حضور موظف: ${App.esc(name)}`, addBtn + table, null);
