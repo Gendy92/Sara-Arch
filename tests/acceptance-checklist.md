@@ -33,13 +33,11 @@
 
 | # | Test Case | Expected Result | Result | Notes |
 |---|-----------|-----------------|--------|-------|
-| DASH-01 | KPI cards display | Client, project, active, employee, movement totals shown | ☐ Pass ☐ Fail | |
-| DASH-02 | Monthly revenue/expenses bar chart | Last 6 months rendered with bars | ☐ Pass ☐ Fail | |
-| DASH-03 | Office expense pie chart | Sectors shown with legend | ☐ Pass ☐ Fail | |
-| DASH-04 | Office income vs expenses pie chart | Income slice + expense sectors shown | ☐ Pass ☐ Fail | |
-| DASH-05 | Top vendors list | Vendors with non-zero balances appear | ☐ Pass ☐ Fail | |
-| DASH-06 | Active client balances list | Active clients with non-zero balances appear | ☐ Pass ☐ Fail | |
-| DASH-07 | Reload dashboard | No console errors, data refreshes | ☐ Pass ☐ Fail | |
+| DASH-01 | KPI cards display | Client, project, active, employee, total movement totals shown | ☐ Pass ☐ Fail | |
+| DASH-02 | Income vs expenses totals pie chart | Income and expense slices rendered | ☐ Pass ☐ Fail | |
+| DASH-03 | Top vendors list | Vendors with non-zero outstanding balances appear | ☐ Pass ☐ Fail | |
+| DASH-04 | Active client balances list | Active clients with deposits/expenses/balance appear | ☐ Pass ☐ Fail | |
+| DASH-05 | Reload dashboard | No console errors, data refreshes | ☐ Pass ☐ Fail | |
 
 ---
 
