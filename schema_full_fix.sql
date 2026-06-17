@@ -882,6 +882,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP FUNCTION IF EXISTS public.dashboard_active_client_balances(integer);
+
 CREATE OR REPLACE FUNCTION dashboard_active_client_balances(limit_count INT DEFAULT 10)
 RETURNS TABLE(client_id UUID, client_name TEXT, deposits NUMERIC, expenses NUMERIC, supervision NUMERIC, balance NUMERIC) AS $$
 BEGIN
