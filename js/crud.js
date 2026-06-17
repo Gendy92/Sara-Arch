@@ -38,6 +38,17 @@ const Crud = {
   async save(table, data, id) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
+    // Basic accounting guardrails
+    if (table === 'transactions' && data.amount != null && data.paid_amount != null) {
+      const amount = +data.amount || 0;
+      const paid = +data.paid_amount || 0;
+      if (paid > amount) throw new Error('المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المبلغ');
+    }
+    if (table === 'procurements' && data.total_price != null && data.paid_amount != null) {
+      const total = +data.total_price || 0;
+      const paid = +data.paid_amount || 0;
+      if (paid > total) throw new Error('المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المشتريات');
+    }
     if (id) {
       let oldData = null;
       try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id); oldData = existing[0] || null; } catch (e) {}
