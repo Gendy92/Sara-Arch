@@ -617,6 +617,14 @@ CREATE POLICY "authenticated_all" ON project_tasks FOR ALL TO authenticated USIN
 
 -- Missing columns required by application code
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username TEXT;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'profiles_username_unique'
+  ) THEN
+    ALTER TABLE profiles ADD CONSTRAINT profiles_username_unique UNIQUE (username);
+  END IF;
+END $$;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE work_sections ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE work_items ADD COLUMN IF NOT EXISTS section_name TEXT;
@@ -1019,12 +1027,39 @@ BEGIN
     'email', new_id::text, NOW(), NOW(), NOW()
   );
 
+  -- Create or update the profile row atomically in the same transaction.
+  INSERT INTO public.profiles (id, name, username, role)
+  VALUES (
+    new_id,
+    meta->>'name',
+    meta->>'username',
+    COALESCE(meta->>'role', 'user')
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    username = EXCLUDED.username,
+    role = EXCLUDED.role;
+
   RETURN jsonb_build_object('id', new_id, 'email', user_email, 'existing', false);
 END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.is_app_admin(uuid) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.admin_create_auth_user(text, text, jsonb) FROM anon;
+
+-- Helper for admins to check whether an email is already registered.
+CREATE OR REPLACE FUNCTION public.auth_user_exists(user_email TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM auth.users WHERE email = user_email);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.auth_user_exists(text) FROM anon;
 
 -- Auto-confirm new auth users.
 -- Supabase has a long-standing bug where disabling "Confirm email" still blocks

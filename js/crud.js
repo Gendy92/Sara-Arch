@@ -17,7 +17,8 @@ const Crud = {
 
   _isMissingColumnErr(e) {
     const msg = e?.message || '';
-    return msg.includes('PGRST204') || msg.includes('42703') || msg.includes('updated_by') || msg.includes('created_by');
+    // Only treat genuine PostgREST/schema errors as missing-column failures.
+    return msg.includes('PGRST204') || msg.includes('42703');
   },
 
   async _checkDuplicate(table, nameField, nameValue, extraFilter = '') {
@@ -958,34 +959,46 @@ const Crud = {
     ];
     Spreadsheet.open('إضافة مستخدمين', cols, async (rows) => {
       let created = 0, failed = 0;
+      const failedDetails = [];
       for (const row of rows) {
         try {
-          // Server-side admin RPC creates the auth user directly in the database.
+          const username = String(row.username || '').trim();
+          const name = String(row.name || '').trim();
+          const password = String(row.password || '');
+          const role = row.role || 'user';
+          if (!username || !name || !password) {
+            throw new Error('اسم المستخدم والاسم الكامل وكلمة المرور مطلوبة');
+          }
+          const email = Auth.toEmail(username);
+          // Pre-check duplicates before calling the RPC.
+          const [profileDup, authDup] = await Promise.all([
+            API.request('profiles', 'GET', null, `?select=id&username=eq.${encodeURIComponent(username)}`),
+            API.rpc('auth_user_exists', { user_email: email })
+          ]);
+          if (profileDup.length) throw new Error('اسم المستخدم مستخدم مسبقاً');
+          if (authDup) throw new Error('البريد الإلكتروني مستخدم مسبقاً');
+
+          // Server-side admin RPC creates the auth user, identity, and profile atomically.
           // No confirmation email is sent, so there is no rate limit.
           const result = await API.rpc('admin_create_auth_user', {
-            user_email: Auth.toEmail(row.username),
-            user_password: row.password,
-            user_meta: { name: row.name, username: row.username, role: row.role || 'user' }
+            user_email: email,
+            user_password: password,
+            user_meta: { name, username, role }
           });
-          const userId = result?.id || null;
-          if (!userId) throw new Error('فشل إنشاء المستخدم');
-          // Upsert profile row in case a previous attempt left an auth.user without a profile
-          // or a profile already exists for this user.
-          const existing = await API.request('profiles', 'GET', null, `?id=eq.${userId}&select=id`);
-          const profilePayload = { id: userId, name: row.name, username: row.username, role: row.role || 'user' };
-          if (existing.length) {
-            await API.request('profiles', 'PATCH', profilePayload, `?id=eq.${userId}`);
-          } else {
-            await API.request('profiles', 'POST', profilePayload);
-          }
+          if (result?.existing) throw new Error('البريد الإلكتروني مستخدم مسبقاً');
+          if (!result?.id) throw new Error('فشل إنشاء المستخدم');
           created++;
         } catch (e) {
           console.error('User creation failed:', e);
           failed++;
+          failedDetails.push(`${row.username || '?'}: ${e.message || 'فشل'}`);
         }
       }
-      if (failed) UI.toast(`Created ${created}, failed ${failed}`, 'error');
-      else UI.toast(`Created ${created} users`);
+      if (failed) {
+        UI.toast(`تم إنشاء ${created} وفشل ${failed}: ${failedDetails.join(' | ')}`, 'error');
+      } else {
+        UI.toast(`تم إنشاء ${created} مستخدم`);
+      }
       App.loadUsers();
     }, {}, {}, 'none');
   },
@@ -993,17 +1006,17 @@ const Crud = {
   async editUser(id) {
     const profiles = await API.request('profiles', 'GET', null, `?id=eq.${id}`);
     const profile = profiles[0];
+    if (!profile) {
+      UI.toast('ملف المستخدم غير موجود', 'error');
+      return;
+    }
     const fields = [
       { name: 'name', label: 'الاسم الكامل', req: true },
       { name: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
     ];
-    UI.openModal('تعديل اسم المستخدم', `<form>${UI.form(fields, { name: profile?.name || '', role: profile?.role || 'user' })}</form>`, async (form) => {
+    UI.openModal('تعديل مستخدم', `<form>${UI.form(fields, { name: profile.name || '', role: profile.role || 'user' })}</form>`, async (form) => {
       const fd = new FormData(form);
-      if (profile) {
-        await API.request('profiles', 'PATCH', { name: fd.get('name'), role: fd.get('role') }, `?id=eq.${id}`);
-      } else {
-        await API.request('profiles', 'POST', { id, name: fd.get('name'), role: fd.get('role') });
-      }
+      await API.request('profiles', 'PATCH', { name: fd.get('name'), role: fd.get('role') }, `?id=eq.${id}`);
       UI.toast('تم التحديث'); App.loadUsers();
     });
   },
@@ -1482,7 +1495,7 @@ const Crud = {
       return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
     };
     const rows = tasks.map((t, i) => [
-      i+1, t.name, t.assignee || '-', t.start_date || '-', t.due_date || '-', statusBadge(t.status), priorityBadge(t.priority),
+      i+1, App.esc(t.name), App.esc(t.assignee || '-'), t.start_date || '-', t.due_date || '-', statusBadge(t.status), priorityBadge(t.priority),
       `<button class="btn btn-sm btn-secondary" onclick="Crud.editProjectTask('${t.id}')">تعديل</button> <button class="btn btn-sm btn-red" onclick="Crud.delProjectTask('${t.id}')">حذف</button>`
     ]);
     const table = rows.length ? App.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية', ''], rows) : '<p style="color:var(--text3)">لا توجد مهام مسجلة</p>';
@@ -1606,8 +1619,8 @@ const Crud = {
     const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
     // HTML rows (formatted)
-    const txRows = txData.map(t => [t.i, t.date, t.type, t.project, t.description, App.fmtMoney(t.amount), App.fmtMoney(t.paid), balHtml(t.balance)]);
-    const procRows = procData.map(p => [p.i, p.date, p.item, p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), p.project]);
+    const txRows = txData.map(t => [t.i, t.date, t.type, App.esc(t.project), App.esc(t.description), App.fmtMoney(t.amount), App.fmtMoney(t.paid), balHtml(t.balance)]);
+    const procRows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), balHtml(p.balance), App.esc(p.project)]);
 
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المستحق</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalOwed)}</div></div>
@@ -1785,7 +1798,7 @@ const Crud = {
       total += amt;
       returned += ret;
       const bal = amt - ret;
-      return [i+1, r.date || '-', typeBadge(r.custody_type), App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), r.sector_name || '-', r.projects?.name || r.project_name || '-', r.notes || '-', UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
+      return [i+1, r.date || '-', typeBadge(r.custody_type), App.fmtMoney(amt), App.fmtMoney(ret), `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`, statusBadge(r.status), App.esc(r.sector_name || '-'), App.esc(r.projects?.name || r.project_name || '-'), App.esc(r.notes || '-'), UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')];
     });
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
@@ -1926,7 +1939,7 @@ const Crud = {
       const labels = { present: 'حاضر', absent: 'غائب', late: 'متأخر', half_day: 'نصف يوم', leave: 'إجازة' };
       return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
     };
-    const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', r.notes || '-', UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))]);
+    const rows = records.map((r, i) => [i+1, r.date || '-', statusBadge(r.status), r.check_in || '-', r.check_out || '-', App.esc(r.notes || '-'), UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))]);
     const table = rows.length ? App.table(['#', 'التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addAttendance('${employeeId}')">➕ إضافة حضور</button></div>`;
     UI.openModal(`📋 حضور موظف: ${App.esc(name)}`, addBtn + table, null);

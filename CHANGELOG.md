@@ -1,12 +1,28 @@
 # Sara Arch — Changelog
 
-> **Current version:** v174  
+> **Current version:** v175  
 > **Branch:** `dev.2`  
 > **Last updated:** 2026-06-17
 
 ---
 
-## Version 174 (Current)
+## Version 175 (Current)
+
+### Added
+- `admin_create_auth_user` now upserts the `profiles` row atomically inside the same transaction, eliminating orphaned `auth.users` rows.
+- New `auth_user_exists(user_email)` RPC for duplicate-email pre-checks.
+- Unique constraint `profiles_username_unique` on `profiles.username`.
+- `addUser()` now pre-checks duplicate username and email and reports per-row failure reasons.
+
+### Changed
+- `addUser()` no longer does a separate client-side profile POST/PATCH; it relies on the atomic RPC.
+- `editUser()` no longer creates a username-less profile fallback; it errors if the profile is missing.
+- Tightened `_isMissingColumnErr()` to only treat `PGRST204` / `42703` as missing-column errors.
+- Bumped runtime version to `175`.
+
+---
+
+## Version 174
 
 ### Added
 - `migration_v173_legacy_procurements.sql` to normalize legacy procurement and project_expense payment tracking.
@@ -170,11 +186,19 @@
 
 ---
 
-## Known Issues at v174
+## Known Issues at v175
 
 - Payroll regeneration does not reset paid status to `draft`.
 - Some documentation (`APP_TABS_GUIDE.md`, `TEST_PLAN.md`) lags behind runtime version.
 - No restore-from-backup feature yet.
+- XSS hardening pass is partially done: report modals in `crud.js` now escape user-entered strings. The main list tables in `app-loaders.js` still need the same pass.
+
+### Resolved at v175
+- ✅ Orphaned `auth.users` rows on partial user creation (profile upsert moved into atomic RPC).
+- ✅ Duplicate username/email pre-checks in `addUser()`.
+- ✅ Per-row error reporting in `addUser()`.
+- ✅ `editUser()` no longer creates broken username-less profiles.
+- ✅ Missing-column error detection tightened.
 
 ### Resolved at v174
 - ✅ Procurement `total_price` save consistency (generated column; stripped from client payloads).

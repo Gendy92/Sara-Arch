@@ -1,6 +1,6 @@
 # Sara Arch — Development Roadmap
 
-> **Current runtime version:** v174  
+> **Current runtime version:** v175  
 > **Last updated:** 2026-06-17
 
 This roadmap prioritizes critical fixes, high-value business features, quality-of-life improvements, and long-term technical excellence.
@@ -21,6 +21,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | 1.1.6 | **Fix payroll regeneration bug** | Regenerating an already-paid payroll keeps `paid` status with new numbers. | Reset status to `draft` on regeneration or block regeneration of paid payrolls. |
 | 1.1.7 | **Add duplicate detection** | Infinite duplicate clients/projects/vendors could be created. | ✅ Added unique normalized-name checks for clients, projects, vendors, sectors, sections, work items, and items; added soft-delete cleanup script. |
 | 1.1.9 | **Fix non-admin login (`email_not_confirmed`)** | New users created via public signup or admin RPC could not log in because Supabase still required email confirmation. | ✅ Added `auto_confirm_user` trigger on `auth.users`; backfilled existing unconfirmed accounts; verified public signup and login return a valid session. |
+| 1.1.10 | **Harden admin user creation** | `addUser()` had a check-then-act race, could create orphaned `auth.users` rows, and provided poor error reporting. | ✅ Moved profile upsert into atomic `admin_create_auth_user` RPC; added duplicate username/email pre-checks; added per-row failure messages; added `profiles.username` unique constraint. |
 
 ### 1.2 Data Consistency & Security
 
@@ -137,7 +138,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 ## 4. Suggested Phasing
 
-### Phase 1 — Stabilize (Mostly complete at v174)
+### Phase 1 — Stabilize (Mostly complete at v175)
 - ✅ Fix non-admin login (`email_not_confirmed`).
 - ✅ Remove exposed service-role key from browser; keep it only in GitHub Actions secrets.
 - ✅ Add duplicate detection for master data.
@@ -146,6 +147,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 - ✅ Legacy procurement paid amount migration.
 - ✅ Negative amount input guards.
 - ✅ Audit trail `old_data` fix.
+- ✅ Harden admin user creation.
 - ⏳ Payroll regeneration status reset.
 - Tighten RLS and rotate exposed keys.
 - Add database views for balances.
