@@ -1026,5 +1026,30 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.is_app_admin(uuid) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.admin_create_auth_user(text, text, jsonb) FROM anon;
 
+-- Auto-confirm new auth users.
+-- Supabase has a long-standing bug where disabling "Confirm email" still blocks
+-- sign-in for unconfirmed accounts. This trigger ensures every inserted user is
+-- immediately confirmed, regardless of that setting.
+CREATE OR REPLACE FUNCTION public.auto_confirm_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, NOW());
+  NEW.confirmed_at := COALESCE(NEW.confirmed_at, NOW());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+DROP TRIGGER IF EXISTS auto_confirm_user_trigger ON auth.users;
+CREATE TRIGGER auto_confirm_user_trigger
+BEFORE INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.auto_confirm_user();
+
+-- Confirm any existing unconfirmed accounts (one-time cleanup).
+UPDATE auth.users
+SET email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+    confirmed_at = COALESCE(confirmed_at, NOW())
+WHERE email_confirmed_at IS NULL OR confirmed_at IS NULL;
+
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';

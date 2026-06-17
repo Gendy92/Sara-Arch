@@ -7,11 +7,32 @@ const Auth = {
   // eliminate) XSS exposure; full protection requires httpOnly cookies.
   token: sessionStorage.getItem('sara_token') || null,
 
+  _hashUsername(username) {
+    // Deterministic 32-bit hash for non-ASCII usernames (e.g. Arabic names).
+    let h = 0;
+    for (let i = 0; i < username.length; i++) {
+      h = ((h << 5) - h) + username.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h).toString(16).padStart(8, '0');
+  },
+
   toEmail(username) {
     // Convert username to a syntactically-valid email using the project's Pages domain.
     // If the user typed an email, keep only the local part.
-    const local = username.trim().toLowerCase().split('@')[0];
+    const raw = (username || '').toString().trim();
+    const local = raw.toLowerCase().split('@')[0];
     // Spaces become dots; only ASCII letters/digits, dots, underscores and hyphens are kept.
+    let safe = local.replace(/\s+/g, '.').replace(/[^a-z0-9_.-]/g, '');
+    // For Arabic / Unicode usernames, fall back to a hashed local part so every user gets a unique email.
+    if (!safe) safe = 'u' + this._hashUsername(raw);
+    safe = safe.replace(/\.{2,}/g, '.').replace(/^[-.]+|[-.]+$/g, '') || 'user';
+    return safe + '@gendy92.github.io';
+  },
+
+  // Legacy mapping used before Arabic support; kept only for fallback logins.
+  toEmailLegacy(username) {
+    const local = (username || '').toString().trim().toLowerCase().split('@')[0];
     const safe = local.replace(/\s+/g, '.').replace(/[^a-z0-9_.-]/g, '');
     return (safe || 'user') + '@gendy92.github.io';
   },
@@ -60,9 +81,10 @@ const Auth = {
     try {
       data = await API.authSignIn(primaryEmail, password);
     } catch (e) {
-      // Fallback chain for accounts created with earlier email domains.
+      // Fallback chain for accounts created with earlier email domains or Arabic usernames.
       const local = username.trim().toLowerCase().split('@')[0].replace(/\s+/g, '.');
       const fallbacks = [
+        this.toEmailLegacy(username),
         local + '@sara-arch.local',
         local.replace(/\./g, '') + '@local'
       ].filter(em => em !== primaryEmail);
