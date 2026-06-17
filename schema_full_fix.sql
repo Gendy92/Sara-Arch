@@ -408,7 +408,7 @@ BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 DROP TRIGGER IF EXISTS clients_u ON clients; CREATE TRIGGER clients_u BEFORE UPDATE ON clients FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS projects_u ON projects; CREATE TRIGGER projects_u BEFORE UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -493,6 +493,28 @@ DROP POLICY IF EXISTS "authenticated_all" ON work_items; CREATE POLICY "authenti
 DROP POLICY IF EXISTS "authenticated_all" ON profiles; CREATE POLICY "authenticated_all" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON audit_logs; CREATE POLICY "authenticated_all" ON audit_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON user_permissions; CREATE POLICY "authenticated_all" ON user_permissions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- Clean up legacy open policies from earlier schema versions (will be replaced by restricted policies below)
+DROP POLICY IF EXISTS "Allow all for authenticated" ON clients;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON projects;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON employees;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON vendors;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON items;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON sectors;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON transactions;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON procurements;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON employee_transactions;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON employee_salary_history;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON custody_records;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON custody_expenses;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON work_sections;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON work_items;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON profiles;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON audit_logs;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON user_permissions;
+
+-- Drop legacy helper function no longer used by the application
+DROP FUNCTION IF EXISTS public.soft_delete(text, uuid);
 
 -- Attendance & salary modules are disabled for now; drop any restrictive policies from previous runs
 DROP POLICY IF EXISTS "auth_restricted_attendance_records" ON attendance_records;
@@ -609,7 +631,7 @@ RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (SELECT 1 FROM profiles WHERE id = user_uuid AND role = 'admin');
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Apply stricter RLS policies: admin full access; regular users can read all,
 -- but can only modify rows they created. Tables without created_by keep open
@@ -721,7 +743,7 @@ BEGIN
     COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_deposit','owner_deposit')), 0)
       + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','office_expense')), 0) AS total_movement;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_monthly_revenue_expenses(months_back INT DEFAULT 6)
 RETURNS TABLE(month_key TEXT, revenue NUMERIC, expense NUMERIC) AS $$
@@ -775,7 +797,7 @@ BEGIN
   LEFT JOIN office_exp e ON e.mk = m.mk
   ORDER BY m.mk;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_office_expense_sectors()
 RETURNS TABLE(sector TEXT, amount NUMERIC) AS $$
@@ -788,7 +810,7 @@ BEGIN
   GROUP BY COALESCE(t.sector_name, 'غير مصنف')
   ORDER BY SUM(t.amount) DESC;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_office_income_expense_sectors()
 RETURNS TABLE(label TEXT, amount NUMERIC) AS $$
@@ -806,7 +828,7 @@ BEGIN
   GROUP BY COALESCE(t.sector_name, 'مصروفات أخرى')
   ORDER BY 2 DESC;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_top_vendors(limit_count INT DEFAULT 10)
 RETURNS TABLE(vendor_id UUID, vendor_name TEXT, balance NUMERIC) AS $$
@@ -840,7 +862,7 @@ BEGIN
   ORDER BY g.balance DESC
   LIMIT limit_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_active_client_balances(limit_count INT DEFAULT 10)
 RETURNS TABLE(client_id UUID, client_name TEXT, deposits NUMERIC, expenses NUMERIC, balance NUMERIC) AS $$
@@ -882,7 +904,17 @@ BEGIN
   ORDER BY (COALESCE(d.amt, 0) - COALESCE(e.amt, 0)) DESC
   LIMIT limit_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Revoke anon execute on SECURITY DEFINER functions to reduce exposed API surface.
+-- Authenticated users still need these (dashboard via RPC, is_app_admin via RLS policies).
+REVOKE EXECUTE ON FUNCTION public.dashboard_kpis() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.dashboard_monthly_revenue_expenses(int) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.dashboard_office_expense_sectors() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.dashboard_office_income_expense_sectors() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.dashboard_top_vendors(int) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.dashboard_active_client_balances(int) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.is_app_admin(uuid) FROM anon;
 
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
