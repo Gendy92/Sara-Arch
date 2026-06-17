@@ -940,12 +940,7 @@ const Crud = {
           } else {
             await API.request('profiles', 'POST', profilePayload);
           }
-          if (userId) {
-            await API.request('profiles', 'POST', { id: userId, name: row.name, username: row.username, role: row.role || 'user' });
-            created++;
-          } else {
-            failed++;
-          }
+          created++;
         } catch (e) {
           console.error('User creation failed:', e);
           failed++;
