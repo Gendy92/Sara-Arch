@@ -542,7 +542,15 @@ DELETE FROM sectors
 WHERE id NOT IN (
   SELECT MIN(id) FROM sectors GROUP BY LOWER(name)
 );
-ALTER TABLE sectors ADD CONSTRAINT IF NOT EXISTS sectors_name_unique UNIQUE (name);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sectors_name_unique' AND conrelid = 'public.sectors'::regclass
+  ) THEN
+    ALTER TABLE sectors ADD CONSTRAINT sectors_name_unique UNIQUE (name);
+  END IF;
+END $$;
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 8: Refresh PostgREST Schema Cache                  │
