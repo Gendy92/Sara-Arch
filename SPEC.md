@@ -307,6 +307,7 @@ The following screens are restricted to administrators regardless of `user_permi
 | ADMN-004 | The audit log shall capture table name, record ID, action type, old data, new data, user, and timestamp. | Should |
 | ADMN-005 | Admins shall be able to export all tables as a ZIP of JSON files. | Must |
 | ADMN-006 | User creation shall not depend on a browser-stored service-role key. | Must |
+| ADMN-007 | User creation shall be handled server-side to avoid email confirmation/rate-limit issues. | Must |
 
 ### 6.12 Reports & Exports
 
@@ -651,12 +652,16 @@ Current modal implementation uses a centered overlay with a fixed max-width and 
 
 **Owner feedback:** The design and size of entry pop-ups are not satisfactory.
 
-**Target improvements:**
-- Larger, more spacious modals on desktop (up to `720px`–`900px` max-width).
-- Sticky modal header/title and footer actions so they remain visible while scrolling.
-- Better field grouping with visual separators and section labels.
-- Consistent action button placement: primary action on the left, cancel/close on the right (RTL).
-- Improve mobile behavior: full-screen modal or bottom sheet on narrow screens.
+**Status:** In progress.
+
+**Implemented:**
+- Sticky modal header/title and footer actions.
+- Full-screen bottom-sheet behavior on mobile.
+- Section grouping with visual separators and labels (procurement forms first).
+
+**Remaining:**
+- Apply section grouping to additional complex forms (project expense, payroll, etc.).
+- Larger desktop max-width and further visual polish.
 
 ### 12.5 Tables & Lists
 
@@ -721,7 +726,7 @@ The app uses a single-page application (SPA) model with a persistent side naviga
 
 | # | Issue | Location | Target Fix |
 |---|-------|----------|------------|
-| 1 | Entry pop-ups feel cramped and visually dated. | All add/edit modals | Redesign per Section 12.4 |
+| 1 | Entry pop-ups feel cramped and visually dated. | All add/edit modals | Redesign per Section 12.4 — sticky header/footer and section grouping in progress |
 | 2 | Some tables lack horizontal scroll hints on mobile. | Clients, Vendors, Transactions | Add `overflow-x: auto` and scroll shadow |
 | 3 | Long dropdowns (projects, vendors) are hard to scan. | Procurement, Transactions | Add search/filter inside selects |
 | 4 | Modal stacking can trap the user (no breadcrumbs). | Statements inside vendor detail | Use full-page overlays or breadcrumb trail |

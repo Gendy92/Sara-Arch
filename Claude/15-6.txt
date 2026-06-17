@@ -1,0 +1,15 @@
+https://gendy92.github.io/Sara-Arch/?_=1781204716245#/dashboard  Assess now & gimme suggestions11:21 AMClaude responded: I'll implement the redesigned projectStatement — adding a client summary section at the top, keeping the detail table strictly scoped to the chosen project.Diagnosed filtering logic and architected enhanced client summary displayDiagnosed filtering logic and architected enhanced client summary displayI'll implement the redesigned projectStatement — adding a client summary section at the top, keeping the detail table strictly scoped to the chosen project.Redesign projectStatement to show client summary header + project-only detailsRedesign projectStatement to show client summary header + project-only detailsNow let me verify the clientStatement and vendorStatement already correctly scope to their entity (confirmed earlier — they use client_id=eq.${clientId} and vendor_id=eq.${vendorId}), and double-check there's no JS syntax error in my edit:Ran 2 commands, read a fileRan 2 commands, read a fileOne note on "assess now": I can't render the live JS app via the fetch tool — it only returns the static HTML loading shell (the "جاري تحميل النظام..." you saw), since the app builds its UI with JavaScript after that. So I worked from the source code in your repo instead.
+On the original bug: I checked clientStatement, vendorStatement, and projectStatement — in the code, each already filters by the specific client_id / vendor_id / project_id. So they shouldn't be pulling in unrelated entities. The most likely cause of what you saw was the limit=200 cap I fixed earlier — on a busy entity, that cap could cut off or truncate the dataset in a way that looked "wrong," even though it wasn't pulling other entities' data.
+What I just added — for project statements specifically:
+
+Client (customer) summary section at the top — shows the client's name plus their totals (deposits, expenses, balance) aggregated across all their projects.
+Below that, a clearly separated "Project Details" section — scoped strictly to the chosen project's transactions only (this part was already correctly filtered).
+Excel export mirrors this layout — client summary block, then project-specific table, in one sheet.
+
+Suggestions going forward:
+
+Apply the same "entity summary + scoped details" pattern to vendor purchases (show vendor's overall balance, then purchases for a specific project if filtered).
+Add a date range filter to all statements (currently always "all time") — useful for monthly/annual reports.
+Once you deploy these two files (crud.js, api.js), test with a client/project that has 200+ transactions to confirm both the entity scoping and the full data are correct.
+
+Want me to add the date-range filter next, or apply the same client-summary pattern to vendor reports?
