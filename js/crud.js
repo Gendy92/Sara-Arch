@@ -493,14 +493,14 @@ const Crud = {
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
     const fields = [
-      { name: 'vendor_id', label: 'المورد', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
-      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
-      { name: 'item_name', label: 'البند / الصنف', req: true },
-      { name: 'quantity', label: 'الكمية', type: 'number' },
-      { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
-      { name: 'expense_type', label: 'التصنيف' },
-      { name: 'date', label: 'التاريخ', type: 'date' },
-      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+      { name: 'vendor_id', label: 'المورد', type: 'select', section: 'التعريف', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
+      { name: 'project_id', label: 'المشروع', type: 'select', section: 'التعريف', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'item_name', label: 'البند / الصنف', section: 'التعريف', req: true },
+      { name: 'quantity', label: 'الكمية', type: 'number', section: 'القيمة' },
+      { name: 'unit_price', label: 'سعر الوحدة', type: 'number', section: 'القيمة' },
+      { name: 'expense_type', label: 'التصنيف', section: 'القيمة' },
+      { name: 'date', label: 'التاريخ', type: 'date', section: 'التفاصيل' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea', section: 'التفاصيل' }
     ];
     const overlay = UI.openModal('إضافة مشتريات', `<form>${UI.form(fields, { vendor_id: vendorId || '', date: new Date().toISOString().slice(0, 10) })}</form>`, async (form) => {
       const fd = new FormData(form);
@@ -531,14 +531,14 @@ const Crud = {
       API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     const fields = [
-      { name: 'vendor_id', label: 'المورد', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
-      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
-      { name: 'item_name', label: 'البند / الصنف', req: true },
-      { name: 'quantity', label: 'الكمية', type: 'number' },
-      { name: 'unit_price', label: 'سعر الوحدة', type: 'number' },
-      { name: 'expense_type', label: 'التصنيف' },
-      { name: 'date', label: 'التاريخ', type: 'date' },
-      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+      { name: 'vendor_id', label: 'المورد', type: 'select', section: 'التعريف', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
+      { name: 'project_id', label: 'المشروع', type: 'select', section: 'التعريف', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
+      { name: 'item_name', label: 'البند / الصنف', section: 'التعريف', req: true },
+      { name: 'quantity', label: 'الكمية', type: 'number', section: 'القيمة' },
+      { name: 'unit_price', label: 'سعر الوحدة', type: 'number', section: 'القيمة' },
+      { name: 'expense_type', label: 'التصنيف', section: 'القيمة' },
+      { name: 'date', label: 'التاريخ', type: 'date', section: 'التفاصيل' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea', section: 'التفاصيل' }
     ];
     const overlay = UI.openModal('تعديل مشتريات', `<form>${UI.form(fields, { ...p, vendor_id: p.vendor_id || '', project_id: p.project_id || '' })}</form>`, async (form) => {
       const fd = new FormData(form);

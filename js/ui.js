@@ -128,7 +128,29 @@ const UI = {
   },
 
   form(fields, values = {}) {
-    return `<div class="form-grid">${fields.map(f => this._fieldHtml(f, values)).join('')}</div><div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button><button type="submit" class="btn btn-primary">حفظ</button></div>`;
+    let html = '';
+    let currentSection = null;
+    let inGrid = false;
+    fields.forEach(f => {
+      if (f.section && f.section !== currentSection) {
+        if (inGrid) { html += '</div>'; inGrid = false; }
+        currentSection = f.section;
+        html += `<div class="modal-section"><div class="modal-section-title">${currentSection}</div><div class="form-grid">`;
+        inGrid = true;
+      } else if (!f.section && currentSection) {
+        // back to no-section fields
+        if (inGrid) { html += '</div></div>'; inGrid = false; }
+        currentSection = null;
+      }
+      if (!inGrid) {
+        html += '<div class="form-grid">';
+        inGrid = true;
+      }
+      html += this._fieldHtml(f, values);
+    });
+    if (inGrid) html += '</div>';
+    if (currentSection) html += '</div>';
+    return `${html}<div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button><button type="submit" class="btn btn-primary">حفظ</button></div>`;
   },
 
   _fieldHtml(f, values = {}) {
