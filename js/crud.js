@@ -922,34 +922,15 @@ const Crud = {
       let created = 0, failed = 0;
       for (const row of rows) {
         try {
-          let userId = null;
-          let userEmail = Auth.toEmail(row.username);
-          try {
-            // Try server-side admin RPC first (no confirmation email, no rate limit).
-            const result = await API.rpc('admin_create_auth_user', {
-              user_email: userEmail,
-              user_password: row.password,
-              user_meta: { name: row.name, username: row.username, role: row.role || 'user' }
-            });
-            if (result?.id) {
-              userId = result.id;
-              console.log('[addUser] created via RPC:', userEmail);
-            } else {
-              throw new Error('RPC returned no user id');
-            }
-          } catch (rpcErr) {
-            const msg = rpcErr.message || '';
-            const isMissingFunction = /(could not find function|function .* does not exist|404)/i.test(msg);
-            if (isMissingFunction) {
-              console.log('[addUser] RPC missing, falling back to public signup');
-              const authData = await API.authSignUp(userEmail, row.password, { name: row.name, username: row.username, role: row.role || 'user' });
-              if (authData.user?.id) userId = authData.user.id;
-            } else {
-              // Surface the real RPC error instead of silently falling back to email rate limits.
-              console.error('[addUser] RPC failed:', rpcErr);
-              throw new Error('فشل إنشاء المستخدم: ' + (msg || 'غير معروف'));
-            }
-          }
+          // Server-side admin RPC is required. It creates the auth user directly
+          // in the database without sending confirmation emails.
+          const result = await API.rpc('admin_create_auth_user', {
+            user_email: Auth.toEmail(row.username),
+            user_password: row.password,
+            user_meta: { name: row.name, username: row.username, role: row.role || 'user' }
+          });
+          const userId = result?.id || null;
+          if (!userId) throw new Error('RPC returned no user id');
           if (userId) {
             await API.request('profiles', 'POST', { id: userId, name: row.name, username: row.username, role: row.role || 'user' });
             created++;
