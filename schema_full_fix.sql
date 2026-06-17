@@ -646,8 +646,13 @@ CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);
 -- Admin check helper for RLS
 CREATE OR REPLACE FUNCTION is_app_admin(user_uuid UUID)
 RETURNS BOOLEAN AS $$
+DECLARE
+  profile_role TEXT;
+  meta_role TEXT;
 BEGIN
-  RETURN EXISTS (SELECT 1 FROM profiles WHERE id = user_uuid AND role = 'admin');
+  SELECT role INTO profile_role FROM profiles WHERE id = user_uuid;
+  SELECT raw_user_meta_data ->> 'role' INTO meta_role FROM auth.users WHERE id = user_uuid;
+  RETURN COALESCE(profile_role, '') = 'admin' OR COALESCE(meta_role, '') = 'admin';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
