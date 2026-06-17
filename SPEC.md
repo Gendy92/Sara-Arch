@@ -190,7 +190,7 @@ The following screens are restricted to administrators regardless of `user_permi
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| DASH-001 | The dashboard shall display KPI cards: total clients, total projects, active projects. | Must |
+| DASH-001 | The dashboard shall display KPI cards: total clients, total projects, active projects, employees, and total movement. | Must |
 | DASH-002 | The dashboard shall display a pie chart of total income vs. total expenses. | Should |
 | DASH-003 | The dashboard shall list top vendors with non-zero balances. | Should |
 | DASH-004 | The dashboard shall list active clients with non-zero balances. | Should |
@@ -513,7 +513,7 @@ The database shall contain the following tables:
 
 **AC-DASH-001:** Given the dashboard loads, when data is available, then KPI cards display the correct counts and totals.
 
-**AC-DASH-002:** Given monthly transactions exist, when the dashboard renders, then the revenue/expense bar chart shows data for the current year.
+**AC-DASH-002:** Given income and expense transactions exist, when the dashboard renders, then the income vs. expenses totals pie chart shows both slices.
 
 ### 10.3 Clients & Projects
 
