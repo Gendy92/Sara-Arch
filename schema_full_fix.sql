@@ -999,7 +999,7 @@ BEGIN
     instance := '00000000-0000-0000-0000-000000000000'::UUID;
   END IF;
 
-  encrypted_pw := crypt(user_password, gen_salt('bf'));
+  encrypted_pw := extensions.crypt(user_password, extensions.gen_salt('bf'));
 
   INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
