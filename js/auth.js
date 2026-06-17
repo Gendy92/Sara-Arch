@@ -8,11 +8,14 @@ const Auth = {
   token: sessionStorage.getItem('sara_token') || null,
 
   toEmail(username) {
-    return username.trim().toLowerCase() + '@local';
+    // Convert username to a syntactically-valid email Supabase Auth will accept.
+    // Spaces become dots; only ASCII letters/digits, dots, underscores and hyphens are kept.
+    const safe = username.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9_.-]/g, '');
+    return (safe || 'user') + '@sara-arch.local';
   },
 
   fromEmail(email) {
-    return email.replace('@local', '');
+    return email.replace('@sara-arch.local', '').replace('@local', '');
   },
 
   safeName(name, fallback) {
@@ -50,7 +53,19 @@ const Auth = {
 
   async login(username, password) {
     console.log('[Auth] Logging in:', username);
-    const data = await API.authSignIn(this.toEmail(username), password);
+    let data;
+    try {
+      data = await API.authSignIn(this.toEmail(username), password);
+    } catch (e) {
+      // Fallback for legacy accounts created with the old '@local' domain.
+      const legacyEmail = username.trim().toLowerCase().replace(/\s+/g, '') + '@local';
+      if (legacyEmail !== this.toEmail(username)) {
+        console.log('[Auth] Retrying with legacy email:', legacyEmail);
+        data = await API.authSignIn(legacyEmail, password);
+      } else {
+        throw e;
+      }
+    }
     console.log('[Auth] Got token:', data.access_token ? data.access_token.substring(0, 20) + '...' : 'NONE');
     this.token = data.access_token;
     this.user = data.user;
