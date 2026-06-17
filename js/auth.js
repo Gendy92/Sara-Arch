@@ -8,14 +8,16 @@ const Auth = {
   token: sessionStorage.getItem('sara_token') || null,
 
   toEmail(username) {
-    // Convert username to a syntactically-valid email Supabase Auth will accept.
+    // Convert username to a syntactically-valid email using the project's Pages domain.
+    // If the user typed an email, keep only the local part.
+    const local = username.trim().toLowerCase().split('@')[0];
     // Spaces become dots; only ASCII letters/digits, dots, underscores and hyphens are kept.
-    const safe = username.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9_.-]/g, '');
-    return (safe || 'user') + '@sara-arch.local';
+    const safe = local.replace(/\s+/g, '.').replace(/[^a-z0-9_.-]/g, '');
+    return (safe || 'user') + '@gendy92.github.io';
   },
 
   fromEmail(email) {
-    return email.replace('@sara-arch.local', '').replace('@local', '');
+    return email.replace('@gendy92.github.io', '').replace('@sara-arch.local', '').replace('@local', '');
   },
 
   safeName(name, fallback) {
@@ -54,17 +56,24 @@ const Auth = {
   async login(username, password) {
     console.log('[Auth] Logging in:', username);
     let data;
+    const primaryEmail = this.toEmail(username);
     try {
-      data = await API.authSignIn(this.toEmail(username), password);
+      data = await API.authSignIn(primaryEmail, password);
     } catch (e) {
-      // Fallback for legacy accounts created with the old '@local' domain.
-      const legacyEmail = username.trim().toLowerCase().replace(/\s+/g, '') + '@local';
-      if (legacyEmail !== this.toEmail(username)) {
-        console.log('[Auth] Retrying with legacy email:', legacyEmail);
-        data = await API.authSignIn(legacyEmail, password);
-      } else {
-        throw e;
+      // Fallback chain for accounts created with earlier email domains.
+      const local = username.trim().toLowerCase().split('@')[0].replace(/\s+/g, '.');
+      const fallbacks = [
+        local + '@sara-arch.local',
+        local.replace(/\./g, '') + '@local'
+      ].filter(em => em !== primaryEmail);
+      for (const email of fallbacks) {
+        try {
+          console.log('[Auth] Retrying with legacy email:', email);
+          data = await API.authSignIn(email, password);
+          break;
+        } catch (e2) { /* continue to next fallback */ }
       }
+      if (!data) throw e;
     }
     console.log('[Auth] Got token:', data.access_token ? data.access_token.substring(0, 20) + '...' : 'NONE');
     this.token = data.access_token;
