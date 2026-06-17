@@ -955,7 +955,71 @@ REVOKE EXECUTE ON FUNCTION public.dashboard_office_expense_sectors() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_office_income_expense_sectors() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_top_vendors(int) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_active_client_balances(int) FROM anon;
+-- Admin-only RPC to create a confirmed auth user directly in the database.
+-- This bypasses Supabase Auth email confirmation / rate limits because the
+-- browser no longer stores or uses the service-role key.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DROP FUNCTION IF EXISTS public.admin_create_auth_user(text, text, jsonb);
+
+CREATE OR REPLACE FUNCTION public.admin_create_auth_user(
+  user_email TEXT,
+  user_password TEXT,
+  user_meta JSONB DEFAULT '{}'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_id UUID := gen_random_uuid();
+  instance UUID;
+  encrypted_pw TEXT;
+  meta JSONB := COALESCE(user_meta, '{}');
+  existing_id UUID;
+BEGIN
+  IF NOT is_app_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'Admin only';
+  END IF;
+
+  -- Avoid duplicates
+  SELECT id INTO existing_id FROM auth.users WHERE email = user_email LIMIT 1;
+  IF existing_id IS NOT NULL THEN
+    RETURN jsonb_build_object('id', existing_id, 'email', user_email, 'existing', true);
+  END IF;
+
+  SELECT instance_id INTO instance FROM auth.users LIMIT 1;
+  IF instance IS NULL THEN
+    instance := '00000000-0000-0000-0000-000000000000'::UUID;
+  END IF;
+
+  encrypted_pw := crypt(user_password, gen_salt('bf'));
+
+  INSERT INTO auth.users (
+    id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+    confirmation_token, email_change, email_change_token_new, recovery_token,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+  ) VALUES (
+    new_id, instance, 'authenticated', 'authenticated', user_email, encrypted_pw, NOW(),
+    '', '', '', '',
+    '{"provider":"email","providers":["email"]}'::jsonb, meta, NOW(), NOW()
+  );
+
+  INSERT INTO auth.identities (
+    id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+  ) VALUES (
+    gen_random_uuid(), new_id,
+    jsonb_build_object('sub', new_id::text, 'email', user_email),
+    'email', new_id::text, NOW(), NOW(), NOW()
+  );
+
+  RETURN jsonb_build_object('id', new_id, 'email', user_email, 'existing', false);
+END;
+$$;
+
 REVOKE EXECUTE ON FUNCTION public.is_app_admin(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.admin_create_auth_user(text, text, jsonb) FROM anon;
 
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';

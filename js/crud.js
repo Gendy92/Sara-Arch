@@ -912,7 +912,6 @@ const Crud = {
 
   // ─── USERS (admin only) ───
   addUser() {
-    const hasServiceKey = !!SUPABASE_SERVICE_KEY;
     const cols = [
       { key: 'username', label: 'اسم المستخدم *', req: true },
       { key: 'name', label: 'الاسم الكامل *', req: true },
@@ -923,16 +922,24 @@ const Crud = {
       let created = 0, failed = 0;
       for (const row of rows) {
         try {
-          let authData;
-          if (hasServiceKey) {
-            // Admin API: creates confirmed user immediately
-            authData = await API.authCreateUser(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
-          } else {
-            // Public signup: works without service key (user may need email confirm depending on Supabase settings)
-            authData = await API.authSignUp(Auth.toEmail(row.username), row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+          let userId = null;
+          let userEmail = Auth.toEmail(row.username);
+          try {
+            // Try server-side admin RPC first (no confirmation email, no rate limit).
+            const result = await API.rpc('admin_create_auth_user', {
+              user_email: userEmail,
+              user_password: row.password,
+              user_meta: { name: row.name, username: row.username, role: row.role || 'user' }
+            });
+            if (result?.id) userId = result.id;
+          } catch (rpcErr) {
+            console.log('[addUser] RPC not available, falling back to public signup:', rpcErr.message);
+            // Fallback to public signup (requires Confirm email disabled to avoid rate limits).
+            const authData = await API.authSignUp(userEmail, row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+            if (authData.user?.id) userId = authData.user.id;
           }
-          if (authData.user?.id) {
-            await API.request('profiles', 'POST', { id: authData.user.id, name: row.name, username: row.username, role: row.role || 'user' });
+          if (userId) {
+            await API.request('profiles', 'POST', { id: userId, name: row.name, username: row.username, role: row.role || 'user' });
             created++;
           } else {
             failed++;
