@@ -53,6 +53,7 @@
 | PROJ-03 | Project budget | Budget modal shows consistent totals | ☐ Pass ☐ Fail | |
 | PROJ-04 | Project statement | Includes deposits and project_expense transactions | ☐ Pass ☐ Fail | |
 | PROJ-05 | Client statement | Per-project chapters and client summary correct | ☐ Pass ☐ Fail | |
+| PROJ-06 | Supervision consistency | Client list, client detail, project detail, and dashboard subtract supervision the same way | ☐ Pass ☐ Fail | |
 
 ---
 
@@ -65,6 +66,7 @@
 | TX-03 | Add project expense (design) | Deducts but does not affect supervision | ☐ Pass ☐ Fail | |
 | TX-04 | Edit a transaction | Amount/type updated everywhere | ☐ Pass ☐ Fail | |
 | TX-05 | Delete a transaction | Soft-deleted, removed from statements | ☐ Pass ☐ Fail | |
+| TX-06 | Overpayment validation | Save rejected when paid amount > total amount | ☐ Pass ☐ Fail | |
 
 ---
 
@@ -89,6 +91,7 @@
 | VND-04 | Delete procurement | Linked transaction soft-deleted | ☐ Pass ☐ Fail | |
 | VND-05 | Vendor purchases screen | Lists procurements with totals | ☐ Pass ☐ Fail | |
 | VND-06 | Vendor statement | Balances and history correct | ☐ Pass ☐ Fail | |
+| VND-07 | Procurement overpayment validation | Save rejected when paid amount > total price | ☐ Pass ☐ Fail | |
 
 ---
 
