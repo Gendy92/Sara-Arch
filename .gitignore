@@ -9,3 +9,7 @@
 Thumbs.db
 node_modules/
 *.docx
+
+# Allow generated specification workbooks
+!SPEC-v2.xlsx
+!LOGIC_SPEC-v1.xlsx
