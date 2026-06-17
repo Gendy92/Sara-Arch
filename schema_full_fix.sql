@@ -538,10 +538,13 @@ INSERT INTO sectors (name, description) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Deduplicate sectors by name (keep the oldest record) and enforce uniqueness
+WITH keepers AS (
+  SELECT DISTINCT ON (LOWER(name)) id
+  FROM sectors
+  ORDER BY LOWER(name), created_at ASC, id ASC
+)
 DELETE FROM sectors
-WHERE id NOT IN (
-  SELECT MIN(id) FROM sectors GROUP BY LOWER(name)
-);
+WHERE id NOT IN (SELECT id FROM keepers);
 DO $$
 BEGIN
   IF NOT EXISTS (
