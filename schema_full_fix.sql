@@ -1049,5 +1049,21 @@ UPDATE auth.users
 SET email_confirmed_at = COALESCE(email_confirmed_at, NOW())
 WHERE email_confirmed_at IS NULL;
 
+-- Normalize legacy procurement / transaction payment tracking.
+-- Records created before the payment_term/paid_amount columns (or with NULL values)
+-- are treated as immediate/cash purchases so vendor balances are not inflated.
+UPDATE procurements
+SET payment_term = 'immediate',
+    paid_amount = COALESCE(total_price, 0)
+WHERE deleted_at IS NULL
+  AND (payment_term IS NULL OR paid_amount IS NULL);
+
+UPDATE transactions
+SET payment_term = 'immediate',
+    paid_amount = COALESCE(amount, 0)
+WHERE deleted_at IS NULL
+  AND (payment_term IS NULL OR paid_amount IS NULL)
+  AND type = 'project_expense';
+
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';

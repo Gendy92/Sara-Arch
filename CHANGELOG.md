@@ -1,12 +1,39 @@
 # Sara Arch — Changelog
 
-> **Current version:** v172  
+> **Current version:** v174  
 > **Branch:** `dev.2`  
 > **Last updated:** 2026-06-17
 
 ---
 
-## Version 172 (Current)
+## Version 174 (Current)
+
+### Added
+- `migration_v173_legacy_procurements.sql` to normalize legacy procurement and project_expense payment tracking.
+- Server-side negative-value guard for all financial numeric fields.
+- Procurement add/edit now defaults to `payment_term='immediate'` and `paid_amount=quantity*unit_price`.
+
+### Changed
+- `Crud.save()` now strips the generated `total_price` column for procurements and accepts an optional pre-fetched `oldData` row for reliable audit logging.
+- `Crud.bulkSave()` rejects negative financial values and strips generated `total_price`.
+- Bumped runtime version to `174`.
+
+---
+
+## Version 173
+
+### Added
+- `auto_confirm_user` trigger on `auth.users` so every new user is confirmed automatically.
+- Backfill update to confirm any existing unconfirmed accounts.
+- Public signup/login now returns a valid session for non-admin users.
+
+### Changed
+- Applied `schema_full_fix.sql` (idempotent) through the Supabase Management API.
+- Updated `ROADMAP.md` and known-issues list to reflect completed critical fixes.
+
+---
+
+## Version 172
 
 ### Added
 - Server-side user creation via `admin_create_auth_user` Postgres function; no service-role key in the browser.
@@ -143,13 +170,20 @@
 
 ---
 
-## Known Issues at v162
+## Known Issues at v174
 
-- Procurement `total_price` save inconsistency.
-- Legacy procurements without `payment_term` inflate vendor balances.
-- Audit trail `old_data` is `null` on UPDATE/DELETE.
-- Service-role key still exposed in client-side config and backup script.
+- Payroll regeneration does not reset paid status to `draft`.
 - Some documentation (`APP_TABS_GUIDE.md`, `TEST_PLAN.md`) lags behind runtime version.
 - No restore-from-backup feature yet.
+
+### Resolved at v174
+- ✅ Procurement `total_price` save consistency (generated column; stripped from client payloads).
+- ✅ Legacy procurements / project_expense rows without `payment_term` normalized to `immediate` and fully paid.
+- ✅ Audit trail `old_data` reliability improved (explicit pre-fetch helper + optional caller-provided old row).
+- ✅ Negative financial inputs blocked at the data layer and via `min="0"` on all number fields.
+
+### Resolved at v173
+- ✅ Non-admin login blocked by `email_not_confirmed`.
+- ✅ Service-role key removed from client-side config; used only in GitHub Actions backup secret.
 
 See [ROADMAP.md](./ROADMAP.md) for planned fixes and features.

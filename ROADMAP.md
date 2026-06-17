@@ -1,7 +1,7 @@
 # Sara Arch — Development Roadmap
 
-> **Current runtime version:** v162  
-> **Last updated:** 2026-06-15
+> **Current runtime version:** v174  
+> **Last updated:** 2026-06-17
 
 This roadmap prioritizes critical fixes, high-value business features, quality-of-life improvements, and long-term technical excellence.
 
@@ -13,14 +13,14 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Problem | Suggested Fix |
 |---|-------------|---------|---------------|
-| 1.1.1 | **Fix procurement `total_price` save** | `addProcurement` / `editProcurement` do not always compute/store `total_price`, causing vendor balances and purchase reports to show `null`. | Ensure `total_price = quantity * unit_price` is always sent or rely on the generated column. |
-| 1.1.2 | **Fix legacy procurement paid amount** | Legacy procurements without `payment_term` are treated as fully unpaid, inflating vendor balances. | Add migration to set `payment_term='immediate'` and `paid_amount=total_price` for legacy records. |
-| 1.1.3 | **Prevent negative financial inputs** | Amount inputs allow negative values, corrupting balances. | Add `min="0"` to all amount/price/quantity inputs. |
-| 1.1.4 | **Fix audit trail `old_data`** | UPDATE/DELETE audit logs always record `old_data: null`. | Pass the original row to `_logAudit` before update/delete. |
-| 1.1.5 | **Remove exposed service-role key** | `SUPABASE_SERVICE_KEY` is hardcoded in `js/config.js`. | Move admin user operations to a secure backend/Edge Function; rotate keys. |
+| 1.1.1 | **Fix procurement `total_price` save** | `addProcurement` / `editProcurement` did not always compute/store `total_price`, causing vendor balances and purchase reports to show `null`. | ✅ `total_price` is a generated column (`quantity * unit_price`); client payloads now strip any accidental `total_price` values. |
+| 1.1.2 | **Fix legacy procurement paid amount** | Legacy procurements without `payment_term` inflated vendor balances. | ✅ Added `migration_v173_legacy_procurements.sql`; new procurements default to `payment_term='immediate'` and `paid_amount=quantity*unit_price`. |
+| 1.1.3 | **Prevent negative financial inputs** | Amount inputs allowed negative values, corrupting balances. | ✅ All number inputs already use `min="0"`; `Crud.save()` / `bulkSave()` now reject negative financial values server-side as well. |
+| 1.1.4 | **Fix audit trail `old_data`** | UPDATE/DELETE audit logs could record `old_data: null`. | ✅ Added `_fetchOldData()` helper; `save()` accepts an optional pre-fetched old row and logs it with every UPDATE. |
+| 1.1.5 | **Remove exposed service-role key** | `SUPABASE_SERVICE_KEY` was hardcoded in `js/config.js`. | ✅ Moved admin user operations to the server-side `admin_create_auth_user` Postgres function; service-role key now only used in GitHub Actions backup workflow. |
 | 1.1.6 | **Fix payroll regeneration bug** | Regenerating an already-paid payroll keeps `paid` status with new numbers. | Reset status to `draft` on regeneration or block regeneration of paid payrolls. |
-| 1.1.7 | **Add duplicate detection** | Infinite duplicate clients/projects/vendors can be created. | Add unique normalized-name checks and confirmation prompts. |
-| 1.1.8 | **Fix silent API failures** | 15+ `catch` blocks leave the UI stuck on "جاري التحميل...". | Add global error handling, toast errors, and fallback empty states. |
+| 1.1.7 | **Add duplicate detection** | Infinite duplicate clients/projects/vendors could be created. | ✅ Added unique normalized-name checks for clients, projects, vendors, sectors, sections, work items, and items; added soft-delete cleanup script. |
+| 1.1.9 | **Fix non-admin login (`email_not_confirmed`)** | New users created via public signup or admin RPC could not log in because Supabase still required email confirmation. | ✅ Added `auto_confirm_user` trigger on `auth.users`; backfilled existing unconfirmed accounts; verified public signup and login return a valid session. |
 
 ### 1.2 Data Consistency & Security
 
@@ -137,8 +137,16 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 ## 4. Suggested Phasing
 
-### Phase 1 — Stabilize (Weeks 1–2)
-- Fix critical bugs listed in section 1.1.
+### Phase 1 — Stabilize (Mostly complete at v174)
+- ✅ Fix non-admin login (`email_not_confirmed`).
+- ✅ Remove exposed service-role key from browser; keep it only in GitHub Actions secrets.
+- ✅ Add duplicate detection for master data.
+- ✅ Add global error handling / toast failures.
+- ✅ Procurement `total_price` save consistency.
+- ✅ Legacy procurement paid amount migration.
+- ✅ Negative amount input guards.
+- ✅ Audit trail `old_data` fix.
+- ⏳ Payroll regeneration status reset.
 - Tighten RLS and rotate exposed keys.
 - Add database views for balances.
 
