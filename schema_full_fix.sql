@@ -1034,7 +1034,6 @@ CREATE OR REPLACE FUNCTION public.auto_confirm_user()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, NOW());
-  NEW.confirmed_at := COALESCE(NEW.confirmed_at, NOW());
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
@@ -1047,9 +1046,8 @@ EXECUTE FUNCTION public.auto_confirm_user();
 
 -- Confirm any existing unconfirmed accounts (one-time cleanup).
 UPDATE auth.users
-SET email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
-    confirmed_at = COALESCE(confirmed_at, NOW())
-WHERE email_confirmed_at IS NULL OR confirmed_at IS NULL;
+SET email_confirmed_at = COALESCE(email_confirmed_at, NOW())
+WHERE email_confirmed_at IS NULL;
 
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
