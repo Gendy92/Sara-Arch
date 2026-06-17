@@ -922,15 +922,28 @@ const Crud = {
       let created = 0, failed = 0;
       for (const row of rows) {
         try {
-          // Server-side admin RPC is required. It creates the auth user directly
-          // in the database without sending confirmation emails.
-          const result = await API.rpc('admin_create_auth_user', {
-            user_email: Auth.toEmail(row.username),
-            user_password: row.password,
-            user_meta: { name: row.name, username: row.username, role: row.role || 'user' }
-          });
-          const userId = result?.id || null;
-          if (!userId) throw new Error('RPC returned no user id');
+          const userEmail = Auth.toEmail(row.username);
+          let authData;
+          try {
+            authData = await API.authSignUp(userEmail, row.password, { name: row.name, username: row.username, role: row.role || 'user' });
+          } catch (e) {
+            const msg = e.message || '';
+            if (msg.includes('over_email_send_rate_limit') || msg.includes('rate limit')) {
+              throw new Error('إنشاء المستخدم يتطلب تعطيل تأكيد البريد في إعدادات Supabase (Authentication → Providers → Email → Confirm email: OFF)');
+            }
+            throw e;
+          }
+          const userId = authData.user?.id || null;
+          if (!userId) throw new Error('فشل إنشاء المستخدم');
+          // Upsert profile row in case a previous attempt left an auth.user without a profile
+          // or a profile already exists for this user.
+          const existing = await API.request('profiles', 'GET', null, `?id=eq.${userId}&select=id`);
+          const profilePayload = { id: userId, name: row.name, username: row.username, role: row.role || 'user' };
+          if (existing.length) {
+            await API.request('profiles', 'PATCH', profilePayload, `?id=eq.${userId}`);
+          } else {
+            await API.request('profiles', 'POST', profilePayload);
+          }
           if (userId) {
             await API.request('profiles', 'POST', { id: userId, name: row.name, username: row.username, role: row.role || 'user' });
             created++;
