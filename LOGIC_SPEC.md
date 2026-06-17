@@ -83,14 +83,7 @@ Client Expenses = Σ Project Expenses  (for all client projects)
 Client Balance  = Client Deposits − Client Expenses
 ```
 
-**Note:** The client list/client detail view currently does **not** subtract supervision from the displayed balance, while the project detail view does. This creates a known inconsistency:
-
-```
-Client list balance   = Deposits − Expenses
-Project detail balance= Deposits − Expenses − Supervision
-```
-
-Recommended fix: decide whether supervision is treated as a client liability or office income, then apply the same formula everywhere.
+The same supervision formula is applied consistently in project detail, client detail, client list, and dashboard active-client balances.
 
 ---
 
@@ -324,8 +317,7 @@ Employee ──payroll──► Salary expense
 | Area | Formula |
 |------|---------|
 | Project net balance | `Deposits − Expenses − Supervision` |
-| Client balance (project detail) | `Σ(Deposits − Expenses − Supervision)` |
-| Client balance (client list) | `Σ(Deposits − Expenses)` *(inconsistent)* |
+| Client balance (all views) | `Σ(Deposits − Expenses − Supervision)` |
 | Supervision fee | `(Expenses − Design Expenses) × Supervision% / 100` |
 | Vendor balance | `(Service Owed + Merchandise Owed) − (Service Paid + Merchandise Paid)` |
 | Office balance | `(Owner Deposits + Supervision Income) − (Office Expenses + Withdrawals)` |

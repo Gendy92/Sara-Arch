@@ -883,7 +883,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_active_client_balances(limit_count INT DEFAULT 10)
-RETURNS TABLE(client_id UUID, client_name TEXT, deposits NUMERIC, expenses NUMERIC, balance NUMERIC) AS $$
+RETURNS TABLE(client_id UUID, client_name TEXT, deposits NUMERIC, expenses NUMERIC, supervision NUMERIC, balance NUMERIC) AS $$
 BEGIN
   RETURN QUERY
   WITH active_clients AS (
@@ -909,17 +909,38 @@ BEGIN
       AND t.type = 'project_expense'
       AND t.client_id IS NOT NULL
     GROUP BY t.client_id
+  ),
+  project_supervision AS (
+    SELECT p.client_id,
+           SUM(GREATEST(0, COALESCE(total_exp.amt, 0) - COALESCE(design_exp.amt, 0)) * (p.supervision_percentage / 100.0)) AS amt
+    FROM projects p
+    LEFT JOIN (
+      SELECT project_id, SUM(amount) AS amt
+      FROM transactions
+      WHERE deleted_at IS NULL AND type = 'project_expense'
+      GROUP BY project_id
+    ) total_exp ON total_exp.project_id = p.id
+    LEFT JOIN (
+      SELECT project_id, SUM(amount) AS amt
+      FROM transactions
+      WHERE deleted_at IS NULL AND type = 'project_expense' AND expense_category = 'design'
+      GROUP BY project_id
+    ) design_exp ON design_exp.project_id = p.id
+    WHERE p.deleted_at IS NULL
+    GROUP BY p.client_id
   )
   SELECT ac.id AS client_id,
          ac.name AS client_name,
          COALESCE(d.amt, 0) AS deposits,
          COALESCE(e.amt, 0) AS expenses,
-         COALESCE(d.amt, 0) - COALESCE(e.amt, 0) AS balance
+         COALESCE(ps.amt, 0) AS supervision,
+         COALESCE(d.amt, 0) - COALESCE(e.amt, 0) - COALESCE(ps.amt, 0) AS balance
   FROM active_clients ac
   LEFT JOIN client_deposits d ON d.client_id = ac.id
   LEFT JOIN client_expenses e ON e.client_id = ac.id
-  WHERE COALESCE(d.amt, 0) - COALESCE(e.amt, 0) <> 0
-  ORDER BY (COALESCE(d.amt, 0) - COALESCE(e.amt, 0)) DESC
+  LEFT JOIN project_supervision ps ON ps.client_id = ac.id
+  WHERE COALESCE(d.amt, 0) - COALESCE(e.amt, 0) - COALESCE(ps.amt, 0) <> 0
+  ORDER BY (COALESCE(d.amt, 0) - COALESCE(e.amt, 0) - COALESCE(ps.amt, 0)) DESC
   LIMIT limit_count;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

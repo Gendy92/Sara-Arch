@@ -163,8 +163,8 @@ Object.assign(App, {
           const design = designByProject[p.id] || 0;
           const constr = exp - design;
           const dep = depByProject[p.id] || 0;
-          const balance = dep - exp;
-          const supAmt = constr * (p.supervision_percentage || 0) / 100;
+          const supAmt = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
+          const balance = dep - exp - supAmt;
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
@@ -217,13 +217,19 @@ Object.assign(App, {
       const totalValue = projects.reduce((s, p) => s + (+p.value || 0), 0);
       const totalExp = projects.reduce((s, p) => s + (expByProject[p.id] || 0), 0);
       const totalDep = projects.reduce((s, p) => s + (depByProject[p.id] || 0), 0);
+      const totalSup = projects.reduce((s, p) => {
+        const exp = expByProject[p.id] || 0;
+        const design = designByProject[p.id] || 0;
+        return s + (Math.max(0, exp - design) * (p.supervision_percentage || 0) / 100);
+      }, 0);
 
       const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المشاريع</div><div class="kpi-value">${totalProjects}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي القيم</div><div class="kpi-value">${this.fmtMoney(totalValue)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalDep)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(totalExp)}</div></div>
-        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(totalDep - totalExp)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalSup)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(totalDep - totalExp - totalSup)}</div></div>
       </div>`;
 
       const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${client.id}')">كشف حساب</button>`;
@@ -232,8 +238,8 @@ Object.assign(App, {
         const design = designByProject[p.id] || 0;
         const constr = exp - design;
         const dep = depByProject[p.id] || 0;
-        const balance = dep - exp;
-        const supAmt = constr * (p.supervision_percentage || 0) / 100;
+        const supAmt = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
+        const balance = dep - exp - supAmt;
         const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
         const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
         const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
