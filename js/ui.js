@@ -151,9 +151,15 @@ const UI = {
       const dropdown = wrapper.querySelector('.searchable-select-dropdown');
       const sync = () => {
         const val = select.value;
-        if (!val) { input.value = ''; UI._highlightSearchableOption(wrapper); return; }
+        if (!val) {
+          input.value = '';
+          input.placeholder = '🔍 اكتب للبحث...';
+          UI._highlightSearchableOption(wrapper);
+          return;
+        }
         const selected = Array.from(select.options).find(o => o.value === val);
         input.value = selected ? selected.textContent : '';
+        input.placeholder = '';
         UI._highlightSearchableOption(wrapper);
       };
       const observer = new MutationObserver(() => {
