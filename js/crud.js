@@ -417,11 +417,9 @@ const Crud = {
   addVendor() {
     const sectorOpts = [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }];
     const typeOpts = [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }];
-    const officeOpts = [{ v: false, l: 'لا' }, { v: true, l: 'نعم' }];
     const cols = [
       { key: 'name', label: 'اسم المورد *', req: true },
       { key: 'vendor_type', label: 'النوع', type: 'select', opts: typeOpts },
-      { key: 'is_office', label: 'مكتب سارة أبو العلا؟', type: 'select', opts: officeOpts },
       { key: 'sector', label: 'التخصص', type: 'select', opts: sectorOpts },
       { key: 'contact_person', label: 'الشخص المسؤول' },
       { key: 'phone', label: 'الهاتف' },

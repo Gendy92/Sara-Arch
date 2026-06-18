@@ -150,7 +150,9 @@ const UI = {
       const input = wrapper.querySelector('.searchable-select-input');
       const dropdown = wrapper.querySelector('.searchable-select-dropdown');
       const sync = () => {
-        const selected = select.options[select.selectedIndex];
+        const val = select.value;
+        if (!val) { input.value = ''; UI._highlightSearchableOption(wrapper); return; }
+        const selected = Array.from(select.options).find(o => o.value === val);
         input.value = selected ? selected.textContent : '';
         UI._highlightSearchableOption(wrapper);
       };
