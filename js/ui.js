@@ -71,16 +71,18 @@ const UI = {
   _searchableSelectGlobalInit: false,
   _positionSearchableDropdown(dropdown, input) {
     const rect = input.getBoundingClientRect();
-    const width = Math.max(rect.width, 150);
+    const minWidth = Math.max(rect.width, 150);
     dropdown.style.position = 'fixed';
     dropdown.style.top = `${rect.bottom + 2}px`;
-    dropdown.style.width = `${width}px`;
-    dropdown.style.minWidth = `${width}px`;
+    // Let the dropdown expand to fit long option text, but cap it for safety.
+    dropdown.style.width = 'auto';
+    dropdown.style.minWidth = `${minWidth}px`;
+    dropdown.style.maxWidth = `min(600px, calc(100vw - 32px))`;
     // RTL-safe: align dropdown's right edge to trigger's right edge.
     dropdown.style.right = `${window.innerWidth - rect.right}px`;
     dropdown.style.left = 'auto';
     dropdown.style.maxHeight = '280px';
-    dropdown.style.setProperty('--ss-width', `${width}px`);
+    dropdown.style.setProperty('--ss-width', `${minWidth}px`);
   },
   _highlightSearchableOption(wrapper) {
     const select = wrapper.querySelector('select');
@@ -265,6 +267,16 @@ const Spreadsheet = {
     };
     const footer = document.createElement('div');
     footer.className = 'modal-actions';
+
+    // Move the "add row" button from inside the scrollable spreadsheet body
+    // to the modal footer so it remains accessible when many rows exist.
+    const addBtn = spreadsheetDiv.querySelector('button[onclick*="addRow"]');
+    if (addBtn) {
+      addBtn._spreadsheet = spreadsheetDiv;
+      addBtn.removeAttribute('style');
+      footer.appendChild(addBtn);
+    }
+
     footer.appendChild(saveBtn);
     modal.appendChild(footer);
   },
@@ -515,7 +527,7 @@ const Spreadsheet = {
   },
 
   addRow(btn) {
-    const spreadsheet = btn.closest('.spreadsheet');
+    const spreadsheet = btn._spreadsheet || btn.closest('.spreadsheet');
     const tbody = spreadsheet.querySelector('tbody');
     const firstRow = tbody.querySelector('tr');
     const newRow = firstRow.cloneNode(true);

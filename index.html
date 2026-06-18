@@ -15,7 +15,7 @@
 <meta http-equiv="Expires" content="0">
 <title>سارة أبو العلا — النظام المالي</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="css/style.css?v=188">
+<link rel="stylesheet" href="css/style.css?v=189">
 </head>
 <body>
 <div id="app">
@@ -47,7 +47,22 @@
   }
 
   function loadAll(version) {
+    var oldVersion = localStorage.getItem('sara_app_version');
     localStorage.setItem('sara_app_version', version);
+    // If a new version was just deployed, unregister the old service worker
+    // and force a clean reload so the latest assets are always served.
+    if (oldVersion && oldVersion !== String(version)) {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          return Promise.all(regs.map(function(r) { return r.unregister(); }));
+        }).finally(function() {
+          location.reload(true);
+        });
+      } else {
+        location.reload(true);
+      }
+      return;
+    }
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + version).catch(function(err) {
         console.log('[SW] registration failed:', err);

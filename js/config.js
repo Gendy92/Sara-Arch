@@ -18,6 +18,10 @@ const SUPABASE_URL = localCfg.SUPABASE_URL || 'https://tvjkctttcijymqvaetsv.supa
 // js/config.local.js (local dev) or from the SUPABASE_ANON_KEY GitHub secret (Pages deploy).
 const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
 
+// Email domain used when mapping usernames to syntactically-valid auth emails.
+// Can be overridden via config.local.js if the Pages domain ever changes.
+const SARA_EMAIL_DOMAIN = localCfg.SARA_EMAIL_DOMAIN || 'gendy92.github.io';
+
 // Debug / performance logging toggle.
 const PERF_LOG = localCfg.PERF_LOG || false;
 

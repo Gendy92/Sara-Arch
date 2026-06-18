@@ -27,18 +27,18 @@ const Auth = {
     // For Arabic / Unicode usernames, fall back to a hashed local part so every user gets a unique email.
     if (!safe) safe = 'u' + this._hashUsername(raw);
     safe = safe.replace(/\.{2,}/g, '.').replace(/^[-.]+|[-.]+$/g, '') || 'user';
-    return safe + '@gendy92.github.io';
+    return safe + '@' + SARA_EMAIL_DOMAIN;
   },
 
   // Legacy mapping used before Arabic support; kept only for fallback logins.
   toEmailLegacy(username) {
     const local = (username || '').toString().trim().toLowerCase().split('@')[0];
     const safe = local.replace(/\s+/g, '.').replace(/[^a-z0-9_.-]/g, '');
-    return (safe || 'user') + '@gendy92.github.io';
+    return (safe || 'user') + '@' + SARA_EMAIL_DOMAIN;
   },
 
   fromEmail(email) {
-    return email.replace('@gendy92.github.io', '').replace('@sara-arch.local', '').replace('@local', '');
+    return email.replace('@' + SARA_EMAIL_DOMAIN, '').replace('@sara-arch.local', '').replace('@local', '');
   },
 
   safeName(name, fallback) {
