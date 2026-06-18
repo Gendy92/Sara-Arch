@@ -2483,8 +2483,30 @@ const Crud = {
 
   async payPayroll(id) {
     UI.confirm('هل أنت متأكد من تسجيل الدفع؟', async () => {
-      await this.save('payroll_records', { status: 'paid' }, id);
-      UI.toast('تم تسجيل الدفع');
+      const rows = await API.request('payroll_records', 'GET', null, `?select=*,employees(name)&id=eq.${id}&deleted_at=is.null`);
+      if (!rows.length) return;
+      const p = rows[0];
+      if (p.status === 'paid') { UI.toast('الراتب مسجل كمدفوع مسبقاً', 'info'); return; }
+      const now = new Date().toISOString();
+      await this.save('payroll_records', { status: 'paid', paid_at: now }, id);
+      // Record salary as an office expense per LOGIC_SPEC Ch6.
+      await this.save('transactions', {
+        type: 'office_expense',
+        amount: +p.net_salary || 0,
+        description: `راتب ${p.employee_name || p.employees?.name || ''} - ${p.month}/${p.year}`,
+        employee_id: p.employee_id || null,
+        employee_name: p.employee_name || p.employees?.name || null,
+        date: now.slice(0, 10)
+      });
+      UI.toast('تم تسجيل الدفع وإضافة المصروف المكتبي');
+      App.loadEmpPayroll(); App.loadOffice();
+    });
+  },
+
+  delPayroll(id) {
+    UI.confirm('هل أنت متأكد من حذف سجل الراتب؟', async () => {
+      await this.softDelete('payroll_records', id);
+      UI.toast('تم الحذف');
       App.loadEmpPayroll();
     });
   }

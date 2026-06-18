@@ -899,6 +899,8 @@ Object.assign(App, {
           : p.status === 'approved'
             ? `<button class="btn btn-sm btn-primary" onclick="Crud.payPayroll('${p.id}')">💰 دفع</button> <button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`
             : `<button class="btn btn-sm btn-secondary" onclick="Crud.editPayroll('${p.id}')">تعديل</button>`;
+        const delBtn = `<button class="btn btn-sm btn-red" onclick="Crud.delPayroll('${p.id}')">حذف</button>`;
+        return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), {html: statusBadge(p.status)}, {html: actions + ' ' + delBtn}];
         return [e.name, App.fmtMoney(p.base_salary), p.days_present, p.days_absent, p.days_late, App.fmtMoney(p.deductions), App.fmtMoney(p.bonuses), App.fmtMoney(p.penalties), App.fmtMoney(p.net_salary), {html: statusBadge(p.status)}, {html: actions}];
       });
       document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
@@ -919,10 +921,11 @@ Object.assign(App, {
       const month = +document.getElementById('emp-payroll-month').value;
       const year = +document.getElementById('emp-payroll-year').value;
       const lastDay = new Date(year, month, 0).getDate();
-      const [employees, attendance, empTxs] = await Promise.all([
+      const [employees, attendance, empTxs, existingPayrolls] = await Promise.all([
         API.request('employees', 'GET', null, '?select=*&is_active=eq.true&deleted_at=is.null&order=name.asc'),
         API.request('attendance_records', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-${lastDay}&deleted_at=is.null`),
-        API.request('employee_transactions', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-${lastDay}&deleted_at=is.null`)
+        API.request('employee_transactions', 'GET', null, `?date=gte.${year}-${String(month).padStart(2,'0')}-01&date=lte.${year}-${String(month).padStart(2,'0')}-${lastDay}&deleted_at=is.null`),
+        API.request('payroll_records', 'GET', null, `?month=eq.${month}&year=eq.${year}&deleted_at=is.null`)
       ]);
       const attByEmp = {};
       attendance.forEach(a => { attByEmp[a.employee_id] = attByEmp[a.employee_id] || []; attByEmp[a.employee_id].push(a); });
@@ -932,6 +935,7 @@ Object.assign(App, {
         if (t.type === 'bonus') bonusByEmp[t.employee_id] = (bonusByEmp[t.employee_id] || 0) + (+t.amount || 0);
         if (t.type === 'penalty') penaltyByEmp[t.employee_id] = (penaltyByEmp[t.employee_id] || 0) + (+t.amount || 0);
       });
+      const existingMap = Object.fromEntries(existingPayrolls.map(p => [p.employee_id, p]));
       const records = employees.map(e => {
         const empAtt = attByEmp[e.id] || [];
         const present = empAtt.filter(a => a.status === 'present').length;
@@ -952,20 +956,20 @@ Object.assign(App, {
           deductions, bonuses, penalties, net_salary: net, status: 'draft'
         };
       });
+      let created = 0, updated = 0, skipped = 0;
       for (const r of records) {
-        try {
+        const existing = existingMap[r.employee_id];
+        if (!existing) {
           await API.request('payroll_records', 'POST', r);
-        } catch (e) {
-          // unique constraint — update instead
-          if (e.message && e.message.includes('23505')) {
-            const existing = await API.request('payroll_records', 'GET', null, `?employee_id=eq.${r.employee_id}&month=eq.${month}&year=eq.${year}&deleted_at=is.null`);
-            if (existing.length) {
-              await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary, status: 'draft' }, `?id=eq.${existing[0].id}`);
-            }
-          } else { throw e; }
+          created++;
+        } else if (existing.status === 'draft' || existing.status === 'approved') {
+          await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary, status: existing.status === 'approved' ? 'approved' : 'draft' }, `?id=eq.${existing.id}`);
+          updated++;
+        } else {
+          skipped++;
         }
       }
-      UI.toast(`تم توليد رواتب ${records.length} موظف`);
+      UI.toast(`تم توليد رواتب ${records.length} موظف (جديد ${created} / تحديث ${updated}${skipped ? ` / تخطي ${skipped}` : ''})`);
       this.loadEmpPayroll();
     } catch (e) { console.error(e); UI.toast('خطأ في توليد الرواتب: ' + e.message, 'error'); }
   },

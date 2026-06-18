@@ -254,6 +254,8 @@ CREATE TABLE IF NOT EXISTS payroll_records (
   penalties NUMERIC DEFAULT 0,
   net_salary NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'draft',
+  notes TEXT,
+  paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
@@ -461,6 +463,8 @@ ALTER TABLE attendance_records  ADD COLUMN IF NOT EXISTS updated_by UUID;
 -- Ensure employee_salary_history can track creator for trigger below
 ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
 
 -- Trigger function to auto-set created_by on insert
 CREATE OR REPLACE FUNCTION set_created_by()
