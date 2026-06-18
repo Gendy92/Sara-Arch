@@ -389,13 +389,19 @@ const App = {
       { key: 'default_supervision', value: String(this.settings.default_supervision || 0) },
       { key: 'currency_label', value: this.settings.currency_label || 'ج.م' }
     ];
-    for (const row of entries) {
-      try {
-        await API.request('app_settings', 'POST', row, '?on_conflict=key');
-      } catch (e) {
-        // If the table is missing, the localStorage backup will still hold the values.
-        throw new Error('تعذر حفظ الإعدادات على الخادم: ' + (e.message || ''));
+    try {
+      const existing = await API.request('app_settings', 'GET', null, '?select=key');
+      const existingKeys = new Set((existing || []).map(r => r.key));
+      for (const row of entries) {
+        if (existingKeys.has(row.key)) {
+          await API.request('app_settings', 'PATCH', { value: row.value }, '?key=eq.' + encodeURIComponent(row.key));
+        } else {
+          await API.request('app_settings', 'POST', row);
+        }
       }
+    } catch (e) {
+      // If the table is missing, the localStorage backup will still hold the values.
+      throw new Error('تعذر حفظ الإعدادات على الخادم: ' + (e.message || ''));
     }
   },
 
