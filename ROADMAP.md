@@ -1,7 +1,7 @@
 # Sara Arch — Development Roadmap
 
-> **Current runtime version:** v175  
-> **Last updated:** 2026-06-17
+> **Current runtime version:** v178  
+> **Last updated:** 2026-06-18
 
 This roadmap prioritizes critical fixes, high-value business features, quality-of-life improvements, and long-term technical excellence.
 
@@ -30,7 +30,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | 1.2.1 | **Create database views** for balances (client, project, vendor, office). | Move critical calculations from browser to database for consistency. |
 | 1.2.2 | **Add PostgreSQL functions/triggers** for supervision, net salary, and vendor balance. | Guarantees correctness regardless of client code. |
 | 1.2.3 | **Tighten RLS policies** so users can only access their own/allowed rows. | Replace `authenticated_all` with ownership or permission-based policies. |
-| 1.2.4 | **Rotate Supabase keys** and remove from repository history. | Mitigate exposure from hardcoded keys. |
+| 1.2.4 | **Rotate Supabase keys** and remove from repository history. | ✅ Hardcoded anon key fallback removed from `js/config.js`; rotate keys in Supabase Dashboard and update GitHub Secrets `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY`. |
 | 1.2.5 | **Add input sanitization** to prevent XSS in modals and dropdowns. | Security hardening. |
 
 ### 1.3 Core Business Features
