@@ -69,10 +69,12 @@ const UI = {
     const rect = input.getBoundingClientRect();
     const width = Math.max(rect.width, 150);
     dropdown.style.position = 'fixed';
-    dropdown.style.top = `${rect.bottom + 4}px`;
-    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.top = `${rect.bottom + 2}px`;
     dropdown.style.width = `${width}px`;
     dropdown.style.minWidth = `${width}px`;
+    // RTL-safe: align dropdown's right edge to trigger's right edge.
+    dropdown.style.right = `${window.innerWidth - rect.right}px`;
+    dropdown.style.left = 'auto';
     dropdown.style.maxHeight = '280px';
     dropdown.style.setProperty('--ss-width', `${width}px`);
   },
