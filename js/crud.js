@@ -69,16 +69,16 @@ const Crud = {
     let cleanData = { ...data };
     if (table === 'procurements') delete cleanData.total_price;
 
-    // Basic accounting guardrails
+    // Basic accounting guardrails: warn if paid exceeds total, but allow per LOGIC_SPEC.
     if (table === 'transactions' && cleanData.amount != null && cleanData.paid_amount != null) {
       const amount = +cleanData.amount || 0;
       const paid = +cleanData.paid_amount || 0;
-      if (paid > amount) throw new Error('المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المبلغ');
+      if (paid > amount) UI.toast('تنبيه: المبلغ المدفوع أكبر من إجمالي المبلغ', 'warning');
     }
     if (table === 'procurements' && cleanData.paid_amount != null) {
       const total = (+cleanData.quantity || 1) * (+cleanData.unit_price || 0);
       const paid = +cleanData.paid_amount || 0;
-      if (paid > total) throw new Error('المبلغ المدفوع لا يمكن أن يتجاوز إجمالي المشتريات');
+      if (paid > total) UI.toast('تنبيه: المبلغ المدفوع أكبر من إجمالي المشتريات', 'warning');
     }
     if (id) {
       const preUpdateData = oldData || await this._fetchOldData(table, id);
@@ -417,9 +417,11 @@ const Crud = {
   addVendor() {
     const sectorOpts = [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }];
     const typeOpts = [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }];
+    const officeOpts = [{ v: false, l: 'لا' }, { v: true, l: 'نعم' }];
     const cols = [
       { key: 'name', label: 'اسم المورد *', req: true },
       { key: 'vendor_type', label: 'النوع', type: 'select', opts: typeOpts },
+      { key: 'is_office', label: 'مكتب سارة أبو العلا؟', type: 'select', opts: officeOpts },
       { key: 'sector', label: 'التخصص', type: 'select', opts: sectorOpts },
       { key: 'contact_person', label: 'الشخص المسؤول' },
       { key: 'phone', label: 'الهاتف' },
@@ -451,6 +453,7 @@ const Crud = {
     const fields = [
       { name: 'name', label: 'اسم المورد', req: true },
       { name: 'vendor_type', label: 'النوع', type: 'select', opts: [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }] },
+      { name: 'is_office', label: 'مكتب سارة أبو العلا؟', type: 'select', opts: [{ v: false, l: 'لا' }, { v: true, l: 'نعم' }] },
       { name: 'sector', label: 'التخصص', type: 'select', opts: [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }] },
       { name: 'contact_person', label: 'الشخص المسؤول' },
       { name: 'phone', label: 'الهاتف' },
@@ -465,7 +468,7 @@ const Crud = {
         const existing = await API.request('vendors', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
         if (existing.length) { UI.toast('⚠️ اسم المورد موجود مسبقاً', 'error'); return; }
       }
-      const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
+      const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', is_office: fd.get('is_office') === 'true', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
       try {
         await this.save('vendors', data, id);
       } catch (e) {
@@ -926,6 +929,90 @@ const Crud = {
       UI.toast(`تم حفظ ${rows.length} مصروف`);
       App.loadTransactions(); App.loadOffice();
     }, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects }, sectionItem: { sectionKey: 'section_id', itemKey: 'item_id', items: workItems } });
+  },
+
+  async addClientReturn(clientId, projectId) {
+    const [clients, projects] = await Promise.all([
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
+    ]);
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
+    const fields = [
+      { name: 'client_id', label: 'العميل *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts], default: clientId || '' },
+      { name: 'project_id', label: 'المشروع *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts], default: projectId || '' },
+      { name: 'amount', label: 'المبلغ المرتجع *', type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'description', label: 'الوصف', type: 'textarea' }
+    ];
+    UI.openModal('⬅️ مرتجع عميل', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const project = projects.find(p => p.id === fd.get('project_id'));
+      if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
+      if (fd.get('client_id') && project.client_id !== fd.get('client_id')) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
+      await this.save('transactions', {
+        type: 'client_return',
+        amount: +fd.get('amount') || 0,
+        client_id: project.client_id,
+        party_id: project.client_id,
+        party_name: project.client_name,
+        party_type: 'client',
+        project_id: project.id,
+        project_name: project.name,
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        description: fd.get('description') || null
+      });
+      UI.toast('تم تسجيل المرتجع');
+      App.loadTransactions();
+      if (clientId) App.loadClient(clientId);
+      if (projectId) App.loadProject(projectId);
+    });
+    if (clientId) {
+      const overlay = document.querySelector('.modal-overlay');
+      if (overlay) this._setupClientProjectCascade(overlay, projects, clientId, projectId);
+    }
+  },
+
+  async addVendorSettlement(vendorId) {
+    const [vendors, projects] = await Promise.all([
+      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
+    ]);
+    const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
+    const fields = [
+      { name: 'vendor_id', label: 'المورد *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: vendorId || '' },
+      { name: 'project_id', label: 'المشروع *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'description', label: 'الوصف', type: 'textarea' }
+    ];
+    UI.openModal('💰 تسديد متأخرات مورد', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+      const project = projects.find(p => p.id === fd.get('project_id'));
+      if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
+      const amount = +fd.get('amount') || 0;
+      await this.save('transactions', {
+        type: 'vendor_settlement',
+        amount,
+        paid_amount: amount,
+        payment_term: 'settlement',
+        client_id: project.client_id,
+        party_id: project.client_id,
+        party_name: project.client_name,
+        party_type: 'client',
+        project_id: project.id,
+        project_name: project.name,
+        vendor_id: vendor ? vendor.id : null,
+        vendor_name: vendor ? vendor.name : null,
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        description: fd.get('description') || null
+      });
+      UI.toast('تم تسجيل التسديد');
+      App.loadTransactions(); App.loadVendors();
+      if (vendorId) App.loadVendor(vendorId);
+    });
   },
 
   async addOfficeExpense() {
@@ -1993,7 +2080,7 @@ const Crud = {
 
   async addCustody(employeeId) {
     const [projects, sectors, employees] = await Promise.all([
-      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
     ]);
@@ -2017,6 +2104,8 @@ const Crud = {
         employee_name: emp ? emp.name : null,
         sector_id: fd.get('custody_type') === 'office' ? (fd.get('sector_id') || null) : null,
         sector_name: fd.get('custody_type') === 'office' ? (sector ? sector.name : null) : null,
+        client_id: fd.get('custody_type') === 'project' ? (proj ? proj.client_id : null) : null,
+        client_name: fd.get('custody_type') === 'project' ? (proj ? proj.client_name : null) : null,
         project_id: fd.get('custody_type') === 'project' ? (fd.get('project_id') || null) : null,
         project_name: fd.get('custody_type') === 'project' ? (proj ? proj.name : null) : null,
         amount: +fd.get('amount') || 0,
@@ -2051,7 +2140,7 @@ const Crud = {
     const [sectors, employees, projects] = await Promise.all([
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-      API.request('projects', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
     ]);
     const fields = [
       { name: 'custody_type', label: 'نوع العهد *', type: 'select', req: true, opts: [{v:'office',l:'مكتبية'},{v:'project',l:'مشروع'}] },
@@ -2075,6 +2164,8 @@ const Crud = {
         employee_name: emp ? emp.name : null,
         sector_id: fd.get('custody_type') === 'office' ? (fd.get('sector_id') || null) : null,
         sector_name: fd.get('custody_type') === 'office' ? (sector ? sector.name : null) : null,
+        client_id: fd.get('custody_type') === 'project' ? (proj ? proj.client_id : null) : null,
+        client_name: fd.get('custody_type') === 'project' ? (proj ? proj.client_name : null) : null,
         project_id: fd.get('custody_type') === 'project' ? (fd.get('project_id') || null) : null,
         project_name: fd.get('custody_type') === 'project' ? (proj ? proj.name : null) : null,
         amount: +fd.get('amount') || 0,
@@ -2110,6 +2201,28 @@ const Crud = {
   },
 
   // ─── CUSTODY EXPENSES ───
+  _custodyStatus(amount, returned) {
+    const amt = +amount || 0;
+    const ret = +returned || 0;
+    if (amt === 0) return 'settled';
+    if (ret >= amt) return 'settled';
+    if (ret > 0) return 'partial';
+    return 'active';
+  },
+
+  async _updateCustodyReturned(custodyId) {
+    const [custody, expenses] = await Promise.all([
+      API.request('custody_records', 'GET', null, `?select=amount,returned_amount&id=eq.${custodyId}&deleted_at=is.null`),
+      API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`)
+    ]);
+    const c = custody[0];
+    if (!c) return;
+    const totalExpenses = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
+    const returned = totalExpenses; // expenses count as money consumed from custody
+    const status = this._custodyStatus(c.amount, returned);
+    await API.request('custody_records', 'PATCH', { returned_amount: returned, status }, '?id=eq.' + custodyId);
+  },
+
   async custodyExpenses(custodyId) {
     const [custody, expenses] = await Promise.all([
       API.request('custody_records', 'GET', null, `?select=*,employees(name)&id=eq.${custodyId}&deleted_at=is.null`),
@@ -2118,11 +2231,10 @@ const Crud = {
     const c = custody[0];
     if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const totalExpenses = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
-    const remaining = (+c.amount || 0) - (+c.returned_amount || 0) - totalExpenses;
+    const remaining = (+c.amount || 0) - totalExpenses;
     const empName = c.employees?.name || c.employee_name || '-';
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مبلغ العهدة</div><div class="kpi-value">${App.fmtMoney(c.amount || 0)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(c.returned_amount || 0)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExpenses)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(remaining)}</div></div>
     </div>`;
@@ -2138,7 +2250,7 @@ const Crud = {
     const c = custodyRows[0];
     const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`);
     const spent = existing.reduce((s, x) => s + (+x.amount || 0), 0);
-    const available = (+c.amount || 0) - (+c.returned_amount || 0) - spent;
+    const available = (+c.amount || 0) - spent;
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
       { name: 'date', label: 'التاريخ', type: 'date' },
@@ -2148,13 +2260,52 @@ const Crud = {
       const fd = new FormData(form);
       const amount = +fd.get('amount') || 0;
       if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
+      const desc = fd.get('description') || 'مصروف عهدة';
+      const date = fd.get('date') || new Date().toISOString().slice(0, 10);
+      // Create linked transaction for office/project balance
+      let txPayload;
+      if (c.custody_type === 'project') {
+        txPayload = {
+          type: 'project_expense',
+          amount,
+          paid_amount: amount,
+          payment_term: 'immediate',
+          expense_category: 'construction',
+          client_id: c.client_id || null,
+          party_id: c.client_id || null,
+          party_name: c.client_name || null,
+          party_type: 'client',
+          project_id: c.project_id || null,
+          project_name: c.project_name || null,
+          employee_id: c.employee_id || null,
+          employee_name: c.employee_name || null,
+          date,
+          description: desc
+        };
+      } else {
+        txPayload = {
+          type: 'office_expense',
+          amount,
+          employee_id: c.employee_id || null,
+          employee_name: c.employee_name || null,
+          sector_id: c.sector_id || null,
+          sector_name: c.sector_name || null,
+          date,
+          description: desc
+        };
+      }
+      const txResult = await this.save('transactions', txPayload);
+      const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
       await this.save('custody_expenses', {
         custody_id: custodyId,
+        linked_transaction_id: txId || null,
         amount,
-        date: fd.get('date') || new Date().toISOString().slice(0, 10),
-        description: fd.get('description') || null
+        date,
+        description: desc
       });
+      await this._updateCustodyReturned(custodyId);
       UI.toast('تم الحفظ');
+      App.loadOffice();
       this.custodyExpenses(custodyId);
     });
   },
@@ -2162,36 +2313,46 @@ const Crud = {
   async editCustodyExpense(id) {
     const rows = await API.request('custody_expenses', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
-    const custodyRows = await API.request('custody_records', 'GET', null, `?select=amount,returned_amount&id=eq.${rows[0].custody_id}&deleted_at=is.null`);
+    const expense = rows[0];
+    const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${expense.custody_id}&deleted_at=is.null`);
     const c = custodyRows[0] || {};
-    const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&id=neq.${id}&custody_id=eq.${rows[0].custody_id}&deleted_at=is.null`);
+    const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&id=neq.${id}&custody_id=eq.${expense.custody_id}&deleted_at=is.null`);
     const spent = existing.reduce((s, x) => s + (+x.amount || 0), 0);
-    const available = (+c.amount || 0) - (+c.returned_amount || 0) - spent;
+    const available = (+c.amount || 0) - spent;
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
       { name: 'date', label: 'التاريخ', type: 'date' },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
-    UI.openModal('تعديل مصروف عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+    UI.openModal('تعديل مصروف عهدة', `<form>${UI.form(fields, expense)}</form>`, async (form) => {
       const fd = new FormData(form);
       const amount = +fd.get('amount') || 0;
       if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
-      await this.save('custody_expenses', {
-        amount,
-        date: fd.get('date') || null,
-        description: fd.get('description') || null
-      }, id);
+      const desc = fd.get('description') || expense.description || 'مصروف عهدة';
+      const date = fd.get('date') || expense.date;
+      // Update linked transaction amount
+      if (expense.linked_transaction_id) {
+        await this.save('transactions', { amount, paid_amount: amount, date, description: desc }, expense.linked_transaction_id);
+      }
+      await this.save('custody_expenses', { amount, date, description: desc }, id);
+      await this._updateCustodyReturned(expense.custody_id);
       UI.toast('تم التحديث');
-      this.custodyExpenses(rows[0].custody_id);
+      App.loadOffice();
+      this.custodyExpenses(expense.custody_id);
     });
   },
 
   delCustodyExpense(id) {
     UI.confirm('هل أنت متأكد من حذف هذا المصروف؟', async () => {
-      const rows = await API.request('custody_expenses', 'GET', null, `?select=custody_id&id=eq.${id}&deleted_at=is.null`);
+      const rows = await API.request('custody_expenses', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
+      if (!rows.length) return;
+      const expense = rows[0];
+      if (expense.linked_transaction_id) await this.softDelete('transactions', expense.linked_transaction_id);
       await this.softDelete('custody_expenses', id);
+      await this._updateCustodyReturned(expense.custody_id);
       UI.toast('تم الحذف');
-      if (rows.length && rows[0].custody_id) this.custodyExpenses(rows[0].custody_id);
+      App.loadOffice();
+      this.custodyExpenses(expense.custody_id);
     });
   },
 

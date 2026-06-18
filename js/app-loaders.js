@@ -124,7 +124,7 @@ Object.assign(App, {
       const html = clients.map(c => {
         const cProjects = projByClient[c.id] || [];
         const cb = balByClient[c.id] || {};
-        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
+        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${c.id}')">⬅️ مرتجع</button>`;
         const projRows = cProjects.map(p => {
           const pb = balByProject[p.id] || {};
           const balance = pb.balance || 0;
@@ -189,7 +189,7 @@ Object.assign(App, {
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(totalDep - totalExp - totalSup)}</div></div>
       </div>`;
 
-      const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${client.id}')">كشف حساب</button>`;
+      const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${client.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${client.id}')">⬅️ مرتجع</button>`;
       const projRows = projects.map(p => {
         const pb = balByProject[p.id] || {};
         const balance = pb.balance || 0;
@@ -247,7 +247,7 @@ Object.assign(App, {
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
       </div>`;
 
-      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${project.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button>`;
+      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${project.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${project.client_id}', '${project.id}')">⬅️ مرتجع</button>`;
       const info = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>
@@ -298,13 +298,14 @@ Object.assign(App, {
       const balanceMap = Object.fromEntries(vendorBalances.map(b => [b.vendor_id, b]));
       const html = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الرصيد', 'الإجراءات'], data.map(v => {
         const typeBadge = v.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
+        const officeBadge = v.is_office ? ' <span class="badge badge-blue">مكتب</span>' : '';
         const vb = balanceMap[v.id] || {};
         const balance = vb.balance || 0;
         const balColor = balance > 0 ? 'var(--red)' : balance < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = balance > 0 ? 'مستحق' : balance < 0 ? 'زيادة' : 'تسوية';
         const balanceCell = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`;
         const actions = UI.actions(v.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${v.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${v.id}')">💰 مشتريات</button>`;
-        return [{html: `<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.name)}</a>`}, {html: typeBadge}, App.esc(v.sector || '-'), App.esc(v.contact_person || '-'), App.esc(v.phone || '-'), {html: balanceCell}, {html: actions}];
+        return [{html: `<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.name)}</a>${officeBadge}`}, {html: typeBadge}, App.esc(v.sector || '-'), App.esc(v.contact_person || '-'), App.esc(v.phone || '-'), {html: balanceCell}, {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
       this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...', (term) => {
@@ -366,7 +367,7 @@ Object.assign(App, {
       </div>`;
 
       const typeBadge = vendor.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
-      const actions = UI.actions(vendor.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${vendor.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${vendor.id}')">💰 مشتريات</button>`;
+      const actions = UI.actions(vendor.id, 'Crud.editVendor', 'Crud.delVendor', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.vendorStatement('${vendor.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.vendorPurchases('${vendor.id}')">💰 مشتريات</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addVendorSettlement('${vendor.id}')">💰 تسديد</button>`;
       const info = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>

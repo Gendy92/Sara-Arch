@@ -360,5 +360,5 @@ const App = {
 
   fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ' + (this.settings?.currency_label || 'ج.م'); },
   fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; },
-  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', design: 'تصميم مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب' }; return map[type] || type; },
+  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', design: 'تصميم مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب', client_return: 'مرتجع عميل', vendor_settlement: 'تسديد متأخرات مورد', office_income: 'إيراد مكتب' }; return map[type] || type; },
 };
