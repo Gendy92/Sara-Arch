@@ -86,10 +86,8 @@ Object.assign(App, {
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
       this._perfLog('loadDashboard', t0);
     } catch (e) {
-      console.error(e);
       UI.toast('Dashboard load failed: ' + e.message, 'error');
-      const err = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadDashboard()">🔄 إعادة المحاولة</button>`;
-      document.getElementById('kpis').innerHTML = err;
+      App.loadErrorHtml('kpis', 'تعذر تحميل البيانات', 'App.loadDashboard()', e);
     }
   },
 
@@ -157,9 +155,8 @@ Object.assign(App, {
       const searchInput = document.getElementById('clients-list-search');
       if (searchInput) searchInput.value = App.searchState.clients || '';
     } catch (e) {
-      console.error(e);
       UI.toast('Clients load failed: ' + e.message, 'error');
-      document.getElementById('clients-list').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل العملاء</p><button class="btn btn-secondary" onclick="App.loadClients()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('clients-list', 'تعذر تحميل العملاء', 'App.loadClients()', e);
     }
   },
 
@@ -216,9 +213,8 @@ Object.assign(App, {
       document.getElementById('client-detail').innerHTML = summary + html;
       this.attachSearch('client-detail', '🔍 بحث في المشاريع...');
     } catch (e) {
-      console.error(e);
       UI.toast('فشل تحميل تفاصيل العميل: ' + e.message, 'error');
-      document.getElementById('client-detail').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadClient('${clientId}')">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('client-detail', 'تعذر تحميل البيانات', `App.loadClient('${clientId}')`, e);
     }
   },
 
@@ -264,12 +260,12 @@ Object.assign(App, {
       const statusBadge = (s) => {
         const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
         const labels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
-        return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+        return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || App.esc(s)}</span>`;
       };
       const priorityBadge = (p) => {
         const colors = { low: 'gray', medium: 'orange', high: 'red' };
         const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
-        return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
+        return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || App.esc(p)}</span>`;
       };
       const taskRows = tasks.map((t, i) => [i+1, App.esc(t.name), App.esc(t.assignee || '-'), t.start_date || '-', t.due_date || '-', {html: statusBadge(t.status)}, {html: priorityBadge(t.priority)}]);
       const taskTable = taskRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المهام</h4>' + this.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية'], taskRows) : '';
@@ -277,9 +273,8 @@ Object.assign(App, {
       document.getElementById('project-detail-name').textContent = '🏗️ ' + project.name;
       document.getElementById('project-detail').innerHTML = summary + info + txTable + taskTable;
     } catch (e) {
-      console.error(e);
       UI.toast('فشل تحميل تفاصيل المشروع: ' + e.message, 'error');
-      document.getElementById('project-detail').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadProject('${projectId}')">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('project-detail', 'تعذر تحميل البيانات', `App.loadProject('${projectId}')`, e);
     }
   },
 
@@ -316,9 +311,8 @@ Object.assign(App, {
       const searchInput = document.getElementById('vendors-tbl-search');
       if (searchInput) searchInput.value = App.searchState.vendors || '';
     } catch (e) {
-      console.error(e);
       UI.toast('Vendors load failed: ' + e.message, 'error');
-      document.getElementById('vendors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموردين</p><button class="btn btn-secondary" onclick="App.loadVendors()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('vendors-tbl', 'تعذر تحميل الموردين', 'App.loadVendors()', e);
     }
   },
 
@@ -384,9 +378,8 @@ Object.assign(App, {
       document.getElementById('vendor-detail-name').textContent = '🚚 ' + App.esc(vendor.name);
       document.getElementById('vendor-detail').innerHTML = summary + info + txTable + procTable;
     } catch (e) {
-      console.error(e);
       UI.toast('فشل تحميل تفاصيل المورد: ' + e.message, 'error');
-      document.getElementById('vendor-detail').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات</p><button class="btn btn-secondary" onclick="App.loadVendor('${vendorId}')">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('vendor-detail', 'تعذر تحميل البيانات', `App.loadVendor('${vendorId}')`, e);
     }
   },
 
@@ -485,9 +478,8 @@ Object.assign(App, {
       const expSearchInput = document.getElementById('tx-expenses-tbl-search');
       if (expSearchInput) expSearchInput.value = App.searchState.txExpenses || '';
     } catch (e) {
-      console.error(e);
       UI.toast('Transactions load failed: ' + e.message, 'error');
-      document.getElementById('tx-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المعاملات</p><button class="btn btn-secondary" onclick="App.loadTransactions()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('tx-tbl', 'تعذر تحميل المعاملات', 'App.loadTransactions()', e);
       document.getElementById('tx-expenses-tbl').innerHTML = '';
     }
   },
@@ -593,9 +585,8 @@ Object.assign(App, {
       const custodySearchInput = document.getElementById('office-custody-tbl-search');
       if (custodySearchInput) custodySearchInput.value = App.searchState.officeCustody || '';
     } catch (e) {
-      console.error(e);
       UI.toast('Office load failed: ' + e.message, 'error');
-      document.getElementById('office-kpis').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل بيانات المكتب</p><button class="btn btn-secondary" onclick="App.loadOffice()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('office-kpis', 'تعذر تحميل بيانات المكتب', 'App.loadOffice()', e);
     }
   },
 
@@ -638,9 +629,8 @@ Object.assign(App, {
       await this.loadEmpTransactions();
       await this.loadEmpSalaryHistory();
     } catch (e) {
-      console.error(e);
       UI.toast('Employees load failed: ' + e.message, 'error');
-      document.getElementById('emp-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموظفين</p><button class="btn btn-secondary" onclick="App.loadEmployees()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('emp-tbl', 'تعذر تحميل الموظفين', 'App.loadEmployees()', e);
     }
   },
 
@@ -674,8 +664,7 @@ Object.assign(App, {
       const searchInput = document.getElementById('emp-tx-tbl-search');
       if (searchInput) searchInput.value = App.searchState.empTransactions || '';
     } catch (e) {
-      console.error(e);
-      document.getElementById('emp-tx-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المعاملات</p><button class="btn btn-secondary" onclick="App.loadEmpTransactions()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('emp-tx-tbl', 'تعذر تحميل المعاملات', 'App.loadEmpTransactions()', e);
     }
   },
 
@@ -714,8 +703,7 @@ Object.assign(App, {
       const searchInput = document.getElementById('emp-salary-history-tbl-search');
       if (searchInput) searchInput.value = App.searchState.empSalaryHistory || '';
     } catch (e) {
-      console.error(e);
-      document.getElementById('emp-salary-history-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل تاريخ الرواتب</p><button class="btn btn-secondary" onclick="App.loadEmpSalaryHistory()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('emp-salary-history-tbl', 'تعذر تحميل تاريخ الرواتب', 'App.loadEmpSalaryHistory()', e);
     }
   },
 
@@ -844,7 +832,7 @@ Object.assign(App, {
       preview.dataset.year = fpYear;
     } catch (e) {
       console.error(e);
-      preview.innerHTML = '<p style="color:var(--red)">خطأ في قراءة الملف: ' + (e.message || '') + '</p>';
+      preview.innerHTML = '<p style="color:var(--red)">خطأ في قراءة الملف: ' + App.esc(e.message || '') + '</p>';
     }
   },
 
@@ -889,7 +877,7 @@ Object.assign(App, {
       const payrollMap = Object.fromEntries(payrolls.map(p => [p.employee_id, p]));
       const statusBadge = (s) => {
         const map = { draft: '<span class="badge badge-gray">مسودة</span>', approved: '<span class="badge" style="background:rgba(212,165,116,0.12);color:var(--gold);border:1px solid rgba(212,165,116,0.15)">معتمد</span>', paid: '<span class="badge badge-green">مدفوع</span>' };
-        return map[s] || s;
+        return map[s] || '<span class="badge badge-gray">' + App.esc(s) + '</span>';
       };
       const rows = employees.map(e => {
         const p = payrollMap[e.id];
@@ -1002,6 +990,7 @@ Object.assign(App, {
   },
 
   async loadSettings() {
+    await App.loadServerSettings();
     const s = App.settings || {};
     const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val == null ? '' : val; };
     setVal('setting-company-name', s.company_name);
@@ -1019,7 +1008,7 @@ Object.assign(App, {
     }
   },
 
-  saveSettings() {
+  async saveSettings() {
     const form = document.getElementById('settings-form');
     if (!form) return;
     const fd = new FormData(form);
@@ -1029,10 +1018,15 @@ Object.assign(App, {
     App.settings.company_tax = fd.get('company_tax') || '';
     App.settings.default_supervision = +fd.get('default_supervision') || 0;
     App.settings.currency_label = fd.get('currency_label') || 'ج.م';
-    App.saveLocalSettings();
-    const msg = document.getElementById('settings-msg');
-    if (msg) { msg.textContent = '✅ تم حفظ الإعدادات'; setTimeout(() => msg.textContent = '', 3000); }
-    UI.toast('تم حفظ الإعدادات');
+    try {
+      await App.saveServerSettings();
+      App.saveLocalSettings();
+      const msg = document.getElementById('settings-msg');
+      if (msg) { msg.textContent = '✅ تم حفظ الإعدادات'; setTimeout(() => msg.textContent = '', 3000); }
+      UI.toast('تم حفظ الإعدادات');
+    } catch (e) {
+      UI.toast('خطأ: ' + (e.message || 'فشل حفظ الإعدادات'), 'error');
+    }
   },
 
   // Deprecated: service-role keys are no longer stored in the browser.
@@ -1066,7 +1060,9 @@ Object.assign(App, {
         {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`}
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
-    } catch (e) { console.error(e); document.getElementById('users-tbl').innerHTML = '<p style="color:var(--red)">خطأ في تحميل المستخدمين</p>'; }
+    } catch (e) {
+      App.loadErrorHtml('users-tbl', 'خطأ في تحميل المستخدمين', 'App.loadUsers()', e);
+    }
   },
 
   async loadBackup() {
@@ -1359,9 +1355,8 @@ Object.assign(App, {
         if (itemsSearchInput) itemsSearchInput.value = App.searchState.items || '';
       } catch (e) { console.log('[MasterData] items not ready:', e.message); }
     } catch (e) {
-      console.error(e);
       UI.toast('Master data load failed: ' + e.message, 'error');
-      document.getElementById('sectors-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل البيانات الأساسية</p><button class="btn btn-secondary" onclick="App.loadMasterData()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('sectors-tbl', 'تعذر تحميل البيانات الأساسية', 'App.loadMasterData()', e);
     }
   },
 
@@ -1379,12 +1374,12 @@ Object.assign(App, {
       const statusBadge = (s) => {
         const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
         const labels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
-        return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+        return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || App.esc(s)}</span>`;
       };
       const priorityBadge = (p) => {
         const colors = { low: 'gray', medium: 'orange', high: 'red' };
         const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
-        return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
+        return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || App.esc(p)}</span>`;
       };
 
       const rows = filtered.map((t, i) => [
@@ -1403,9 +1398,8 @@ Object.assign(App, {
       document.getElementById('tasks-tbl').innerHTML = table;
       this.attachSearch('tasks-tbl', '🔍 بحث في المهام...');
     } catch (e) {
-      console.error(e);
       UI.toast('فشل تحميل المهام: ' + e.message, 'error');
-      document.getElementById('tasks-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المهام</p><button class="btn btn-secondary" onclick="App.loadTasks()">🔄 إعادة المحاولة</button>`;
+      App.loadErrorHtml('tasks-tbl', 'تعذر تحميل المهام', 'App.loadTasks()', e);
     }
   },
 

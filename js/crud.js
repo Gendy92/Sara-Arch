@@ -31,6 +31,12 @@ const Crud = {
   },
 
   _stripMissing(payload, missingKey) {
+    // Only allow silent stripping of internal audit columns. Stripping user-data
+    // columns hides schema/permission bugs and can silently discard input.
+    const allowed = new Set(['created_by', 'updated_by']);
+    if (!allowed.has(missingKey)) {
+      throw new Error('عمود غير معروف في قاعدة البيانات: ' + missingKey);
+    }
     const clean = Array.isArray(payload) ? payload.map(r => { const c = { ...r }; delete c[missingKey]; return c; }) : { ...payload };
     if (!Array.isArray(payload)) delete clean[missingKey];
     return clean;
@@ -432,14 +438,7 @@ const Crud = {
       const existingNames = new Set(existing.map(v => String(v.name || '').trim().toLowerCase()));
       const dupes = rows.filter(r => existingNames.has(String(r.name || '').trim().toLowerCase()));
       if (dupes.length) { UI.toast(`⚠️ ${dupes.length} موردين موجودين مسبقاً: ${dupes.map(d => d.name).join(', ')}`, 'error'); return; }
-      try {
-        await this.bulkSave('vendors', rows);
-      } catch (e) {
-        if (e.message && (e.message.includes('sector') || e.message.includes('vendor_type'))) {
-          const fallback = rows.map(r => { const { sector, vendor_type, ...rest } = r; return rest; });
-          await this.bulkSave('vendors', fallback);
-        } else { throw e; }
-      }
+      await this.bulkSave('vendors', rows);
       UI.toast(`تم حفظ ${rows.length} مورد`);
       App.loadVendors();
     }, {}, {}, 'none');
@@ -467,14 +466,7 @@ const Crud = {
         if (existing.length) { UI.toast('⚠️ اسم المورد موجود مسبقاً', 'error'); return; }
       }
       const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', is_office: fd.get('is_office') === 'true', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
-      try {
-        await this.save('vendors', data, id);
-      } catch (e) {
-        if (e.message && (e.message.includes('sector') || e.message.includes('vendor_type'))) {
-          const { sector, vendor_type, ...rest } = data;
-          await this.save('vendors', rest, id);
-        } else { throw e; }
-      }
+      await this.save('vendors', data, id);
       UI.toast('تم التحديث');
       if (App.screen === 'vendor' && App.vendorId) App.loadVendor(App.vendorId);
       else App.loadVendors();
@@ -916,14 +908,7 @@ const Crud = {
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
         return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, item_id: r.item_id || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
-      try {
-        await this.bulkSave('transactions', enriched);
-      } catch (e) {
-        if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
-          const fallback = enriched.map(r => { const { expense_category, section_id, section_name, item_id, item_name, payment_term, payment_method, paid_amount, ...rest } = r; return rest; });
-          await this.bulkSave('transactions', fallback);
-        } else { throw e; }
-      }
+      await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف`);
       App.loadTransactions(); App.loadOffice();
     }, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects }, sectionItem: { sectionKey: 'section_id', itemKey: 'item_id', items: workItems } });
@@ -1152,13 +1137,7 @@ const Crud = {
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
-        try {
-          await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-        } catch (e) {
-          if (e.message && (e.message.includes('expense_category') || e.message.includes('section_id') || e.message.includes('section_name') || e.message.includes('item_id') || e.message.includes('item_name') || e.message.includes('payment_term') || e.message.includes('payment_method') || e.message.includes('paid_amount') || e.message.includes('42703') || e.message.includes('PGRST204'))) {
-            await this.save('transactions', { type: 'project_expense', amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
-          } else { throw e; }
-        }
+        await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
       this._setupClientProjectCascade(overlay, projects, tx.client_id, tx.project_id);
@@ -1771,12 +1750,12 @@ const Crud = {
     const statusBadge = (s) => {
       const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
       const labels = { pending: 'معلق', in_progress: 'قيد التنفيذ', done: 'منتهي' };
-      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || App.esc(s)}</span>`;
     };
     const priorityBadge = (p) => {
       const colors = { low: 'gray', medium: 'orange', high: 'red' };
       const labels = { low: 'منخفض', medium: 'متوسط', high: 'عالي' };
-      return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || p}</span>`;
+      return `<span class="badge badge-${colors[p] || 'gray'}">${labels[p] || App.esc(p)}</span>`;
     };
     const rows = tasks.map((t, i) => [
       i+1, App.esc(t.name), App.esc(t.assignee || '-'), t.start_date || '-', t.due_date || '-', {html: statusBadge(t.status)}, {html: priorityBadge(t.priority)},
@@ -2068,7 +2047,7 @@ const Crud = {
     const statusBadge = (s) => {
       const colors = { active: 'green', settled: 'blue', partial: 'orange' };
       const labels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
-      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || App.esc(s)}</span>`;
     };
     const typeBadge = (t) => {
       const color = t === 'project' ? 'blue' : 'gold';
@@ -2381,7 +2360,7 @@ const Crud = {
     const statusBadge = (s) => {
       const colors = { present: 'green', absent: 'red', late: 'orange', half_day: 'blue', leave: 'gray' };
       const labels = { present: 'حاضر', absent: 'غائب', late: 'متأخر', half_day: 'نصف يوم', leave: 'إجازة' };
-      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
+      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || App.esc(s)}</span>`;
     };
     const rows = records.map((r, i) => [i+1, r.date || '-', {html: statusBadge(r.status)}, r.check_in || '-', r.check_out || '-', App.esc(r.notes || '-'), {html: UI.actions(r.id, 'Crud.editAttendance', 'Crud.delAttendance', Auth.can('employees', 'edit'), Auth.can('employees', 'delete'))}]);
     const table = rows.length ? App.table(['#', 'التاريخ', 'الحالة', 'دخول', 'خروج', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد سجلات حضور</p>';

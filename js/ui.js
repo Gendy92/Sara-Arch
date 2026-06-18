@@ -45,7 +45,8 @@ const UI = {
   },
 
   confirm(msg, onYes) {
-    this.openModal('تأكيد', `<p style="margin-bottom:20px;color:var(--text2)">${msg}</p><div style="display:flex;gap:8px"><button class="btn btn-red" id="confirm-yes">نعم، متأكد</button><button class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button></div>`);
+    const safeMsg = (typeof App !== 'undefined' && App.esc) ? App.esc(msg) : String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    this.openModal('تأكيد', `<p style="margin-bottom:20px;color:var(--text2)">${safeMsg}</p><div style="display:flex;gap:8px"><button class="btn btn-red" id="confirm-yes">نعم، متأكد</button><button class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button></div>`);
     document.getElementById('confirm-yes').addEventListener('click', () => { UI.closeModal(); onYes(); });
   },
 
@@ -217,12 +218,14 @@ const UI = {
     const fieldName = f.name || f.key;
     const v = values[fieldName] !== undefined ? values[fieldName] : (f.default || '');
     const vEsc = this._escAttr(v);
-    if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''}>${vEsc}</textarea></div>`;
-    if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label>${this.searchableSelectHTML(`name="${fieldName}" ${f.req ? 'required' : ''} ${f.attr || ''}`, f.opts, v)}</div>`;
-    if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
-    if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} min="0" step="any" ${f.attr || ''} /></div>`;
-    if (f.type === 'time') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
-    return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    const safeLabel = (typeof App !== 'undefined' && App.esc) ? App.esc(f.label) : String(f.label || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const safePlaceholder = (typeof App !== 'undefined' && App.esc) ? App.esc(this.shortPlaceholder(f.label)) : String(this.shortPlaceholder(f.label) || '').replace(/"/g,'&quot;');
+    if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${safeLabel}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" placeholder="${safePlaceholder}" ${f.req ? 'required' : ''} ${f.attr || ''}>${vEsc}</textarea></div>`;
+    if (f.type === 'select') return `<div class="form-group"><label>${safeLabel}${f.req ? ' *' : ''}</label>${this.searchableSelectHTML(`name="${fieldName}" ${f.req ? 'required' : ''} ${f.attr || ''}`, f.opts, v)}</div>`;
+    if (f.type === 'date') return `<div class="form-group"><label>${safeLabel}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" placeholder="${safePlaceholder}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    if (f.type === 'number') return `<div class="form-group"><label>${safeLabel}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" placeholder="${safePlaceholder}" ${f.req ? 'required' : ''} min="0" step="any" ${f.attr || ''} /></div>`;
+    if (f.type === 'time') return `<div class="form-group"><label>${safeLabel}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" placeholder="${safePlaceholder}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    return `<div class="form-group"><label>${safeLabel}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${vEsc}" placeholder="${safePlaceholder}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
   },
 
   actions(id, onEdit, onDel, canEdit = true, canDelete = true) {
@@ -282,7 +285,9 @@ const Spreadsheet = {
   },
 
   render(columns, defaults = {}, cascade = {}) {
-    const headerCells = columns.map(c => `<th>${c.label}${c.req ? ' <span style="color:#e53935">*</span>' : ''}</th>`).join('');
+    const esc = (s) => (typeof App !== 'undefined' && App.esc) ? App.esc(s) : String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const escAttr = (s) => UI._escAttr(s);
+    const headerCells = columns.map(c => `<th>${esc(c.label)}${c.req ? ' <span style="color:#e53935">*</span>' : ''}</th>`).join('');
     const hasClientProjectCascade = cascade && cascade.clientProject;
     const hasSectionItemCascade = cascade && cascade.sectionItem;
     const inputCells = columns.map(c => {
@@ -306,9 +311,9 @@ const Spreadsheet = {
         return `<td>${UI.searchableSelectHTML(attrs, opts, def)}</td>`;
       }
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
-      const valAttr = def !== undefined ? `value="${def}"` : '';
+      const valAttr = def !== undefined ? `value="${escAttr(def)}"` : '';
       const minAttr = c.type === 'number' ? ' min="0"' : '';
-      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${UI.shortPlaceholder(c.label)}" ${valAttr}${minAttr} /></td>`;
+      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${esc(UI.shortPlaceholder(c.label))}" ${valAttr}${minAttr} /></td>`;
     }).join('');
 
     return `<div class="spreadsheet">

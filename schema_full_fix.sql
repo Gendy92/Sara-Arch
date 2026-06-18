@@ -1352,5 +1352,28 @@ WHERE deleted_at IS NULL
   AND (payment_term IS NULL OR paid_amount IS NULL)
   AND type = 'project_expense';
 
+-- Application settings persisted server-side so all users share the same config.
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS app_settings_select ON public.app_settings;
+CREATE POLICY app_settings_select ON public.app_settings FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS app_settings_write ON public.app_settings;
+CREATE POLICY app_settings_write ON public.app_settings
+  FOR ALL
+  USING (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin'))
+  WITH CHECK (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin'));
+
+-- Allow anon/authenticated to read settings; only admins can write.
+GRANT SELECT ON public.app_settings TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.app_settings TO authenticated;
+
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
+

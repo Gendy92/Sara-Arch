@@ -57,6 +57,7 @@ const App = {
     try {
       await Auth.init();
       this.loadLocalSettings();
+      await this.loadServerSettings();
       this.bindNav();
       if (Auth.isLoggedIn()) {
         this.startIdleTimer();
@@ -223,7 +224,7 @@ const App = {
 
 
       ${isAdmin ? navItem('settings', '⚙️', 'الإعدادات') : ''}
-    </nav><div class="sidebar-footer"><div class="user-info">${name}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
+    </nav><div class="sidebar-footer"><div class="user-info">${App.esc(name)}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
   },
 
   pageContent(screen) {
@@ -298,6 +299,13 @@ const App = {
     document.getElementById('app').innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center"><div style="font-size:48px">⚠️</div><h2 style="color:var(--red)">حدث خطأ</h2><p style="color:var(--text2);max-width:400px">${this.esc(msg)}</p><button class="btn btn-primary" onclick="location.reload()">إعادة المحاولة</button></div>`;
   },
 
+  loadErrorHtml(containerId, title, retryCall, err) {
+    const detail = err && err.message ? `<br><small style="color:var(--text3);display:block;margin-top:6px">${this.esc(err.message)}</small>` : '';
+    const retry = retryCall ? `<button class="btn btn-secondary" style="margin-top:10px" onclick="${retryCall}">🔄 إعادة المحاولة</button>` : '';
+    const el = document.getElementById(containerId);
+    if (el) el.innerHTML = `<div style="color:var(--red);padding:16px">⚠️ ${this.esc(title)}${detail}</div>${retry}`;
+  },
+
 
   // ─── UTILITIES ───
   table(headers, rows) {
@@ -356,6 +364,41 @@ const App = {
 
   saveLocalSettings() {
     localStorage.setItem('sara_settings', JSON.stringify(this.settings));
+  },
+
+  async loadServerSettings() {
+    try {
+      const rows = await API.request('app_settings', 'GET', null, '?select=*');
+      rows.forEach(r => {
+        if (r.key === 'default_supervision') {
+          this.settings.default_supervision = parseFloat(r.value) || 0;
+        } else if (r.key === 'company_name' || r.key === 'company_address' || r.key === 'company_phone' || r.key === 'company_tax' || r.key === 'currency_label') {
+          this.settings[r.key] = r.value;
+        }
+      });
+      this.saveLocalSettings();
+    } catch (e) {
+      // Server settings table may not exist yet; localStorage values remain in effect.
+    }
+  },
+
+  async saveServerSettings() {
+    const entries = [
+      { key: 'company_name', value: this.settings.company_name || '' },
+      { key: 'company_address', value: this.settings.company_address || '' },
+      { key: 'company_phone', value: this.settings.company_phone || '' },
+      { key: 'company_tax', value: this.settings.company_tax || '' },
+      { key: 'default_supervision', value: String(this.settings.default_supervision || 0) },
+      { key: 'currency_label', value: this.settings.currency_label || 'ج.م' }
+    ];
+    for (const row of entries) {
+      try {
+        await API.request('app_settings', 'POST', row, '?on_conflict=key');
+      } catch (e) {
+        // If the table is missing, the localStorage backup will still hold the values.
+        throw new Error('تعذر حفظ الإعدادات على الخادم: ' + (e.message || ''));
+      }
+    }
   },
 
   fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ' + (this.settings?.currency_label || 'ج.م'); },

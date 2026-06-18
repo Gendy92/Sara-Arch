@@ -33,5 +33,5 @@ const SUPABASE_SERVICE_KEY = '';
 
 // Convenience check so the app fails fast if the anon key is not configured.
 if (SUPABASE_ANON_KEY.includes('YOUR_ANON_KEY')) {
-  console.warn('[Config] SUPABASE_ANON_KEY is a placeholder. Create js/config.local.js with the real anon key.');
+  // The real anon key must be provided via js/config.local.js or the SUPABASE_ANON_KEY secret at deploy time.
 }

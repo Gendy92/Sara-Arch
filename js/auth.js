@@ -75,7 +75,6 @@ const Auth = {
   },
 
   async login(username, password) {
-    console.log('[Auth] Logging in:', username);
     let data;
     const primaryEmail = this.toEmail(username);
     try {
@@ -90,14 +89,12 @@ const Auth = {
       ].filter(em => em !== primaryEmail);
       for (const email of fallbacks) {
         try {
-          console.log('[Auth] Retrying with legacy email:', email);
           data = await API.authSignIn(email, password);
           break;
         } catch (e2) { /* continue to next fallback */ }
       }
       if (!data) throw e;
     }
-    console.log('[Auth] Got token:', data.access_token ? data.access_token.substring(0, 20) + '...' : 'NONE');
     this.token = data.access_token;
     this.user = data.user;
     // Try to load profile for correct Arabic name
@@ -112,7 +109,6 @@ const Auth = {
     }
     sessionStorage.setItem('sara_token', this.token);
     localStorage.removeItem('sara_token');
-    console.log('[Auth] Saved to sessionStorage');
     await this.loadPermissions();
     return data;
   },
@@ -124,9 +120,7 @@ const Auth = {
       if (data.user?.id) {
         await API.request('profiles', 'POST', { id: data.user.id, name: name || username, role: 'user' });
       }
-    } catch (e) {
-      console.log('[Auth] profile insert skipped:', e.message);
-    }
+    } catch (e) { /* profile may already exist or permissions restrict insert */ }
     return data;
   },
 
@@ -167,7 +161,6 @@ const Auth = {
         };
       });
     } catch (e) {
-      console.log('[Auth] Permissions not loaded:', e.message);
       this.permissions = {};
     }
   },
