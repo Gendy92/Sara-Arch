@@ -182,7 +182,8 @@ CREATE TABLE IF NOT EXISTS employee_salary_history (
   new_salary NUMERIC,
   effective_date DATE,
   notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS custody_records (
@@ -455,6 +456,7 @@ ALTER TABLE attendance_records  ADD COLUMN IF NOT EXISTS updated_by UUID;
 
 -- Ensure employee_salary_history can track creator for trigger below
 ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 -- Trigger function to auto-set created_by on insert
 CREATE OR REPLACE FUNCTION set_created_by()

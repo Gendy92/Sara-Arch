@@ -1,11 +1,12 @@
 // App Screen Loaders
 Object.assign(App, {
   // ─── PAGINATION HELPERS ───
-  _paginationHtml(table, page, perPage, total) {
+  _paginationHtml(table, page, perPage, total, loader) {
     const safeTotal = Number.isFinite(total) ? total : 0;
     const totalPages = Math.max(1, Math.ceil(safeTotal / perPage));
-    const prev = `App.pageState['${table}']=${Math.max(1, page - 1)};App.load${table.charAt(0).toUpperCase() + table.slice(1)}()`;
-    const next = `App.pageState['${table}']=${Math.min(totalPages, page + 1)};App.load${table.charAt(0).toUpperCase() + table.slice(1)}()`;
+    const loaderName = loader || `load${table.charAt(0).toUpperCase() + table.slice(1)}`;
+    const prev = `App.pageState['${table}']=${Math.max(1, page - 1)};App.${loaderName}()`;
+    const next = `App.pageState['${table}']=${Math.min(totalPages, page + 1)};App.${loaderName}()`;
     return `<div class="pagination-bar" style="display:flex;justify-content:center;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="${prev}">← السابق</button>
       <span style="font-size:13px;color:var(--text2)">صفحة ${page} من ${totalPages} (${safeTotal} سجل)</span>
@@ -97,9 +98,11 @@ Object.assign(App, {
       const page = this.pageState.clients || 1;
       const limit = this.PAGE_SIZE;
       const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.clients || '';
+      const searchFilter = App.ilikeOr(['name','phone','address'], searchTerm);
       const [clients, totalClients, clientBalances] = await Promise.all([
-        API.request('clients', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
-        API.count('clients', '?deleted_at=is.null'),
+        API.request('clients', 'GET', null, `?select=*&deleted_at=is.null${searchFilter}&order=created_at.desc&limit=${limit}&offset=${offset}`),
+        API.count('clients', '?deleted_at=is.null' + searchFilter),
         API.request('client_balances', 'GET', null, '?select=*')
       ]);
       const balByClient = Object.fromEntries(clientBalances.map(b => [b.client_id, b]));
@@ -146,7 +149,13 @@ Object.assign(App, {
         </div>`;
       }).join('');
       document.getElementById('clients-list').innerHTML = html + this._paginationHtml('clients', page, limit, totalClients);
-      this.attachSearch('clients-list', '🔍 بحث في العملاء أو المشاريع...');
+      this.attachSearch('clients-list', '🔍 بحث في العملاء أو المشاريع...', (term) => {
+        App.searchState.clients = term;
+        App.pageState.clients = 1;
+        App.loadClients();
+      });
+      const searchInput = document.getElementById('clients-list-search');
+      if (searchInput) searchInput.value = App.searchState.clients || '';
     } catch (e) {
       console.error(e);
       UI.toast('Clients load failed: ' + e.message, 'error');
@@ -279,9 +288,11 @@ Object.assign(App, {
       const page = this.pageState.vendors || 1;
       const limit = this.PAGE_SIZE;
       const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.vendors || '';
+      const searchFilter = App.ilikeOr(['name','sector','contact_person','phone'], searchTerm);
       const [data, total, vendorBalances] = await Promise.all([
-        API.request('vendors', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
-        API.count('vendors', '?deleted_at=is.null'),
+        API.request('vendors', 'GET', null, `?select=*&deleted_at=is.null${searchFilter}&order=created_at.desc&limit=${limit}&offset=${offset}`),
+        API.count('vendors', '?deleted_at=is.null' + searchFilter),
         API.request('vendor_balances', 'GET', null, '?select=*')
       ]);
       const balanceMap = Object.fromEntries(vendorBalances.map(b => [b.vendor_id, b]));
@@ -296,7 +307,13 @@ Object.assign(App, {
         return [{html: `<a href="#" onclick="App.go('vendor',{vendorId:'${v.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.name)}</a>`}, {html: typeBadge}, App.esc(v.sector || '-'), App.esc(v.contact_person || '-'), App.esc(v.phone || '-'), {html: balanceCell}, {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موردين</p>${Auth.can('vendors','add')?'<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة أول مورد</button>':''}`;
       document.getElementById('vendors-tbl').innerHTML = html + (data.length ? this._paginationHtml('vendors', page, limit, total) : '');
-      this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...');
+      this.attachSearch('vendors-tbl', '🔍 بحث في الموردين...', (term) => {
+        App.searchState.vendors = term;
+        App.pageState.vendors = 1;
+        App.loadVendors();
+      });
+      const searchInput = document.getElementById('vendors-tbl-search');
+      if (searchInput) searchInput.value = App.searchState.vendors || '';
     } catch (e) {
       console.error(e);
       UI.toast('Vendors load failed: ' + e.message, 'error');
@@ -396,9 +413,11 @@ Object.assign(App, {
       if (App.txTypeFilter === 'deposit') typeFilter = '&type=in.(project_deposit,supervision)';
       else if (App.txTypeFilter === 'expense') typeFilter = '&type=eq.project_expense';
       const txOffset = (txPage - 1) * txPerPage;
+      const txSearchTerm = App.searchState.transactions || '';
+      const txSearchFilter = App.ilikeOr(['description','project_name','vendor_name','party_name'], txSearchTerm);
       const [pagedTxs, totalTxCount] = await Promise.all([
-        API.request('project_transactions_view', 'GET', null, `?select=*${typeFilter}&order=created_at.desc&limit=${txPerPage}&offset=${txOffset}`),
-        API.count('project_transactions_view', `?select=*${typeFilter}`)
+        API.request('project_transactions_view', 'GET', null, `?select=*${typeFilter}${txSearchFilter}&order=created_at.desc&limit=${txPerPage}&offset=${txOffset}`),
+        API.count('project_transactions_view', `?select=*${typeFilter}${txSearchFilter}`)
       ]);
       const totalTxPages = Math.max(1, Math.ceil(totalTxCount / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
@@ -428,13 +447,21 @@ Object.assign(App, {
         return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), App.esc(t.description || '-'), {html: party}, clientName, App.esc(t.project_name || '-'), {html: pt}, {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxCount);
-      this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
+      this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...', (term) => {
+        App.searchState.transactions = term;
+        App.pageState.transactions = 1;
+        App.loadTransactions();
+      });
+      const txSearchInput = document.getElementById('tx-tbl-search');
+      if (txSearchInput) txSearchInput.value = App.searchState.transactions || '';
 
       // Expenses-only tab with page-based pagination
       const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
+      const expSearchTerm = App.searchState.txExpenses || '';
+      const expSearchFilter = App.ilikeOr(['description','project_name','vendor_name','party_name'], expSearchTerm);
       const [projectExpenses, totalExpCount] = await Promise.all([
-        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
-        API.count('transactions', '?type=eq.project_expense&deleted_at=is.null')
+        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null${expSearchFilter}&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
+        API.count('transactions', '?type=eq.project_expense&deleted_at=is.null' + expSearchFilter)
       ]);
       const expenseRows = [...projectExpenses].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
       const expHtml = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
@@ -449,7 +476,13 @@ Object.assign(App, {
         return [idx + 1, App.esc(t.party_name || '-'), App.esc(t.project_name || '-'), App.esc(t.vendor_name || '-'), sectionLabel, itemLabel, this.fmtMoney(t.amount), {html: pmBadge}, this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
-      this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
+      this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...', (term) => {
+        App.searchState.txExpenses = term;
+        App.pageState.txExpenses = 1;
+        App.loadTransactions();
+      });
+      const expSearchInput = document.getElementById('tx-expenses-tbl-search');
+      if (expSearchInput) expSearchInput.value = App.searchState.txExpenses || '';
     } catch (e) {
       console.error(e);
       UI.toast('Transactions load failed: ' + e.message, 'error');
@@ -494,12 +527,16 @@ Object.assign(App, {
       const custodyPage = this.pageState.officeCustody || 1;
       const custodyPerPage = 10;
 
+      const txSearchTerm = App.searchState.officeTransactions || '';
+      const txSearchFilter = App.ilikeOr(['description','employee_name','sector_name'], txSearchTerm);
+      const custodySearchTerm = App.searchState.officeCustody || '';
+      const custodySearchFilter = App.ilikeOr(['employees.name','employee_name','sector_name','project_name','notes'], custodySearchTerm);
       const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, allCustody] = await Promise.all([
         API.request('office_balance', 'GET', null, '?select=*'),
-        API.request('transactions', 'GET', null, `?select=amount,created_at,type,description,sector_name,employee_name&type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
-        API.count('transactions', '?type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null'),
-        API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
-        API.count('custody_records', '?deleted_at=is.null'),
+        API.request('transactions', 'GET', null, `?select=amount,created_at,type,description,sector_name,employee_name&type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null${txSearchFilter}&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
+        API.count('transactions', '?type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null' + txSearchFilter),
+        API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${custodySearchFilter}&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
+        API.count('custody_records', '?deleted_at=is.null' + custodySearchFilter),
         API.fetchAll('custody_records', '?select=amount,returned_amount&deleted_at=is.null')
       ]);
       const ob = officeBal[0] || {};
@@ -526,7 +563,13 @@ Object.assign(App, {
         return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('office-tbl').innerHTML = txHtml + this._paginationHtml('officeTransactions', safeTxPage, txPerPage, totalOfficeTxs);
-      this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
+      this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...', (term) => {
+        App.searchState.officeTransactions = term;
+        App.pageState.officeTransactions = 1;
+        App.loadOffice();
+      });
+      const txSearchInput = document.getElementById('office-tbl-search');
+      if (txSearchInput) txSearchInput.value = App.searchState.officeTransactions || '';
 
       // Custody table
       const totalCustodyPages = Math.max(1, Math.ceil(totalCustody / custodyPerPage));
@@ -538,10 +581,16 @@ Object.assign(App, {
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const typeBadge = r.custody_type === 'project' ? '<span class="badge badge-blue">مشروع</span>' : '<span class="badge badge-gold">مكتب</span>';
         const related = r.custody_type === 'project' ? (r.project_name || '-') : (r.sector_name || '-');
-        return [(safeCustodyPage - 1) * custodyPerPage + i + 1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')}];
+        return [(safeCustodyPage - 1) * custodyPerPage + i + 1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody') + ` <button class="btn btn-sm btn-secondary" onclick="Crud.custodyExpenses('${r.id}')">مصروفات</button>`}];
       });
       document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) + this._paginationHtml('officeCustody', safeCustodyPage, custodyPerPage, totalCustody) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
-      this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...');
+      this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...', (term) => {
+        App.searchState.officeCustody = term;
+        App.pageState.officeCustody = 1;
+        App.loadOffice();
+      });
+      const custodySearchInput = document.getElementById('office-custody-tbl-search');
+      if (custodySearchInput) custodySearchInput.value = App.searchState.officeCustody || '';
     } catch (e) {
       console.error(e);
       UI.toast('Office load failed: ' + e.message, 'error');
@@ -557,9 +606,11 @@ Object.assign(App, {
       const page = this.pageState.employees || 1;
       const limit = this.PAGE_SIZE;
       const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.employees || '';
+      const searchFilter = App.ilikeOr(['name','job_title'], searchTerm);
       const [data, total] = await Promise.all([
-        API.request('employees', 'GET', null, `?select=*&is_active=eq.true&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
-        API.count('employees', '?is_active=eq.true&deleted_at=is.null')
+        API.request('employees', 'GET', null, `?select=*&is_active=eq.true&deleted_at=is.null${searchFilter}&order=created_at.desc&limit=${limit}&offset=${offset}`),
+        API.count('employees', '?is_active=eq.true&deleted_at=is.null' + searchFilter)
       ]);
       const empIds = data.map(e => e.id);
       let custodyData = [];
@@ -571,16 +622,99 @@ Object.assign(App, {
       const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
-        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button>`;
+        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeTransactions('${e.id}')">المعاملات</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeSalaryHistory('${e.id}')">الرواتب</button>`;
         return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), {html: custodyBadge}, {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
       document.getElementById('emp-tbl').innerHTML = html + (data.length ? this._paginationHtml('employees', page, limit, total) : '');
-      this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...');
+      this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...', (term) => {
+        App.searchState.employees = term;
+        App.pageState.employees = 1;
+        App.loadEmployees();
+      });
+      const searchInput = document.getElementById('emp-tbl-search');
+      if (searchInput) searchInput.value = App.searchState.employees || '';
       await this.loadEmpPayroll();
+      await this.loadEmpTransactions();
+      await this.loadEmpSalaryHistory();
     } catch (e) {
       console.error(e);
       UI.toast('Employees load failed: ' + e.message, 'error');
       document.getElementById('emp-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل الموظفين</p><button class="btn btn-secondary" onclick="App.loadEmployees()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async loadEmpTransactions() {
+    try {
+      const page = this.pageState.empTransactions || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.empTransactions || '';
+      const searchFilter = App.ilikeOr(['employee_name','notes'], searchTerm);
+      const [data, total] = await Promise.all([
+        API.request('employee_transactions', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${searchFilter}&order=date.desc&limit=${limit}&offset=${offset}`),
+        API.count('employee_transactions', '?deleted_at=is.null' + searchFilter)
+      ]);
+      const typeLabels = { advance: 'سلفة', penalty: 'جزاء', bonus: 'مكافأة', other: 'أخرى' };
+      const typeColors = { advance: 'blue', penalty: 'red', bonus: 'green', other: 'gray' };
+      const html = data.length ? this.table(['التاريخ', 'الموظف', 'النوع', 'المبلغ', 'ملاحظات', 'الإجراءات'], data.map(t => [
+        t.date || '-',
+        App.esc(t.employees?.name || t.employee_name || '-'),
+        {html: `<span class="badge badge-${typeColors[t.type] || 'gray'}">${typeLabels[t.type] || t.type}</span>`},
+        this.fmtMoney(t.amount),
+        App.esc(t.notes || '-'),
+        {html: UI.actions(t.id, 'Crud.editEmpTransaction', 'Crud.delEmpTransaction')}
+      ])) : '<p style="color:var(--text3);padding:16px">لا توجد معاملات موظفين</p>';
+      document.getElementById('emp-tx-tbl').innerHTML = html + (data.length ? this._paginationHtml('empTransactions', page, limit, total) : '');
+      this.attachSearch('emp-tx-tbl', '🔍 بحث في معاملات الموظفين...', (term) => {
+        App.searchState.empTransactions = term;
+        App.pageState.empTransactions = 1;
+        App.loadEmpTransactions();
+      });
+      const searchInput = document.getElementById('emp-tx-tbl-search');
+      if (searchInput) searchInput.value = App.searchState.empTransactions || '';
+    } catch (e) {
+      console.error(e);
+      document.getElementById('emp-tx-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل المعاملات</p><button class="btn btn-secondary" onclick="App.loadEmpTransactions()">🔄 إعادة المحاولة</button>`;
+    }
+  },
+
+  async loadEmpSalaryHistory() {
+    try {
+      const page = this.pageState.empSalaryHistory || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.empSalaryHistory || '';
+      const searchFilter = App.ilikeOr(['employee_name','notes'], searchTerm);
+      const [data, total] = await Promise.all([
+        API.request('employee_salary_history', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${searchFilter}&order=effective_date.desc&limit=${limit}&offset=${offset}`),
+        API.count('employee_salary_history', '?deleted_at=is.null' + searchFilter)
+      ]);
+      const html = data.length ? this.table(['التاريخ', 'الموظف', 'الراتب القديم', 'الراتب الجديد', 'الفرق', 'ملاحظات', 'الإجراءات'], data.map(h => {
+        const oldSal = +h.old_salary || 0;
+        const newSal = +h.new_salary || 0;
+        const diff = newSal - oldSal;
+        const diffColor = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text3)';
+        return [
+          h.effective_date || '-',
+          App.esc(h.employees?.name || h.employee_name || '-'),
+          this.fmtMoney(oldSal),
+          this.fmtMoney(newSal),
+          {html: `<span style="color:${diffColor};font-weight:600">${diff > 0 ? '+' : ''}${this.fmtMoney(diff)}</span>`},
+          App.esc(h.notes || '-'),
+          {html: UI.actions(h.id, 'Crud.editSalaryHistory', 'Crud.delSalaryHistory')}
+        ];
+      })) : '<p style="color:var(--text3);padding:16px">لا يوجد تاريخ رواتب</p>';
+      document.getElementById('emp-salary-history-tbl').innerHTML = html + (data.length ? this._paginationHtml('empSalaryHistory', page, limit, total) : '');
+      this.attachSearch('emp-salary-history-tbl', '🔍 بحث في تاريخ الرواتب...', (term) => {
+        App.searchState.empSalaryHistory = term;
+        App.pageState.empSalaryHistory = 1;
+        App.loadEmpSalaryHistory();
+      });
+      const searchInput = document.getElementById('emp-salary-history-tbl-search');
+      if (searchInput) searchInput.value = App.searchState.empSalaryHistory || '';
+    } catch (e) {
+      console.error(e);
+      document.getElementById('emp-salary-history-tbl').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل تاريخ الرواتب</p><button class="btn btn-secondary" onclick="App.loadEmpSalaryHistory()">🔄 إعادة المحاولة</button>`;
     }
   },
 
@@ -836,17 +970,37 @@ Object.assign(App, {
   },
 
   async loadSettings() {
-    const settingsHtml = `<div class="card" style="margin-top:16px;border:1px solid var(--gold)" id="settings-security-card">
-      <h3 style="color:var(--gold)">🔐 الأمان</h3>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">لم يعد مفتاح Service Role يُخزّن في المتصفح أو يُرسل منه. لإدارة المستخدمين، يستخدم النظام التسجيل العام (public signup) من شاشة "تسجيل مستخدم جديد".</p>
-      <p style="font-size:12px;color:var(--text3);margin-top:8px">لتدوير المفاتيح، اذهب إلى Supabase Dashboard → Project Settings → API.</p>
-    </div>`;
-    const container = document.querySelector('.main-content');
-    if (container && !document.getElementById('settings-security-card')) {
-      const div = document.createElement('div');
-      div.innerHTML = settingsHtml;
-      container.appendChild(div);
+    const s = App.settings || {};
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val == null ? '' : val; };
+    setVal('setting-company-name', s.company_name);
+    setVal('setting-company-address', s.company_address);
+    setVal('setting-company-phone', s.company_phone);
+    setVal('setting-company-tax', s.company_tax);
+    setVal('setting-default-supervision', s.default_supervision);
+    setVal('setting-currency-label', s.currency_label);
+    const verEl = document.getElementById('settings-version');
+    if (verEl) verEl.textContent = localStorage.getItem('sara_app_version') || '-';
+    const backupEl = document.getElementById('settings-last-backup');
+    if (backupEl) {
+      const last = localStorage.getItem('sara_last_backup');
+      backupEl.textContent = last ? new Date(last).toLocaleString('ar-EG') : '-';
     }
+  },
+
+  saveSettings() {
+    const form = document.getElementById('settings-form');
+    if (!form) return;
+    const fd = new FormData(form);
+    App.settings.company_name = fd.get('company_name') || 'سارة أبو العلا';
+    App.settings.company_address = fd.get('company_address') || '';
+    App.settings.company_phone = fd.get('company_phone') || '';
+    App.settings.company_tax = fd.get('company_tax') || '';
+    App.settings.default_supervision = +fd.get('default_supervision') || 0;
+    App.settings.currency_label = fd.get('currency_label') || 'ج.م';
+    App.saveLocalSettings();
+    const msg = document.getElementById('settings-msg');
+    if (msg) { msg.textContent = '✅ تم حفظ الإعدادات'; setTimeout(() => msg.textContent = '', 3000); }
+    UI.toast('تم حفظ الإعدادات');
   },
 
   // Deprecated: service-role keys are no longer stored in the browser.
@@ -1073,38 +1227,105 @@ Object.assign(App, {
 
   async loadMasterData() {
     try {
-      const sectors = await API.request('sectors', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+      const pageSize = this.PAGE_SIZE;
+
+      // Sectors
+      const sectorsPage = this.pageState.masterSectors || 1;
+      const sectorsSearch = App.searchState.sectors || '';
+      const sectorsFilter = App.ilikeOr(['name'], sectorsSearch);
+      const [sectors, totalSectors] = await Promise.all([
+        API.request('sectors', 'GET', null, `?select=*&deleted_at=is.null${sectorsFilter}&order=name.asc&limit=${pageSize}&offset=${(sectorsPage - 1) * pageSize}`),
+        API.count('sectors', '?deleted_at=is.null' + sectorsFilter)
+      ]);
+      const totalSectorsPages = Math.max(1, Math.ceil(totalSectors / pageSize));
+      const safeSectorsPage = Math.min(Math.max(1, sectorsPage), totalSectorsPages);
+      this.pageState.masterSectors = safeSectorsPage;
       document.getElementById('sectors-tbl').innerHTML = sectors.length ? this.table(['التصنيف', 'الوصف', 'الإجراءات'], sectors.map(s => [
         s.name, s.description || '-', {html: UI.actions(s.id, 'Crud.editSector', 'Crud.delSector', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
-      ])) : `<p style="color:var(--text3);padding:16px">لا توجد تصنيفات</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addSector()">+ إضافة أول تصنيف</button>':''}`;
-      this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...');
+      ])) + this._paginationHtml('masterSectors', safeSectorsPage, pageSize, totalSectors, 'loadMasterData') : `<p style="color:var(--text3);padding:16px">لا توجد تصنيفات</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addSector()">+ إضافة أول تصنيف</button>':''}`;
+      this.attachSearch('sectors-tbl', '🔍 بحث في التصنيفات...', (term) => {
+        App.searchState.sectors = term;
+        App.pageState.masterSectors = 1;
+        App.loadMasterData();
+      });
+      const sectorsSearchInput = document.getElementById('sectors-tbl-search');
+      if (sectorsSearchInput) sectorsSearchInput.value = App.searchState.sectors || '';
 
-      let workSections = [], workItems = [];
+      // Work Sections
+      let workSections = [];
       try {
-        workSections = await API.request('work_sections', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+        const wsPage = this.pageState.masterWorkSections || 1;
+        const wsSearch = App.searchState.workSections || '';
+        const wsFilter = App.ilikeOr(['name'], wsSearch);
+        const [wsRows, totalWs] = await Promise.all([
+          API.request('work_sections', 'GET', null, `?select=*&deleted_at=is.null${wsFilter}&order=name.asc&limit=${pageSize}&offset=${(wsPage - 1) * pageSize}`),
+          API.count('work_sections', '?deleted_at=is.null' + wsFilter)
+        ]);
+        const totalWsPages = Math.max(1, Math.ceil(totalWs / pageSize));
+        const safeWsPage = Math.min(Math.max(1, wsPage), totalWsPages);
+        this.pageState.masterWorkSections = safeWsPage;
+        workSections = wsRows;
+        document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
+          App.esc(s.name), App.esc(s.notes || s.description || '-'), {html: UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
+        ])) + this._paginationHtml('masterWorkSections', safeWsPage, pageSize, totalWs, 'loadMasterData') : `<p style="color:var(--text3);padding:16px">لا يوجد أقسام</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkSection()">+ إضافة أول قسم</button>':''}`;
+        this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...', (term) => {
+          App.searchState.workSections = term;
+          App.pageState.masterWorkSections = 1;
+          App.loadMasterData();
+        });
+        const wsSearchInput = document.getElementById('work-sections-tbl-search');
+        if (wsSearchInput) wsSearchInput.value = App.searchState.workSections || '';
       } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
-      try {
-        workItems = await API.request('work_items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
-      } catch (e) { console.log('[MasterData] work_items not ready:', e.message); }
 
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
-      document.getElementById('work-sections-tbl').innerHTML = workSections.length ? this.table(['القسم', 'ملاحظات', 'الإجراءات'], workSections.map(s => [
-        App.esc(s.name), App.esc(s.notes || s.description || '-'), {html: UI.actions(s.id, 'Crud.editWorkSection', 'Crud.delWorkSection', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
-      ])) : `<p style="color:var(--text3);padding:16px">لا يوجد أقسام</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkSection()">+ إضافة أول قسم</button>':''}`;
-      this.attachSearch('work-sections-tbl', '🔍 بحث في الأقسام...');
-      document.getElementById('work-items-tbl').innerHTML = workItems.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], workItems.map(i => [
-        App.esc(i.name), App.esc(sectionMap[i.section_id] || '-'), App.esc(i.notes || i.description || '-'), {html: UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
-      ])) : `<p style="color:var(--text3);padding:16px">لا توجد بنود</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkItem()">+ إضافة أول بند</button>':''}`;
-      this.attachSearch('work-items-tbl', '🔍 بحث في البنود...');
 
-      let items = [];
+      // Work Items
       try {
-        items = await API.request('items', 'GET', null, '?select=*&deleted_at=is.null&order=name.asc');
+        const wiPage = this.pageState.masterWorkItems || 1;
+        const wiSearch = App.searchState.workItems || '';
+        const wiFilter = App.ilikeOr(['name'], wiSearch);
+        const [wiRows, totalWi] = await Promise.all([
+          API.request('work_items', 'GET', null, `?select=*&deleted_at=is.null${wiFilter}&order=name.asc&limit=${pageSize}&offset=${(wiPage - 1) * pageSize}`),
+          API.count('work_items', '?deleted_at=is.null' + wiFilter)
+        ]);
+        const totalWiPages = Math.max(1, Math.ceil(totalWi / pageSize));
+        const safeWiPage = Math.min(Math.max(1, wiPage), totalWiPages);
+        this.pageState.masterWorkItems = safeWiPage;
+        document.getElementById('work-items-tbl').innerHTML = wiRows.length ? this.table(['البند', 'القسم', 'ملاحظات', 'الإجراءات'], wiRows.map(i => [
+          App.esc(i.name), App.esc(sectionMap[i.section_id] || '-'), App.esc(i.notes || i.description || '-'), {html: UI.actions(i.id, 'Crud.editWorkItem', 'Crud.delWorkItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
+        ])) + this._paginationHtml('masterWorkItems', safeWiPage, pageSize, totalWi, 'loadMasterData') : `<p style="color:var(--text3);padding:16px">لا توجد بنود</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addWorkItem()">+ إضافة أول بند</button>':''}`;
+        this.attachSearch('work-items-tbl', '🔍 بحث في البنود...', (term) => {
+          App.searchState.workItems = term;
+          App.pageState.masterWorkItems = 1;
+          App.loadMasterData();
+        });
+        const wiSearchInput = document.getElementById('work-items-tbl-search');
+        if (wiSearchInput) wiSearchInput.value = App.searchState.workItems || '';
+      } catch (e) { console.log('[MasterData] work_items not ready:', e.message); }
+
+      // Items
+      try {
+        const itemsPage = this.pageState.masterItems || 1;
+        const itemsSearch = App.searchState.items || '';
+        const itemsFilter = App.ilikeOr(['name'], itemsSearch);
+        const [itemsRows, totalItems] = await Promise.all([
+          API.request('items', 'GET', null, `?select=*&deleted_at=is.null${itemsFilter}&order=name.asc&limit=${pageSize}&offset=${(itemsPage - 1) * pageSize}`),
+          API.count('items', '?deleted_at=is.null' + itemsFilter)
+        ]);
+        const totalItemsPages = Math.max(1, Math.ceil(totalItems / pageSize));
+        const safeItemsPage = Math.min(Math.max(1, itemsPage), totalItemsPages);
+        this.pageState.masterItems = safeItemsPage;
+        document.getElementById('items-tbl').innerHTML = itemsRows.length ? this.table(['الصنف', 'المواصفات', 'العلامة', 'الوحدة', 'الإجراءات'], itemsRows.map(i => [
+          App.esc(i.name), App.esc(i.specification || '-'), App.esc(i.brand || '-'), App.esc(i.unit || '-'), {html: UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
+        ])) + this._paginationHtml('masterItems', safeItemsPage, pageSize, totalItems, 'loadMasterData') : `<p style="color:var(--text3);padding:16px">لا توجد أصناف</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addItem()">+ إضافة أول صنف</button>':''}`;
+        this.attachSearch('items-tbl', '🔍 بحث في الأصناف...', (term) => {
+          App.searchState.items = term;
+          App.pageState.masterItems = 1;
+          App.loadMasterData();
+        });
+        const itemsSearchInput = document.getElementById('items-tbl-search');
+        if (itemsSearchInput) itemsSearchInput.value = App.searchState.items || '';
       } catch (e) { console.log('[MasterData] items not ready:', e.message); }
-      document.getElementById('items-tbl').innerHTML = items.length ? this.table(['الصنف', 'المواصفات', 'العلامة', 'الوحدة', 'الإجراءات'], items.map(i => [
-        App.esc(i.name), App.esc(i.specification || '-'), App.esc(i.brand || '-'), App.esc(i.unit || '-'), {html: UI.actions(i.id, 'Crud.editItem', 'Crud.delItem', Auth.can('master', 'edit'), Auth.can('master', 'delete'))}
-      ])) : `<p style="color:var(--text3);padding:16px">لا توجد أصناف</p>${Auth.can('master','add')?'<button class="btn btn-primary" onclick="Crud.addItem()">+ إضافة أول صنف</button>':''}`;
-      this.attachSearch('items-tbl', '🔍 بحث في الأصناف...');
     } catch (e) {
       console.error(e);
       UI.toast('Master data load failed: ' + e.message, 'error');

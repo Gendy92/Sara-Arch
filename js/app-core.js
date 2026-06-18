@@ -6,7 +6,9 @@ const App = {
   txTypeFilter: 'all',
   taskStatusFilter: 'all',
   loading: false,
-  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, txExpenses: 1, officeTransactions: 1, officeCustody: 1 },
+  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, txExpenses: 1, officeTransactions: 1, officeCustody: 1, masterSectors: 1, masterWorkSections: 1, masterWorkItems: 1, masterItems: 1, empTransactions: 1, empSalaryHistory: 1 },
+  searchState: {},
+  settings: { currency_label: 'ج.م', default_supervision: 10, company_name: 'سارة أبو العلا' },
   PAGE_SIZE: 50,
 
   esc(s) {
@@ -54,6 +56,7 @@ const App = {
     }
     try {
       await Auth.init();
+      this.loadLocalSettings();
       this.bindNav();
       if (Auth.isLoggedIn()) {
         this.startIdleTimer();
@@ -231,7 +234,7 @@ const App = {
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOfficeCustody()">💼 عهد نقدية</button><button class="btn btn-secondary" onclick="App.exportOfficeExcel()">📥 تحميل Excel</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card" style="margin-top:16px"><h3>💼 العهد النقدية</h3><div id="office-custody-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1>${Auth.can('vendors', 'add') ? `<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button>` : ''}</div><div class="card"><div id="vendors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card" style="margin-top:16px"><h3>📤 رفع ملف البصمة</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><input type="file" id="fingerprint-file" accept=".xlsx,.xls,.csv" onchange="App.parseFingerprintFile(this)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><span style="font-size:12px;color:var(--text3)">الشهر:</span><select id="fp-month" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><span style="font-size:12px;color:var(--text3)">السنة:</span><select id="fp-year" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select></div><div id="fingerprint-preview">لم يتم اختيار ملف</div></div><div class="card" style="margin-top:16px"><h3>💰 الرواتب الشهرية</h3><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الشهر:</label><select id="emp-payroll-month" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${m === new Date().getMonth()+1 ? 'selected' : ''}>${m}</option>`).join('')}</select><label style="font-size:13px">السنة:</label><select id="emp-payroll-year" onchange="App.loadEmpPayroll()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${[2024,2025,2026,2027].map(y => `<option value="${y}" ${y === new Date().getFullYear() ? 'selected' : ''}>${y}</option>`).join('')}</select><button class="btn btn-primary" onclick="App.generateEmpPayroll()">🔄 توليد الرواتب</button></div><div id="emp-payroll-tbl">جاري التحميل...</div></div>`;
-    if (screen === 'settings') return `<div class="page-header"><h1>⚙️ الإعدادات</h1></div><div class="content-grid"><div class="card"><h3>🔐 المستخدمين والصلاحيات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة حسابات المستخدمين وصلاحيات الوصول للشاشات.</p><button class="btn btn-primary" onclick="App.go('users')">فتح المستخدمين</button></div><div class="card"><h3>💾 النسخ الاحتياطي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">تحميل نسخة احتياطية ومراجعة حالة الجداول.</p><button class="btn btn-primary" onclick="App.go('backup')">فتح النسخ الاحتياطي</button></div><div class="card"><h3>📜 سجل العمليات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">متابعة التعديلات والإضافات على قاعدة البيانات.</p><button class="btn btn-primary" onclick="App.go('audit')">فتح السجل</button></div></div>`;
+    if (screen === 'settings') return `<div class="page-header"><h1>⚙️ الإعدادات</h1></div><div class="content-grid"><div class="card" style="grid-column:1/-1"><h3>🏢 بيانات الشركة / المكتب</h3><form id="settings-form" style="max-width:720px"><div class="form-grid"><div class="form-group"><label>اسم الشركة / المكتب</label><input type="text" name="company_name" id="setting-company-name" value="سارة أبو العلا" /></div><div class="form-group"><label>العنوان</label><input type="text" name="company_address" id="setting-company-address" /></div><div class="form-group"><label>الهاتف</label><input type="text" name="company_phone" id="setting-company-phone" /></div><div class="form-group"><label>الرقم الضريبي</label><input type="text" name="company_tax" id="setting-company-tax" /></div><div class="form-group"><label>نسبة الإشراف الافتراضية (%)</label><input type="number" name="default_supervision" id="setting-default-supervision" value="10" min="0" max="100" step="0.01" /></div><div class="form-group"><label>تسمية العملة</label><input type="text" name="currency_label" id="setting-currency-label" value="ج.م" /></div></div><div style="margin-top:12px"><button type="button" class="btn btn-primary" onclick="App.saveSettings()">💾 حفظ الإعدادات</button></div><p id="settings-msg" style="font-size:12px;color:var(--green);margin-top:8px;min-height:18px"></p></form><div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text3)">الإصدار المحلي: <strong id="settings-version">-</strong> &nbsp;|&nbsp; آخر نسخة احتياطية: <strong id="settings-last-backup">-</strong></div></div></div><div class="content-grid"><div class="card"><h3>🔐 المستخدمين والصلاحيات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة حسابات المستخدمين وصلاحيات الوصول للشاشات.</p><button class="btn btn-primary" onclick="App.go('users')">فتح المستخدمين</button></div><div class="card"><h3>📋 البيانات الأساسية</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة التصنيفات، الأصناف، أقسام المشاريع وبنود الأعمال.</p><button class="btn btn-primary" onclick="App.go('master')">فتح البيانات الأساسية</button></div><div class="card"><h3>💾 النسخ الاحتياطي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">تحميل نسخة احتياطية ومراجعة حالة الجداول.</p><button class="btn btn-primary" onclick="App.go('backup')">فتح النسخ الاحتياطي</button></div><div class="card"><h3>📜 سجل العمليات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">متابعة التعديلات والإضافات على قاعدة البيانات.</p><button class="btn btn-primary" onclick="App.go('audit')">فتح السجل</button></div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><div style="display:flex;gap:8px;flex-wrap:wrap">${Auth.can('users', 'add') ? `<button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button>` : ''}<button class="btn btn-secondary" onclick="App.go('permissions')">🔑 صلاحيات المستخدمين</button></div></div><div class="card"><div id="users-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option><option value="payroll_records">الرواتب</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🧹 مسح الكاش</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إذا واجهت مشاكل في تحميل التحديثات الجديدة، اضغط لمسح الكاش وإعادة تحميل التطبيق.</p><div id="cache-clear-msg" style="margin-bottom:12px;font-size:12px;color:var(--text3)">الإصدار المحلي: <strong>${localStorage.getItem('sara_app_version') || '-'}</strong></div><button class="btn btn-secondary" onclick="App.clearAppCache()">🧹 مسح الكاش وإعادة التحميل</button></div></div>`;
@@ -305,7 +308,13 @@ const App = {
     return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
 
-  attachSearch(containerId, placeholder = '🔍 بحث...') {
+  ilikeOr(fields, term) {
+    if (!term) return '';
+    const t = encodeURIComponent(`*${term}*`);
+    return `&or=(${fields.map(f => `${f}.ilike.${t}`).join(',')})`;
+  },
+
+  attachSearch(containerId, placeholder = '🔍 بحث...', onSearch) {
     const container = document.getElementById(containerId);
     if (!container) return;
     if (container.dataset.searchAttached) return;
@@ -313,20 +322,43 @@ const App = {
     const searchId = containerId + '-search';
     const searchHtml = `<div class="table-search" style="margin-bottom:12px"><input type="text" id="${searchId}" placeholder="${placeholder}" style="width:100%;max-width:320px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'" /></div>`;
     container.insertAdjacentHTML('beforebegin', searchHtml);
-    document.getElementById(searchId).addEventListener('input', (e) => {
-      const term = e.target.value.trim().toLowerCase();
-      const table = container.querySelector('.data-table');
-      if (table) {
-        table.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(term) ? '' : 'none'; });
-      }
-      const cards = container.querySelectorAll('.card');
-      if (cards.length) {
-        cards.forEach(card => { card.style.display = card.textContent.toLowerCase().includes(term) ? '' : 'none'; });
-      }
-    });
+    const input = document.getElementById(searchId);
+    if (typeof onSearch === 'function') {
+      let debounceTimer;
+      input.addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => onSearch(e.target.value.trim()), 300);
+      });
+    } else {
+      input.addEventListener('input', (e) => {
+        const term = e.target.value.trim().toLowerCase();
+        const table = container.querySelector('.data-table');
+        if (table) {
+          table.querySelectorAll('tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(term) ? '' : 'none'; });
+        }
+        const cards = container.querySelectorAll('.card');
+        if (cards.length) {
+          cards.forEach(card => { card.style.display = card.textContent.toLowerCase().includes(term) ? '' : 'none'; });
+        }
+      });
+    }
   },
 
-  fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ج.م'; },
+  loadLocalSettings() {
+    try {
+      const raw = localStorage.getItem('sara_settings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        Object.assign(this.settings, parsed);
+      }
+    } catch (e) { console.warn('[Settings] load failed', e); }
+  },
+
+  saveLocalSettings() {
+    localStorage.setItem('sara_settings', JSON.stringify(this.settings));
+  },
+
+  fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ' + (this.settings?.currency_label || 'ج.م'); },
   fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; },
   fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', design: 'تصميم مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب' }; return map[type] || type; },
 };

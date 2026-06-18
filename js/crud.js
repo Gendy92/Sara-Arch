@@ -652,7 +652,19 @@ const Crud = {
         const existing = await API.request('employees', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
         if (existing.length) { UI.toast('⚠️ اسم الموظف موجود مسبقاً', 'error'); return; }
       }
-      await this.save('employees', { name: fd.get('name'), job_title: fd.get('job_title') || null, salary: +fd.get('salary') || 0, phone: fd.get('phone') || null, email: fd.get('email') || null, hire_date: fd.get('hire_date') || null, notes: fd.get('notes') || null }, id);
+      const newSalary = +fd.get('salary') || 0;
+      const oldSalary = +rows[0].salary || 0;
+      await this.save('employees', { name: fd.get('name'), job_title: fd.get('job_title') || null, salary: newSalary, phone: fd.get('phone') || null, email: fd.get('email') || null, hire_date: fd.get('hire_date') || null, notes: fd.get('notes') || null }, id);
+      if (newSalary !== oldSalary) {
+        await this.save('employee_salary_history', {
+          employee_id: id,
+          employee_name: fd.get('name'),
+          old_salary: oldSalary,
+          new_salary: newSalary,
+          effective_date: new Date().toISOString().slice(0, 10),
+          notes: 'تعديل الراتب من شاشة الموظفين'
+        }).catch(e => console.warn('[SalaryHistory] auto-log failed', e));
+      }
       UI.toast('تم التحديث'); App.loadEmployees();
     });
   },
@@ -661,6 +673,175 @@ const Crud = {
     UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
   },
 
+  // ─── EMPLOYEE TRANSACTIONS ───
+  async employeeTransactions(employeeId) {
+    const [emp, records] = await Promise.all([
+      API.request('employees', 'GET', null, `?select=name&id=eq.${employeeId}`),
+      API.request('employee_transactions', 'GET', null, `?select=*&employee_id=eq.${employeeId}&deleted_at=is.null&order=date.desc&limit=100`)
+    ]);
+    const name = emp[0]?.name || 'موظف';
+    const typeLabels = { advance: 'سلفة', penalty: 'جزاء', bonus: 'مكافأة', other: 'أخرى' };
+    const typeColors = { advance: 'blue', penalty: 'red', bonus: 'green', other: 'gray' };
+    const total = records.reduce((s, t) => s + (+t.amount || 0), 0);
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">عدد المعاملات</div><div class="kpi-value">${records.length}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المبالغ</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(total)}</div></div>
+    </div>`;
+    const rows = records.map((t, i) => [i+1, t.date || '-', {html: `<span class="badge badge-${typeColors[t.type] || 'gray'}">${typeLabels[t.type] || t.type}</span>`}, App.fmtMoney(t.amount), App.esc(t.notes || '-'), {html: UI.actions(t.id, 'Crud.editEmpTransaction', 'Crud.delEmpTransaction')}]);
+    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المبلغ', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addEmpTransaction('${employeeId}')">➕ إضافة معاملة</button></div>`;
+    UI.openModal(`💰 معاملات الموظف: ${App.esc(name)}`, addBtn + summary + table, null);
+  },
+
+  async addEmpTransaction(employeeId) {
+    const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+    const fields = [
+      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
+      { name: 'type', label: 'النوع *', type: 'select', req: true, opts: [{v:'advance',l:'سلفة'},{v:'penalty',l:'جزاء'},{v:'bonus',l:'مكافأة'},{v:'other',l:'أخرى'}] },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('إضافة معاملة موظف', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const emp = employees.find(e => e.id === fd.get('employee_id'));
+      await this.save('employee_transactions', {
+        employee_id: fd.get('employee_id') || null,
+        employee_name: emp ? emp.name : null,
+        type: fd.get('type') || 'other',
+        amount: +fd.get('amount') || 0,
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        notes: fd.get('notes') || null
+      });
+      UI.toast('تم الحفظ');
+      App.loadEmpTransactions();
+      if (employeeId) this.employeeTransactions(employeeId);
+    });
+  },
+
+  async editEmpTransaction(id) {
+    const rows = await API.request('employee_transactions', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
+    if (!rows.length) return;
+    const [employees] = await Promise.all([
+      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
+    ]);
+    const fields = [
+      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
+      { name: 'type', label: 'النوع *', type: 'select', req: true, opts: [{v:'advance',l:'سلفة'},{v:'penalty',l:'جزاء'},{v:'bonus',l:'مكافأة'},{v:'other',l:'أخرى'}] },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل معاملة موظف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const emp = employees.find(e => e.id === fd.get('employee_id'));
+      await this.save('employee_transactions', {
+        employee_id: fd.get('employee_id') || null,
+        employee_name: emp ? emp.name : null,
+        type: fd.get('type') || 'other',
+        amount: +fd.get('amount') || 0,
+        date: fd.get('date') || null,
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      App.loadEmpTransactions();
+      if (rows[0].employee_id) this.employeeTransactions(rows[0].employee_id);
+    });
+  },
+
+  delEmpTransaction(id) {
+    UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => {
+      const rows = await API.request('employee_transactions', 'GET', null, `?select=employee_id&id=eq.${id}&deleted_at=is.null`);
+      await this.softDelete('employee_transactions', id);
+      UI.toast('تم الحذف');
+      App.loadEmpTransactions();
+      if (rows.length && rows[0].employee_id) this.employeeTransactions(rows[0].employee_id);
+    });
+  },
+
+  // ─── EMPLOYEE SALARY HISTORY ───
+  async employeeSalaryHistory(employeeId) {
+    const [emp, records] = await Promise.all([
+      API.request('employees', 'GET', null, `?select=name&id=eq.${employeeId}`),
+      API.request('employee_salary_history', 'GET', null, `?select=*&employee_id=eq.${employeeId}&deleted_at=is.null&order=effective_date.desc&limit=100`)
+    ]);
+    const name = emp[0]?.name || 'موظف';
+    const rows = records.map((h, i) => {
+      const oldSal = +h.old_salary || 0;
+      const newSal = +h.new_salary || 0;
+      const diff = newSal - oldSal;
+      const diffColor = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text3)';
+      return [i+1, h.effective_date || '-', App.fmtMoney(oldSal), App.fmtMoney(newSal), {html: `<span style="color:${diffColor};font-weight:600">${diff > 0 ? '+' : ''}${App.fmtMoney(diff)}</span>`}, App.esc(h.notes || '-'), {html: UI.actions(h.id, 'Crud.editSalaryHistory', 'Crud.delSalaryHistory')}];
+    });
+    const table = rows.length ? App.table(['#', 'التاريخ', 'الراتب القديم', 'الراتب الجديد', 'الفرق', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا يوجد تاريخ رواتب</p>';
+    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addSalaryHistory('${employeeId}')">➕ إضافة تغيير راتب</button></div>`;
+    UI.openModal(`📈 تاريخ رواتب: ${App.esc(name)}`, addBtn + table, null);
+  },
+
+  async addSalaryHistory(employeeId, oldSalary) {
+    const employees = await API.request('employees', 'GET', null, '?select=id,name,salary&is_active=eq.true&deleted_at=is.null&order=name.asc');
+    const emp = employees.find(e => e.id === employeeId);
+    const fields = [
+      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
+      { name: 'old_salary', label: 'الراتب القديم', type: 'number', default: oldSalary != null ? oldSalary : (emp ? emp.salary : 0) },
+      { name: 'new_salary', label: 'الراتب الجديد *', type: 'number', req: true },
+      { name: 'effective_date', label: 'تاريخ التطبيق', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('إضافة تغيير راتب', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const selectedEmp = employees.find(e => e.id === fd.get('employee_id'));
+      await this.save('employee_salary_history', {
+        employee_id: fd.get('employee_id') || null,
+        employee_name: selectedEmp ? selectedEmp.name : null,
+        old_salary: +fd.get('old_salary') || 0,
+        new_salary: +fd.get('new_salary') || 0,
+        effective_date: fd.get('effective_date') || new Date().toISOString().slice(0, 10),
+        notes: fd.get('notes') || null
+      });
+      UI.toast('تم الحفظ');
+      App.loadEmpSalaryHistory();
+      if (employeeId) this.employeeSalaryHistory(employeeId);
+    });
+  },
+
+  async editSalaryHistory(id) {
+    const rows = await API.request('employee_salary_history', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
+    if (!rows.length) return;
+    const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
+    const fields = [
+      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
+      { name: 'old_salary', label: 'الراتب القديم', type: 'number' },
+      { name: 'new_salary', label: 'الراتب الجديد *', type: 'number', req: true },
+      { name: 'effective_date', label: 'تاريخ التطبيق', type: 'date' },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    UI.openModal('تعديل تاريخ راتب', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const selectedEmp = employees.find(e => e.id === fd.get('employee_id'));
+      await this.save('employee_salary_history', {
+        employee_id: fd.get('employee_id') || null,
+        employee_name: selectedEmp ? selectedEmp.name : null,
+        old_salary: +fd.get('old_salary') || 0,
+        new_salary: +fd.get('new_salary') || 0,
+        effective_date: fd.get('effective_date') || null,
+        notes: fd.get('notes') || null
+      }, id);
+      UI.toast('تم التحديث');
+      App.loadEmpSalaryHistory();
+      if (rows[0].employee_id) this.employeeSalaryHistory(rows[0].employee_id);
+    });
+  },
+
+  delSalaryHistory(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا السجل؟', async () => {
+      const rows = await API.request('employee_salary_history', 'GET', null, `?select=employee_id&id=eq.${id}&deleted_at=is.null`);
+      await this.softDelete('employee_salary_history', id);
+      UI.toast('تم الحذف');
+      App.loadEmpSalaryHistory();
+      if (rows.length && rows[0].employee_id) this.employeeSalaryHistory(rows[0].employee_id);
+    });
+  },
 
   // ─── TRANSACTIONS: 4 Types ───
   async addProjectDeposit() {
@@ -1798,7 +1979,7 @@ const Crud = {
       total += amt;
       returned += ret;
       const bal = amt - ret;
-      return [i+1, r.date || '-', {html: typeBadge(r.custody_type)}, App.fmtMoney(amt), App.fmtMoney(ret), {html: `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`}, {html: statusBadge(r.status)}, App.esc(r.sector_name || '-'), App.esc(r.projects?.name || r.project_name || '-'), App.esc(r.notes || '-'), {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')}];
+      return [i+1, r.date || '-', {html: typeBadge(r.custody_type)}, App.fmtMoney(amt), App.fmtMoney(ret), {html: `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`}, {html: statusBadge(r.status)}, App.esc(r.sector_name || '-'), App.esc(r.projects?.name || r.project_name || '-'), App.esc(r.notes || '-'), {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody') + ` <button class="btn btn-sm btn-secondary" onclick="Crud.custodyExpenses('${r.id}')">مصروفات</button>`}];
     });
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
@@ -1925,6 +2106,92 @@ const Crud = {
       UI.toast('تم الحذف');
       App.loadOffice();
       if (rows.length && rows[0].employee_id) this.employeeCustody(rows[0].employee_id);
+    });
+  },
+
+  // ─── CUSTODY EXPENSES ───
+  async custodyExpenses(custodyId) {
+    const [custody, expenses] = await Promise.all([
+      API.request('custody_records', 'GET', null, `?select=*,employees(name)&id=eq.${custodyId}&deleted_at=is.null`),
+      API.request('custody_expenses', 'GET', null, `?select=*&custody_id=eq.${custodyId}&deleted_at=is.null&order=date.desc&limit=100`)
+    ]);
+    const c = custody[0];
+    if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
+    const totalExpenses = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
+    const remaining = (+c.amount || 0) - (+c.returned_amount || 0) - totalExpenses;
+    const empName = c.employees?.name || c.employee_name || '-';
+    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مبلغ العهدة</div><div class="kpi-value">${App.fmtMoney(c.amount || 0)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(c.returned_amount || 0)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExpenses)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(remaining)}</div></div>
+    </div>`;
+    const rows = expenses.map((x, i) => [i+1, x.date || '-', App.fmtMoney(x.amount), App.esc(x.description || '-'), {html: UI.actions(x.id, 'Crud.editCustodyExpense', 'Crud.delCustodyExpense')}]);
+    const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'البيان', ''], rows) : '<p style="color:var(--text3)">لا توجد مصروفات لهذه العهدة</p>';
+    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustodyExpense('${custodyId}')">➕ إضافة مصروف</button></div>`;
+    UI.openModal(`🧾 مصروفات العهدة: ${App.esc(empName)}`, addBtn + summary + table, null);
+  },
+
+  async addCustodyExpense(custodyId) {
+    const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${custodyId}&deleted_at=is.null`);
+    if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
+    const c = custodyRows[0];
+    const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`);
+    const spent = existing.reduce((s, x) => s + (+x.amount || 0), 0);
+    const available = (+c.amount || 0) - (+c.returned_amount || 0) - spent;
+    const fields = [
+      { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'description', label: 'البيان', type: 'textarea' }
+    ];
+    UI.openModal('إضافة مصروف عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const amount = +fd.get('amount') || 0;
+      if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
+      await this.save('custody_expenses', {
+        custody_id: custodyId,
+        amount,
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        description: fd.get('description') || null
+      });
+      UI.toast('تم الحفظ');
+      this.custodyExpenses(custodyId);
+    });
+  },
+
+  async editCustodyExpense(id) {
+    const rows = await API.request('custody_expenses', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
+    if (!rows.length) return;
+    const custodyRows = await API.request('custody_records', 'GET', null, `?select=amount,returned_amount&id=eq.${rows[0].custody_id}&deleted_at=is.null`);
+    const c = custodyRows[0] || {};
+    const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&id=neq.${id}&custody_id=eq.${rows[0].custody_id}&deleted_at=is.null`);
+    const spent = existing.reduce((s, x) => s + (+x.amount || 0), 0);
+    const available = (+c.amount || 0) - (+c.returned_amount || 0) - spent;
+    const fields = [
+      { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
+      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'description', label: 'البيان', type: 'textarea' }
+    ];
+    UI.openModal('تعديل مصروف عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const amount = +fd.get('amount') || 0;
+      if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
+      await this.save('custody_expenses', {
+        amount,
+        date: fd.get('date') || null,
+        description: fd.get('description') || null
+      }, id);
+      UI.toast('تم التحديث');
+      this.custodyExpenses(rows[0].custody_id);
+    });
+  },
+
+  delCustodyExpense(id) {
+    UI.confirm('هل أنت متأكد من حذف هذا المصروف؟', async () => {
+      const rows = await API.request('custody_expenses', 'GET', null, `?select=custody_id&id=eq.${id}&deleted_at=is.null`);
+      await this.softDelete('custody_expenses', id);
+      UI.toast('تم الحذف');
+      if (rows.length && rows[0].custody_id) this.custodyExpenses(rows[0].custody_id);
     });
   },
 
