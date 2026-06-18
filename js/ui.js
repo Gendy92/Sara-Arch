@@ -52,13 +52,17 @@ const UI = {
   _escAttr(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   },
+  shortPlaceholder(label) {
+    const clean = String(label || '').replace(/\*/g, '').trim();
+    return clean.length > 6 ? clean.slice(0, 6) + '…' : clean;
+  },
 
   searchableSelectHTML(selectAttrs, options, value) {
     const esc = (s) => App.esc ? App.esc(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
     const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${value == o.v ? 'selected' : ''}>${esc(o.l)}</option>`).join('');
     const dropdownOpts = options.map(o => `<div class="searchable-select-option" data-value="${this._escAttr(o.v)}">${esc(o.l)}</div>`).join('');
     return `<div class="searchable-select">
-      <input type="text" class="searchable-select-input" placeholder="🔍 اكتب للبحث..." autocomplete="off">
+      <input type="text" class="searchable-select-input" placeholder="-- اختر --" autocomplete="off">
       <select ${selectAttrs} style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;">${optsHtml}</select>
       <div class="searchable-select-dropdown">${dropdownOpts}</div>
     </div>`;
@@ -89,13 +93,20 @@ const UI = {
   initSearchableSelects(container) {
     if (!UI._searchableSelectGlobalInit) {
       UI._searchableSelectGlobalInit = true;
+      const closeDropdown = (d) => {
+        d.classList.remove('open');
+        const wrapper = d.closest('.searchable-select');
+        const inp = wrapper?.querySelector('.searchable-select-input');
+        const sel = wrapper?.querySelector('select');
+        if (inp && sel && !sel.value) inp.placeholder = '-- اختر --';
+      };
       document.addEventListener('click', (e) => {
         if (e.target.closest('.searchable-select')) return;
-        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => d.classList.remove('open'));
+        document.querySelectorAll('.searchable-select-dropdown.open').forEach(closeDropdown);
       });
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-          document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => d.classList.remove('open'));
+          document.querySelectorAll('.searchable-select-dropdown.open').forEach(closeDropdown);
         }
       });
       const repositionOpen = () => {
@@ -137,9 +148,11 @@ const UI = {
         if (!e.target.classList.contains('searchable-select-input')) return;
         const wrapper = e.target.closest('.searchable-select');
         const dropdown = wrapper.querySelector('.searchable-select-dropdown');
+        const sel = wrapper.querySelector('select');
+        if (sel && !sel.value) e.target.placeholder = '🔍 ابحث...';
         UI._positionSearchableDropdown(dropdown, e.target);
         UI._highlightSearchableOption(wrapper);
-        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => { if (d !== dropdown) d.classList.remove('open'); });
+        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => { if (d !== dropdown) closeDropdown(d); });
         dropdown.classList.add('open');
       });
     }
@@ -153,12 +166,12 @@ const UI = {
         const val = select.value;
         if (!val) {
           input.value = '';
-          input.placeholder = '🔍 اكتب للبحث...';
+          input.placeholder = '-- اختر --';
           UI._highlightSearchableOption(wrapper);
           return;
         }
         const selected = Array.from(select.options).find(o => o.value === val);
-        input.value = selected ? selected.textContent : '';
+        input.value = selected ? selected.textContent.trim() : '';
         input.placeholder = '';
         UI._highlightSearchableOption(wrapper);
       };
@@ -202,12 +215,12 @@ const UI = {
     const fieldName = f.name || f.key;
     const v = values[fieldName] !== undefined ? values[fieldName] : (f.default || '');
     const vEsc = this._escAttr(v);
-    if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" ${f.req ? 'required' : ''} ${f.attr || ''}>${vEsc}</textarea></div>`;
+    if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''}>${vEsc}</textarea></div>`;
     if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label>${this.searchableSelectHTML(`name="${fieldName}" ${f.req ? 'required' : ''} ${f.attr || ''}`, f.opts, v)}</div>`;
-    if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
-    if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} min="0" step="any" ${f.attr || ''} /></div>`;
-    if (f.type === 'time') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
-    return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} min="0" step="any" ${f.attr || ''} /></div>`;
+    if (f.type === 'time') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${vEsc}" placeholder="${this.shortPlaceholder(f.label)}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
   },
 
   actions(id, onEdit, onDel, canEdit = true, canDelete = true) {
@@ -283,7 +296,7 @@ const Spreadsheet = {
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
       const valAttr = def !== undefined ? `value="${def}"` : '';
       const minAttr = c.type === 'number' ? ' min="0"' : '';
-      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${c.label.replace(/\*/g,'').trim()}" ${valAttr}${minAttr} /></td>`;
+      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${UI.shortPlaceholder(c.label)}" ${valAttr}${minAttr} /></td>`;
     }).join('');
 
     return `<div class="spreadsheet">
