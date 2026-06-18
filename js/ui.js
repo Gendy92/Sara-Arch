@@ -27,7 +27,6 @@ const UI = {
           await onSubmit(form);
           UI.closeModal();
         } catch (err) {
-          console.error('Save error:', err);
           UI.toast('خطأ: ' + (err.message || 'فشل الحفظ'), 'error');
         } finally {
           if (btn) { btn.disabled = false; btn.textContent = btn.dataset.orig || 'حفظ'; }
@@ -263,7 +262,6 @@ const Spreadsheet = {
         await onSave(rows);
         UI.closeModal();
       } catch (err) {
-        console.error('Bulk save error:', err);
         UI.toast('خطأ: ' + (err.message || 'فشل الحفظ'), 'error');
         saveBtn.disabled = false; saveBtn.textContent = '💾 حفظ الكل';
       }
@@ -430,7 +428,6 @@ const Spreadsheet = {
       this.fillData(spreadsheetDiv, columns, dataRows);
       UI.toast(`تم استيراد ${dataRows.length} صفوف`, 'success');
     } catch (e) {
-      console.error('Excel parse error:', e);
       UI.toast('خطأ في قراءة ملف Excel', 'error');
     }
     input.value = '';

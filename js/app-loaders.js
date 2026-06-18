@@ -831,7 +831,6 @@ Object.assign(App, {
       preview.dataset.month = fpMonth;
       preview.dataset.year = fpYear;
     } catch (e) {
-      console.error(e);
       preview.innerHTML = '<p style="color:var(--red)">خطأ في قراءة الملف: ' + App.esc(e.message || '') + '</p>';
     }
   },
@@ -863,7 +862,7 @@ Object.assign(App, {
       }
       UI.toast(`تم حفظ ${records.length} سجل حضور`);
       preview.innerHTML = '<p style="color:var(--green)">✅ تم الحفظ بنجاح</p>';
-    } catch (e) { console.error(e); UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
+    } catch (e) { UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
   },
 
   async loadEmpPayroll() {
@@ -893,7 +892,6 @@ Object.assign(App, {
       });
       document.getElementById('emp-payroll-tbl').innerHTML = rows.length ? App.table(['الموظف', 'الراتب الأساسي', 'حاضر', 'غائب', 'متأخر', 'الخصومات', 'المكافآت', 'الجزاءات', 'الصافي', 'الحالة', 'الإجراءات'], rows) : '<p style="color:var(--text3)">لا يوجد بيانات</p>';
     } catch (e) {
-      console.error(e);
       UI.toast('Payroll load failed: ' + e.message, 'error');
       const errText = (e.message || '').toLowerCase();
       const isMissing = errText.includes('does not exist') || errText.includes('pgrst');
@@ -963,7 +961,7 @@ Object.assign(App, {
               const exp = await API.request('transactions', 'POST', payrollExpensePayload(r));
               const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
               if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${payrollId}`);
-            } catch (expErr) { console.warn('[Payroll] failed to link office expense:', expErr.message); }
+            } catch (expErr) { /* link failure is non-fatal; expense stays unlinked */ }
           }
           created++;
         } else if (existing.status === 'draft' || existing.status === 'approved') {
@@ -971,13 +969,13 @@ Object.assign(App, {
           if (existing.office_expense_id) {
             try {
               await API.request('transactions', 'PATCH', { amount: +r.net_salary || 0, description: `راتب ${r.employee_name} - ${r.month}/${r.year}`, employee_name: r.employee_name || null, date: `${r.year}-${String(r.month).padStart(2, '0')}-01` }, `?id=eq.${existing.office_expense_id}`);
-            } catch (expErr) { console.warn('[Payroll] failed to update linked office expense:', expErr.message); }
+            } catch (expErr) { /* update failure is non-fatal */ }
           } else {
             try {
               const exp = await API.request('transactions', 'POST', payrollExpensePayload(r));
               const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
               if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${existing.id}`);
-            } catch (expErr) { console.warn('[Payroll] failed to create office expense:', expErr.message); }
+            } catch (expErr) { /* create failure is non-fatal */ }
           }
           updated++;
         } else {
@@ -986,7 +984,7 @@ Object.assign(App, {
       }
       UI.toast(`تم توليد رواتب ${records.length} موظف (جديد ${created} / تحديث ${updated}${skipped ? ` / تخطي ${skipped}` : ''})`);
       this.loadEmpPayroll();
-    } catch (e) { console.error(e); UI.toast('خطأ في توليد الرواتب: ' + e.message, 'error'); }
+    } catch (e) { UI.toast('خطأ في توليد الرواتب: ' + e.message, 'error'); }
   },
 
   async loadSettings() {
@@ -1081,7 +1079,7 @@ Object.assign(App, {
       const missingTables = results.filter(r => !r.ok).map(r => r.table);
       const statusHtml = `<ul style="list-style:none;padding:0;font-size:13px">${results.map(r => `<li style="padding:4px 0;border-bottom:1px solid var(--border)">${r.ok ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--text3)">○</span>'} ${r.table}.json</li>`).join('')}</ul><p style="font-size:12px;color:var(--text3);margin-top:8px">✓ متاح: ${okTables.length} &nbsp;|&nbsp; ○ غير منشأ بعد: ${missingTables.length}</p>`;
       document.getElementById('backup-status').innerHTML = statusHtml;
-    } catch (e) { console.error(e); document.getElementById('backup-status').innerHTML = '<p style="color:var(--red)">خطأ في التحميل</p>'; }
+    } catch (e) { document.getElementById('backup-status').innerHTML = '<p style="color:var(--red)">خطأ في التحميل</p>'; }
   },
 
   async downloadLocalBackup() {
@@ -1105,7 +1103,6 @@ Object.assign(App, {
         } else {
           fail++;
           failed.push(table);
-          console.error(`[Backup] failed for ${table}:`, e);
         }
       }
       progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول${skip ? ` (تخطي ${skip})` : ''}${fail ? ` — فشل ${fail}` : ''}...</p>`;
@@ -1140,7 +1137,6 @@ Object.assign(App, {
       url.searchParams.set('_', Date.now());
       location.href = url.toString();
     } catch (e) {
-      console.error(e);
       location.reload(true);
     }
   },
@@ -1190,7 +1186,6 @@ Object.assign(App, {
       const saveBtn = `<div style="margin-bottom:20px"><button class="btn btn-primary" onclick="App.savePermissions()">💾 حفظ الصلاحيات</button></div>`;
       document.getElementById('permissions-tbl').innerHTML = saveBtn + html;
     } catch (e) {
-      console.error(e);
       UI.toast('Permissions load failed: ' + e.message, 'error');
       const errText = (e.message || '').toLowerCase();
       const isMissingTable = errText.includes('does not exist') || errText.includes('user_permissions') || errText.includes('pgrst116') || errText.includes('relation');
@@ -1223,7 +1218,7 @@ Object.assign(App, {
       }
       UI.toast('تم حفظ الصلاحيات');
       this.loadPermissionsScreen();
-    } catch (e) { console.error(e); UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
+    } catch (e) { UI.toast('خطأ في الحفظ: ' + e.message, 'error'); }
   },
 
   async loadAuditLog() {
@@ -1242,7 +1237,6 @@ Object.assign(App, {
         l.new_data ? JSON.stringify(l.new_data).slice(0, 60) + '...' : '-'
       ])) : '<p style="color:var(--text3)">لا توجد سجلات</p>';
     } catch (e) {
-      console.error(e);
       UI.toast('Audit log load failed: ' + e.message, 'error');
       const errText = (e.message || '').toLowerCase();
       const isMissing = errText.includes('does not exist') || errText.includes('audit_logs') || errText.includes('pgrst');
@@ -1303,7 +1297,7 @@ Object.assign(App, {
         });
         const wsSearchInput = document.getElementById('work-sections-tbl-search');
         if (wsSearchInput) wsSearchInput.value = App.searchState.workSections || '';
-      } catch (e) { console.log('[MasterData] work_sections not ready:', e.message); }
+      } catch (e) { /* work_sections may not be created yet */ }
 
       const sectionMap = Object.fromEntries(workSections.map(s => [s.id, s.name]));
 
@@ -1329,7 +1323,7 @@ Object.assign(App, {
         });
         const wiSearchInput = document.getElementById('work-items-tbl-search');
         if (wiSearchInput) wiSearchInput.value = App.searchState.workItems || '';
-      } catch (e) { console.log('[MasterData] work_items not ready:', e.message); }
+      } catch (e) { /* work_items may not be created yet */ }
 
       // Items
       try {
@@ -1353,7 +1347,7 @@ Object.assign(App, {
         });
         const itemsSearchInput = document.getElementById('items-tbl-search');
         if (itemsSearchInput) itemsSearchInput.value = App.searchState.items || '';
-      } catch (e) { console.log('[MasterData] items not ready:', e.message); }
+      } catch (e) { /* items may not be created yet */ }
     } catch (e) {
       UI.toast('Master data load failed: ' + e.message, 'error');
       App.loadErrorHtml('sectors-tbl', 'تعذر تحميل البيانات الأساسية', 'App.loadMasterData()', e);

@@ -35,12 +35,10 @@ const App = {
   async start() {
     // Surface silent API/runtime failures instead of letting them disappear.
     window.addEventListener('unhandledrejection', (ev) => {
-      console.error('Unhandled rejection:', ev.reason);
       const msg = ev.reason?.message || 'حدث خطأ غير متوقع';
       if (typeof UI !== 'undefined' && UI.toast) UI.toast('خطأ: ' + msg, 'error');
     });
     window.addEventListener('error', (ev) => {
-      console.error('Global error:', ev.error);
       const msg = ev.error?.message || 'حدث خطأ غير متوقع';
       if (typeof UI !== 'undefined' && UI.toast) UI.toast('خطأ: ' + msg, 'error');
     });
@@ -313,7 +311,7 @@ const App = {
       if (c && typeof c === 'object' && c.html !== undefined) return String(c.html);
       return App.esc(c == null ? '' : String(c));
     };
-    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${this.esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
 
   ilikeOr(fields, term) {
@@ -328,7 +326,7 @@ const App = {
     if (container.dataset.searchAttached) return;
     container.dataset.searchAttached = 'true';
     const searchId = containerId + '-search';
-    const searchHtml = `<div class="table-search" style="margin-bottom:12px"><input type="text" id="${searchId}" placeholder="${placeholder}" style="width:100%;max-width:320px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'" /></div>`;
+    const searchHtml = `<div class="table-search" style="margin-bottom:12px"><input type="text" id="${searchId}" placeholder="${this.esc(placeholder)}" style="width:100%;max-width:320px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'" /></div>`;
     container.insertAdjacentHTML('beforebegin', searchHtml);
     const input = document.getElementById(searchId);
     if (typeof onSearch === 'function') {
@@ -359,7 +357,7 @@ const App = {
         const parsed = JSON.parse(raw);
         Object.assign(this.settings, parsed);
       }
-    } catch (e) { console.warn('[Settings] load failed', e); }
+    } catch (e) { /* local settings are optional */ }
   },
 
   saveLocalSettings() {

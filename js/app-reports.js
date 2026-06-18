@@ -13,7 +13,6 @@ Object.assign(App, {
       XLSX.utils.book_append_sheet(wb, ws, 'مستحقات الموردين');
       XLSX.writeFile(wb, `مستحقات-الموردين-${new Date().toISOString().slice(0,10)}.xlsx`);
     } catch (e) {
-      console.error(e);
       UI.toast('خطأ في تصدير Excel: ' + e.message, 'error');
     }
   },

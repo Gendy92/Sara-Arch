@@ -61,7 +61,6 @@ const Crud = {
       const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
       return existing?.[0] || null;
     } catch (e) {
-      console.warn('[Audit] failed to fetch old data:', e.message);
       return null;
     }
   },
@@ -88,7 +87,6 @@ const Crud = {
     }
     if (id) {
       const preUpdateData = oldData || await this._fetchOldData(table, id);
-      if (!preUpdateData) console.warn(`[Audit] oldData missing for ${table} id=${id}`);
       let payload = { ...cleanData, updated_by: userId };
       try {
         await API.request(table, 'PATCH', payload, '?id=eq.' + id);
@@ -142,7 +140,7 @@ const Crud = {
         old_data: oldData || null, new_data: newData || null,
         user_id: userId, user_name: userName
       });
-    } catch (e) { console.log('[Audit] log failed:', e.message); }
+    } catch (e) { /* audit logging is best-effort */ }
   },
 
   _setupClientProjectCascade(overlay, projects, currentClientId, currentProjectId) {
@@ -263,9 +261,7 @@ const Crud = {
           await this.softDelete('transactions', t.id, false);
         }
         UI.toast(`🗑️ تم حذف ${projects.length} مشروع و ${txs.length} معاملة مرتبطة`, 'info');
-      } catch (e) {
-        console.warn('Cascade delete partial failure:', e);
-      }
+      } catch (e) { /* cascade delete is best-effort */ }
     }
     // Fetch old data BEFORE soft-delete so audit captures pre-delete state
     let oldData = null;
@@ -507,7 +503,7 @@ const Crud = {
       const txId = Array.isArray(result) ? result[0]?.id : result?.id;
       if (txId) {
         try { await API.request('procurements', 'PATCH', { linked_transaction_id: txId }, `?id=eq.${pr.id}`); }
-        catch (e) { console.warn('Failed to link procurement to transaction', e); }
+        catch (e) { /* link failure is non-fatal */ }
       }
     }
   },
@@ -656,7 +652,7 @@ const Crud = {
           new_salary: newSalary,
           effective_date: new Date().toISOString().slice(0, 10),
           notes: 'تعديل الراتب من شاشة الموظفين'
-        }).catch(e => console.warn('[SalaryHistory] auto-log failed', e));
+        }).catch(() => { /* salary history log is best-effort */ });
       }
       UI.toast('تم التحديث'); App.loadEmployees();
     });
@@ -1234,7 +1230,6 @@ const Crud = {
           if (!result?.id) throw new Error('فشل إنشاء المستخدم');
           created++;
         } catch (e) {
-          console.error('User creation failed:', e);
           failed++;
           failedDetails.push(`${row.username || '?'}: ${e.message || 'فشل'}`);
         }
@@ -2473,13 +2468,13 @@ const Crud = {
       };
       if (pr.office_expense_id) {
         try { await this.save('transactions', expPayload, pr.office_expense_id); }
-        catch (e) { console.warn('[Payroll] failed to update linked expense:', e.message); }
+        catch (e) { /* update failure is non-fatal */ }
       } else {
         try {
           const exp = await this.save('transactions', { ...expPayload, type: 'office_expense', employee_id: pr.employee_id || null });
           const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
           if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${id}`);
-        } catch (e) { console.warn('[Payroll] failed to create linked expense:', e.message); }
+        } catch (e) { /* create failure is non-fatal */ }
       }
       UI.toast('تم التحديث');
       App.loadEmpPayroll(); App.loadOffice();
@@ -2515,10 +2510,10 @@ const Crud = {
           });
           const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
           if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${id}`);
-        } catch (expErr) { console.warn('[Payroll] failed to create office expense on pay:', expErr.message); }
+        } catch (expErr) { /* create failure is non-fatal */ }
       } else {
         try { await this.save('transactions', { deleted_at: null }, p.office_expense_id); }
-        catch (e) { console.warn('[Payroll] failed to restore linked office expense:', e.message); }
+        catch (e) { /* restore failure is non-fatal */ }
       }
       UI.toast('تم تسجيل الدفع');
       App.loadEmpPayroll(); App.loadOffice();

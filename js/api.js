@@ -30,7 +30,7 @@ const API = {
     try {
       res = await fetch(url, opts);
     } catch (networkErr) {
-      throw new Error('Network error: ' + (networkErr.message || 'Unable to reach server'));
+      throw new Error('تعذر الاتصال بالخادم — Network error: ' + (networkErr.message || 'Unable to reach server'));
     }
     if (!res.ok) {
       const text = await res.text();
@@ -135,7 +135,6 @@ const API = {
       }
       return 0;
     } catch (e) {
-      console.error('[API.count] Error:', e.message);
       return 0;
     }
   }
