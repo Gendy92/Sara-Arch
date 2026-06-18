@@ -65,6 +65,25 @@ const UI = {
   },
 
   _searchableSelectGlobalInit: false,
+  _positionSearchableDropdown(dropdown, input) {
+    const rect = input.getBoundingClientRect();
+    const width = Math.max(rect.width, 150);
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = `${rect.bottom + 4}px`;
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.width = `${width}px`;
+    dropdown.style.minWidth = `${width}px`;
+    dropdown.style.maxHeight = '280px';
+    dropdown.style.setProperty('--ss-width', `${width}px`);
+  },
+  _highlightSearchableOption(wrapper) {
+    const select = wrapper.querySelector('select');
+    const dropdown = wrapper.querySelector('.searchable-select-dropdown');
+    const val = select ? select.value : '';
+    dropdown.querySelectorAll('.searchable-select-option').forEach(opt => {
+      opt.classList.toggle('selected', opt.dataset.value === val);
+    });
+  },
   initSearchableSelects(container) {
     if (!UI._searchableSelectGlobalInit) {
       UI._searchableSelectGlobalInit = true;
@@ -77,6 +96,14 @@ const UI = {
           document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => d.classList.remove('open'));
         }
       });
+      const repositionOpen = () => {
+        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => {
+          const input = d.closest('.searchable-select')?.querySelector('.searchable-select-input');
+          if (input) UI._positionSearchableDropdown(d, input);
+        });
+      };
+      window.addEventListener('resize', repositionOpen);
+      window.addEventListener('scroll', repositionOpen, true);
     }
     if (!container._searchableDelegated) {
       container._searchableDelegated = true;
@@ -89,6 +116,7 @@ const UI = {
         input.value = opt.textContent;
         select.value = opt.dataset.value;
         wrapper.querySelector('.searchable-select-dropdown').classList.remove('open');
+        UI._highlightSearchableOption(wrapper);
         select.dispatchEvent(new Event('change', { bubbles: true }));
       });
       container.addEventListener('input', (e) => {
@@ -99,12 +127,18 @@ const UI = {
         dropdown.querySelectorAll('.searchable-select-option').forEach(opt => {
           opt.classList.toggle('hidden', term && !opt.textContent.toLowerCase().includes(term));
         });
+        UI._positionSearchableDropdown(dropdown, e.target);
+        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => { if (d !== dropdown) d.classList.remove('open'); });
         dropdown.classList.add('open');
       });
       container.addEventListener('focusin', (e) => {
         if (!e.target.classList.contains('searchable-select-input')) return;
         const wrapper = e.target.closest('.searchable-select');
-        wrapper.querySelector('.searchable-select-dropdown').classList.add('open');
+        const dropdown = wrapper.querySelector('.searchable-select-dropdown');
+        UI._positionSearchableDropdown(dropdown, e.target);
+        UI._highlightSearchableOption(wrapper);
+        document.querySelectorAll('.searchable-select-dropdown.open').forEach(d => { if (d !== dropdown) d.classList.remove('open'); });
+        dropdown.classList.add('open');
       });
     }
     container.querySelectorAll('.searchable-select').forEach(wrapper => {
@@ -116,6 +150,7 @@ const UI = {
       const sync = () => {
         const selected = select.options[select.selectedIndex];
         input.value = selected ? selected.textContent : '';
+        UI._highlightSearchableOption(wrapper);
       };
       const observer = new MutationObserver(() => {
         dropdown.innerHTML = Array.from(select.options).map(o => `<div class="searchable-select-option" data-value="${UI._escAttr(o.value)}">${o.textContent}</div>`).join('');
@@ -179,7 +214,8 @@ const Spreadsheet = {
     const content = this.render(columns, defaults, cascade);
     UI.openModal(title, content, null);
 
-    const modalBody = document.querySelector('.modal-body');
+    const modal = document.querySelector('.modal-overlay .modal');
+    const modalBody = modal.querySelector('.modal-body');
     const spreadsheetDiv = modalBody.querySelector('.spreadsheet');
     spreadsheetDiv._columns = columns;
     spreadsheetDiv._cascade = cascade;
@@ -189,7 +225,7 @@ const Spreadsheet = {
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
-    saveBtn.style.cssText = 'margin-top:16px;width:100%';
+    saveBtn.style.cssText = 'width:100%';
     saveBtn.textContent = '💾 حفظ الكل';
     saveBtn.onclick = async () => {
       try {
@@ -204,7 +240,10 @@ const Spreadsheet = {
         saveBtn.disabled = false; saveBtn.textContent = '💾 حفظ الكل';
       }
     };
-    modalBody.appendChild(saveBtn);
+    const footer = document.createElement('div');
+    footer.className = 'modal-actions';
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
   },
 
   render(columns, defaults = {}, cascade = {}) {
