@@ -225,7 +225,9 @@ CREATE TABLE IF NOT EXISTS attendance_records (
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ
+  deleted_at TIMESTAMPTZ,
+  created_by UUID REFERENCES auth.users(id),
+  updated_by UUID REFERENCES auth.users(id)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_employee_date
@@ -252,6 +254,8 @@ CREATE TABLE IF NOT EXISTS payroll_records (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
+  created_by UUID REFERENCES auth.users(id),
+  updated_by UUID REFERENCES auth.users(id),
   UNIQUE(employee_id, month, year)
 );
 
@@ -448,6 +452,36 @@ ALTER TABLE payroll_records     ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE payroll_records     ADD COLUMN IF NOT EXISTS updated_by UUID;
 ALTER TABLE attendance_records  ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE attendance_records  ADD COLUMN IF NOT EXISTS updated_by UUID;
+
+-- Ensure employee_salary_history can track creator for trigger below
+ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS created_by UUID;
+
+-- Trigger function to auto-set created_by on insert
+CREATE OR REPLACE FUNCTION set_created_by()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.created_by = COALESCE(NEW.created_by, auth.uid());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
+
+DROP TRIGGER IF EXISTS clients_cb ON clients; CREATE TRIGGER clients_cb BEFORE INSERT ON clients FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS projects_cb ON projects; CREATE TRIGGER projects_cb BEFORE INSERT ON projects FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS employees_cb ON employees; CREATE TRIGGER employees_cb BEFORE INSERT ON employees FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS vendors_cb ON vendors; CREATE TRIGGER vendors_cb BEFORE INSERT ON vendors FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS items_cb ON items; CREATE TRIGGER items_cb BEFORE INSERT ON items FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS sectors_cb ON sectors; CREATE TRIGGER sectors_cb BEFORE INSERT ON sectors FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS transactions_cb ON transactions; CREATE TRIGGER transactions_cb BEFORE INSERT ON transactions FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS procurements_cb ON procurements; CREATE TRIGGER procurements_cb BEFORE INSERT ON procurements FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS employee_transactions_cb ON employee_transactions; CREATE TRIGGER employee_transactions_cb BEFORE INSERT ON employee_transactions FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS employee_salary_history_cb ON employee_salary_history; CREATE TRIGGER employee_salary_history_cb BEFORE INSERT ON employee_salary_history FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS custody_records_cb ON custody_records; CREATE TRIGGER custody_records_cb BEFORE INSERT ON custody_records FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS custody_expenses_cb ON custody_expenses; CREATE TRIGGER custody_expenses_cb BEFORE INSERT ON custody_expenses FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS attendance_records_cb ON attendance_records; CREATE TRIGGER attendance_records_cb BEFORE INSERT ON attendance_records FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS payroll_records_cb ON payroll_records; CREATE TRIGGER payroll_records_cb BEFORE INSERT ON payroll_records FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS work_sections_cb ON work_sections; CREATE TRIGGER work_sections_cb BEFORE INSERT ON work_sections FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS work_items_cb ON work_items; CREATE TRIGGER work_items_cb BEFORE INSERT ON work_items FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS project_tasks_cb ON project_tasks; CREATE TRIGGER project_tasks_cb BEFORE INSERT ON project_tasks FOR EACH ROW EXECUTE FUNCTION set_created_by();
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 6: Row Level Security (RLS)                        │
@@ -679,7 +713,8 @@ BEGIN
         'clients','projects','employees','vendors','items','sectors','transactions',
         'procurements','employee_transactions','custody_records',
         'custody_expenses','work_sections',
-        'work_items','profiles','audit_logs','user_permissions','project_tasks'
+        'work_items','profiles','audit_logs','user_permissions','project_tasks',
+        'attendance_records','payroll_records'
       )
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
@@ -715,6 +750,17 @@ END $$;
 -- The auth.users trigger or application inserts a row with id = auth.uid().
 DROP POLICY IF EXISTS "profiles_self_insert" ON profiles;
 CREATE POLICY "profiles_self_insert" ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid());
+
+DROP POLICY IF EXISTS "auth_restricted_profiles" ON profiles;
+CREATE POLICY "auth_restricted_profiles" ON profiles FOR SELECT TO authenticated USING (is_app_admin(auth.uid()) OR id = auth.uid());
+
+DROP POLICY IF EXISTS "auth_admin_modify_profiles" ON profiles;
+CREATE POLICY "auth_admin_modify_profiles" ON profiles FOR ALL TO authenticated USING (is_app_admin(auth.uid())) WITH CHECK (is_app_admin(auth.uid()));
+
+-- Restrict user_permissions to admins only
+DROP POLICY IF EXISTS "auth_restricted_user_permissions" ON user_permissions;
+DROP POLICY IF EXISTS "auth_admin_modify_user_permissions" ON user_permissions;
+CREATE POLICY "auth_admin_modify_user_permissions" ON user_permissions FOR ALL TO authenticated USING (is_app_admin(auth.uid())) WITH CHECK (is_app_admin(auth.uid()));
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 9b: Procurement → Transaction Linkage              │
@@ -968,6 +1014,157 @@ REVOKE EXECUTE ON FUNCTION public.dashboard_office_expense_sectors() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_office_income_expense_sectors() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_top_vendors(int) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_active_client_balances(int) FROM anon;
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ STEP 10b: Balance Views                                 │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE OR REPLACE VIEW public.project_balances AS
+SELECT
+  p.id AS project_id,
+  p.name AS project_name,
+  p.client_id,
+  COALESCE(p.value, 0) AS value,
+  COALESCE(d.amt, 0) AS deposits,
+  COALESCE(e.amt, 0) AS expenses,
+  COALESCE(de.amt, 0) AS design_expenses,
+  COALESCE(e.amt, 0) - COALESCE(de.amt, 0) AS construction_expenses,
+  ROUND((COALESCE(e.amt, 0) - COALESCE(de.amt, 0)) * COALESCE(p.supervision_percentage, 0) / 100, 2) AS supervision,
+  COALESCE(d.amt, 0) - COALESCE(e.amt, 0) - ROUND((COALESCE(e.amt, 0) - COALESCE(de.amt, 0)) * COALESCE(p.supervision_percentage, 0) / 100, 2) AS balance
+FROM projects p
+LEFT JOIN (
+  SELECT project_id, SUM(amount) AS amt FROM transactions WHERE deleted_at IS NULL AND type = 'project_deposit' GROUP BY project_id
+) d ON d.project_id = p.id
+LEFT JOIN (
+  SELECT project_id, SUM(amount) AS amt FROM transactions WHERE deleted_at IS NULL AND type = 'project_expense' GROUP BY project_id
+) e ON e.project_id = p.id
+LEFT JOIN (
+  SELECT project_id, SUM(amount) AS amt FROM transactions WHERE deleted_at IS NULL AND type = 'project_expense' AND expense_category = 'design' GROUP BY project_id
+) de ON de.project_id = p.id
+WHERE p.deleted_at IS NULL;
+
+CREATE OR REPLACE VIEW public.client_balances AS
+SELECT
+  c.id AS client_id,
+  c.name AS client_name,
+  COALESCE(SUM(pb.deposits), 0) AS total_deposits,
+  COALESCE(SUM(pb.expenses), 0) AS total_expenses,
+  COALESCE(SUM(pb.supervision), 0) AS total_supervision,
+  COALESCE(SUM(pb.balance), 0) AS balance
+FROM clients c
+LEFT JOIN project_balances pb ON pb.client_id = c.id
+WHERE c.deleted_at IS NULL
+GROUP BY c.id, c.name;
+
+CREATE OR REPLACE VIEW public.vendor_balances AS
+SELECT
+  v.id AS vendor_id,
+  v.name AS vendor_name,
+  COALESCE(SUM(amounts.total_owed), 0) AS total_owed,
+  COALESCE(SUM(amounts.total_paid), 0) AS total_paid,
+  COALESCE(SUM(amounts.total_owed), 0) - COALESCE(SUM(amounts.total_paid), 0) AS balance
+FROM vendors v
+LEFT JOIN (
+  SELECT
+    vendor_id,
+    COALESCE(SUM(amount), 0) AS total_owed,
+    COALESCE(SUM(CASE WHEN payment_term IS NOT NULL THEN paid_amount ELSE amount END), 0) AS total_paid
+  FROM transactions
+  WHERE deleted_at IS NULL AND type = 'project_expense' AND vendor_id IS NOT NULL
+  GROUP BY vendor_id
+  UNION ALL
+  SELECT
+    vendor_id,
+    COALESCE(SUM(total_price), 0) AS total_owed,
+    COALESCE(SUM(CASE WHEN payment_term IS NOT NULL THEN paid_amount ELSE total_price END), 0) AS total_paid
+  FROM procurements
+  WHERE deleted_at IS NULL AND vendor_id IS NOT NULL
+  GROUP BY vendor_id
+) amounts ON amounts.vendor_id = v.id
+WHERE v.deleted_at IS NULL
+GROUP BY v.id, v.name;
+
+CREATE OR REPLACE VIEW public.office_balance AS
+SELECT
+  COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('owner_deposit','supervision')), 0) AS income,
+  COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('office_expense','withdrawal')), 0) AS expense,
+  COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('owner_deposit','supervision')), 0)
+    - COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('office_expense','withdrawal')), 0) AS balance;
+
+CREATE OR REPLACE VIEW public.office_transactions_view AS
+SELECT
+  t.id,
+  t.created_at,
+  t.type,
+  t.amount,
+  t.description,
+  t.employee_name,
+  t.sector_name
+FROM transactions t
+WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal')
+UNION ALL
+SELECT
+  NULL::UUID AS id,
+  p.created_at,
+  'supervision'::TEXT AS type,
+  pb.supervision AS amount,
+  ('إشراف ' || p.name || ' (' || COALESCE(p.supervision_percentage,0) || '%)')::TEXT AS description,
+  '-'::TEXT AS employee_name,
+  '-'::TEXT AS sector_name
+FROM project_balances pb
+JOIN projects p ON p.id = pb.project_id
+WHERE pb.supervision > 0;
+
+GRANT SELECT ON public.project_balances TO authenticated;
+GRANT SELECT ON public.client_balances TO authenticated;
+GRANT SELECT ON public.vendor_balances TO authenticated;
+GRANT SELECT ON public.office_balance TO authenticated;
+GRANT SELECT ON public.office_transactions_view TO authenticated;
+
+CREATE OR REPLACE VIEW public.project_transactions_view AS
+SELECT
+  t.id,
+  t.created_at,
+  t.type,
+  t.amount,
+  t.description,
+  t.party_name,
+  t.project_name,
+  t.vendor_name,
+  t.employee_name,
+  t.sector_name,
+  t.item_name,
+  t.section_name,
+  t.expense_category,
+  t.payment_method,
+  t.payment_term,
+  t.paid_amount
+FROM transactions t
+WHERE t.deleted_at IS NULL AND t.type IN ('project_deposit','project_expense')
+UNION ALL
+SELECT
+  NULL::UUID AS id,
+  p.created_at,
+  'supervision'::TEXT AS type,
+  pb.supervision AS amount,
+  ('إشراف ' || p.name || ' (' || COALESCE(p.supervision_percentage,0) || '%)')::TEXT AS description,
+  NULL::TEXT AS party_name,
+  p.name AS project_name,
+  NULL::TEXT AS vendor_name,
+  NULL::TEXT AS employee_name,
+  NULL::TEXT AS sector_name,
+  NULL::TEXT AS item_name,
+  NULL::TEXT AS section_name,
+  NULL::TEXT AS expense_category,
+  NULL::TEXT AS payment_method,
+  NULL::TEXT AS payment_term,
+  NULL::NUMERIC AS paid_amount
+FROM project_balances pb
+JOIN projects p ON p.id = pb.project_id
+WHERE pb.supervision > 0;
+
+GRANT SELECT ON public.project_transactions_view TO authenticated;
+
 -- Admin-only RPC to create a confirmed auth user directly in the database.
 -- This bypasses Supabase Auth email confirmation / rate limits because the
 -- browser no longer stores or uses the service-role key.

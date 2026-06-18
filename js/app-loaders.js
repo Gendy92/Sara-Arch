@@ -13,38 +13,6 @@ Object.assign(App, {
     </div>`;
   },
 
-  _vendorBalanceMap(vendors, vendorExpenses, vendorProcs) {
-    const serviceCostByVendor = {};
-    const servicePaidByVendor = {};
-    vendorExpenses.forEach(t => {
-      if (!t.vendor_id) return;
-      const amt = +t.amount || 0;
-      const isNew = t.payment_term !== undefined && t.payment_term !== null;
-      const paid = isNew ? (+t.paid_amount || 0) : amt;
-      serviceCostByVendor[t.vendor_id] = (serviceCostByVendor[t.vendor_id] || 0) + amt;
-      servicePaidByVendor[t.vendor_id] = (servicePaidByVendor[t.vendor_id] || 0) + paid;
-    });
-    const merchByVendor = {};
-    const merchPaidByVendor = {};
-    vendorProcs.forEach(p => {
-      if (!p.vendor_id) return;
-      const amt = +p.total_price || 0;
-      const isNew = p.payment_term !== undefined && p.payment_term !== null;
-      const paid = isNew ? (+p.paid_amount || 0) : amt;
-      merchByVendor[p.vendor_id] = (merchByVendor[p.vendor_id] || 0) + amt;
-      merchPaidByVendor[p.vendor_id] = (merchPaidByVendor[p.vendor_id] || 0) + paid;
-    });
-    const map = {};
-    vendors.forEach(v => {
-      const serviceCost = serviceCostByVendor[v.id] || 0;
-      const servicePaid = servicePaidByVendor[v.id] || 0;
-      const merchandise = merchByVendor[v.id] || 0;
-      const merchPaid = merchPaidByVendor[v.id] || 0;
-      map[v.id] = (serviceCost + merchandise) - (servicePaid + merchPaid);
-    });
-    return map;
-  },
-
   _perfLog(label, start) {
     if (typeof PERF_LOG !== 'undefined' && PERF_LOG) {
       console.log(`[Perf] ${label}: ${(performance.now() - start).toFixed(1)}ms`);
@@ -129,53 +97,47 @@ Object.assign(App, {
       const page = this.pageState.clients || 1;
       const limit = this.PAGE_SIZE;
       const offset = (page - 1) * limit;
-      const [clients, projects, expenses, deposits, totalClients] = await Promise.all([
+      const [clients, totalClients, clientBalances] = await Promise.all([
         API.request('clients', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
-        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null&order=created_at.desc'),
-        API.request('transactions', 'GET', null, "?select=*&type=eq.project_expense&deleted_at=is.null"),
-        API.request('transactions', 'GET', null, "?select=project_id,amount&type=eq.project_deposit&deleted_at=is.null"),
-        API.count('clients', '?deleted_at=is.null')
+        API.count('clients', '?deleted_at=is.null'),
+        API.request('client_balances', 'GET', null, '?select=*')
       ]);
-      const expByProject = {};
-      const designByProject = {};
-      expenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-        }
-      });
-      const depByProject = {};
-      deposits.forEach(t => { depByProject[t.project_id] = (depByProject[t.project_id] || 0) + (+t.amount || 0); });
-      const projByClient = {};
-      projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
+      const balByClient = Object.fromEntries(clientBalances.map(b => [b.client_id, b]));
 
       if (!clients.length) {
         document.getElementById('clients-list').innerHTML = `<p style="color:var(--text3);padding:16px">لا يوجد عملاء</p>${Auth.can('clients','add')?'<button class="btn btn-primary" onclick="Crud.addClient()">+ إضافة أول عميل</button>':''}`;
         return;
       }
 
+      const clientIds = clients.map(c => c.id).join(',');
+      const [projects, projectBalances] = await Promise.all([
+        API.request('projects', 'GET', null, `?select=*&client_id=in.(${clientIds})&deleted_at=is.null&order=created_at.desc`),
+        API.request('project_balances', 'GET', null, `?select=*&client_id=in.(${clientIds})`)
+      ]);
+      const projByClient = {};
+      projects.forEach(p => { projByClient[p.client_id] = projByClient[p.client_id] || []; projByClient[p.client_id].push(p); });
+      const balByProject = Object.fromEntries(projectBalances.map(b => [b.project_id, b]));
+
       const html = clients.map(c => {
         const cProjects = projByClient[c.id] || [];
+        const cb = balByClient[c.id] || {};
         const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button>`;
         const projRows = cProjects.map(p => {
-          const exp = expByProject[p.id] || 0;
-          const design = designByProject[p.id] || 0;
-          const constr = exp - design;
-          const dep = depByProject[p.id] || 0;
-          const supAmt = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
-          const balance = dep - exp - supAmt;
+          const pb = balByProject[p.id] || {};
+          const balance = pb.balance || 0;
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-          return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
+          return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
+        const clientBalColor = (cb.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)';
         return `<div class="card" style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
             <div>
               <h3 style="margin-bottom:4px"><a href="#" onclick="App.go('client',{clientId:'${c.id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(c.name)}</a></h3>
               <div style="font-size:12px;color:var(--text2)">${App.esc(c.phone || '-')} · ${App.esc(c.email || '-')} · ${App.esc(c.address || '-')}</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px">إيداعات: ${this.fmtMoney(cb.total_deposits || 0)} · مصروفات: ${this.fmtMoney(cb.total_expenses || 0)} · إشراف: ${this.fmtMoney(cb.total_supervision || 0)} · رصيد: <span style="color:${clientBalColor};font-weight:700">${this.fmtMoney(cb.balance || 0)}</span></div>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
           </div>
@@ -194,34 +156,20 @@ Object.assign(App, {
 
   async loadClient(clientId) {
     try {
-      const [clientRows, projects, expenses, deposits] = await Promise.all([
+      const [clientRows, projects, projectBalances] = await Promise.all([
         API.request('clients', 'GET', null, `?select=*&id=eq.${clientId}&deleted_at=is.null`),
         API.request('projects', 'GET', null, `?select=*&client_id=eq.${clientId}&deleted_at=is.null&order=created_at.desc`),
-        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null`),
-        API.request('transactions', 'GET', null, `?select=project_id,amount&type=eq.project_deposit&deleted_at=is.null`)
+        API.request('project_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`)
       ]);
       const client = clientRows[0];
       if (!client) { document.getElementById('client-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ العميل غير موجود</p>'; return; }
 
-      const expByProject = {};
-      const designByProject = {};
-      expenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-      });
-      const depByProject = {};
-      deposits.forEach(t => { depByProject[t.project_id] = (depByProject[t.project_id] || 0) + (+t.amount || 0); });
-
+      const balByProject = Object.fromEntries(projectBalances.map(b => [b.project_id, b]));
       const totalProjects = projects.length;
-      const totalValue = projects.reduce((s, p) => s + (+p.value || 0), 0);
-      const totalExp = projects.reduce((s, p) => s + (expByProject[p.id] || 0), 0);
-      const totalDep = projects.reduce((s, p) => s + (depByProject[p.id] || 0), 0);
-      const totalSup = projects.reduce((s, p) => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        return s + (Math.max(0, exp - design) * (p.supervision_percentage || 0) / 100);
-      }, 0);
+      const totalValue = projectBalances.reduce((s, b) => s + (+b.value || 0), 0);
+      const totalDep = projectBalances.reduce((s, b) => s + (+b.deposits || 0), 0);
+      const totalExp = projectBalances.reduce((s, b) => s + (+b.expenses || 0), 0);
+      const totalSup = projectBalances.reduce((s, b) => s + (+b.supervision || 0), 0);
 
       const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المشاريع</div><div class="kpi-value">${totalProjects}</div></div>
@@ -234,16 +182,12 @@ Object.assign(App, {
 
       const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${client.id}')">كشف حساب</button>`;
       const projRows = projects.map(p => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        const constr = exp - design;
-        const dep = depByProject[p.id] || 0;
-        const supAmt = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
-        const balance = dep - exp - supAmt;
+        const pb = balByProject[p.id] || {};
+        const balance = pb.balance || 0;
         const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
         const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
         const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-        return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(exp), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(supAmt), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
+        return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
       });
       const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
 
@@ -271,26 +215,26 @@ Object.assign(App, {
 
   async loadProject(projectId) {
     try {
-      const [projectRows, txs, tasks] = await Promise.all([
+      const [projectRows, pbRows, txs, tasks] = await Promise.all([
         API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}&deleted_at=is.null`),
+        API.request('project_balances', 'GET', null, `?select=*&project_id=eq.${projectId}`),
         API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=100`),
         API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc&limit=50`)
       ]);
       const project = projectRows[0];
       if (!project) { document.getElementById('project-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المشروع غير موجود</p>'; return; }
 
-      const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-      const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-      const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-      const supervision = Math.max(0, constr) * (project.supervision_percentage || 0) / 100;
-      const balance = deposits - expenses - supervision;
+      const pb = pbRows[0] || {};
+      const deposits = pb.deposits || 0;
+      const expenses = pb.expenses || 0;
+      const supervision = pb.supervision || 0;
+      const balance = pb.balance || 0;
 
       const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">القيمة</div><div class="kpi-value">${this.fmtMoney(project.value)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
-        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${project.supervision_percentage || 0}%)</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${App.esc(project.supervision_percentage || 0)}%)</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
       </div>`;
 
@@ -298,8 +242,8 @@ Object.assign(App, {
       const info = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>
-            <h3 style="margin-bottom:4px">${project.name}</h3>
-            <div style="font-size:12px;color:var(--text2)">العميل: <a href="#" onclick="App.go('client',{clientId:'${project.client_id}'});return false;" style="color:var(--gold);text-decoration:none">${project.clients?.name || project.client_name || '-'}</a> · ${project.address || '-'} · الإشراف: ${project.supervision_percentage || 0}%</div>
+            <h3 style="margin-bottom:4px">${App.esc(project.name)}</h3>
+            <div style="font-size:12px;color:var(--text2)">العميل: <a href="#" onclick="App.go('client',{clientId:'${project.client_id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(project.clients?.name || project.client_name || '-')}</a> · ${App.esc(project.address || '-')} · الإشراف: ${App.esc(project.supervision_percentage || 0)}%</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
         </div>
@@ -335,16 +279,16 @@ Object.assign(App, {
       const page = this.pageState.vendors || 1;
       const limit = this.PAGE_SIZE;
       const offset = (page - 1) * limit;
-      const [data, total, vendorExpenses, vendorProcs] = await Promise.all([
+      const [data, total, vendorBalances] = await Promise.all([
         API.request('vendors', 'GET', null, `?select=*&deleted_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`),
         API.count('vendors', '?deleted_at=is.null'),
-        API.request('transactions', 'GET', null, '?select=vendor_id,amount,paid_amount,payment_term&type=eq.project_expense&deleted_at=is.null&limit=1000'),
-        API.request('procurements', 'GET', null, '?select=vendor_id,total_price,paid_amount,payment_term&deleted_at=is.null&limit=1000')
+        API.request('vendor_balances', 'GET', null, '?select=*')
       ]);
-      const balanceMap = this._vendorBalanceMap(data, vendorExpenses, vendorProcs);
+      const balanceMap = Object.fromEntries(vendorBalances.map(b => [b.vendor_id, b]));
       const html = data.length ? this.table(['الاسم', 'النوع', 'التخصص', 'الشخص المسؤول', 'الهاتف', 'الرصيد', 'الإجراءات'], data.map(v => {
         const typeBadge = v.vendor_type === 'merchandise' ? '<span class="badge badge-gold">بضاعة</span>' : '<span class="badge badge-gray">خدمات</span>';
-        const balance = balanceMap[v.id] || 0;
+        const vb = balanceMap[v.id] || {};
+        const balance = vb.balance || 0;
         const balColor = balance > 0 ? 'var(--red)' : balance < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = balance > 0 ? 'مستحق' : balance < 0 ? 'زيادة' : 'تسوية';
         const balanceCell = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`;
@@ -362,39 +306,41 @@ Object.assign(App, {
 
   async loadVendor(vendorId) {
     try {
-      const [vendorRows, txs, procs] = await Promise.all([
+      const [vendorRows, vbRows, txs, procs] = await Promise.all([
         API.request('vendors', 'GET', null, `?select=*&id=eq.${vendorId}&deleted_at=is.null`),
+        API.request('vendor_balances', 'GET', null, `?select=*&vendor_id=eq.${vendorId}`),
         API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=eq.project_expense&deleted_at=is.null&order=date.desc&limit=100`),
         API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=100`)
       ]);
       const vendor = vendorRows[0];
       if (!vendor) { document.getElementById('vendor-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المورد غير موجود</p>'; return; }
 
+      const vb = vbRows[0] || {};
+      const totalOwed = vb.total_owed || 0;
+      const totalPaid = vb.total_paid || 0;
+      const netBalance = vb.balance || 0;
+
       const balHtml = (bal) => {
-        const color = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--blue)' : 'var(--green)';
+        const color = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const label = bal > 0 ? 'مستحق' : bal < 0 ? 'زيادة' : 'تسوية';
         return `<span style="color:${color};font-weight:700;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${label}</span>`;
       };
 
-      let totalOwed = 0, totalPaid = 0;
       const txRows = txs.map((t, i) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
         const amount = +t.amount || 0;
         const paid = isNew ? (+t.paid_amount || 0) : amount;
-        totalOwed += amount; totalPaid += paid;
         return [i+1, t.date || '-', App.fmtTxType(t.type), t.projects?.name || t.project_name || '-', t.description || '-', App.fmtMoney(amount), App.fmtMoney(paid), {html: balHtml(amount - paid)}];
       });
       const procRows = procs.map((p, i) => {
         const isNew = p.payment_term !== undefined && p.payment_term !== null;
         const total = +p.total_price || 0;
         const paid = isNew ? (+p.paid_amount || 0) : total;
-        totalOwed += total; totalPaid += paid;
         return [i+1, p.date || '-', p.item_name || '-', p.quantity || 1, App.fmtMoney(+p.unit_price || 0), App.fmtMoney(total), App.fmtMoney(paid), {html: balHtml(total - paid)}, p.projects?.name || p.project_name || '-'];
       });
 
-      const netBalance = totalOwed - totalPaid;
-      const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
-      const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
+      const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--green)' : 'var(--text3)';
+      const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة' : 'تسوية';
 
       const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المستحق</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalOwed)}</div></div>
@@ -426,86 +372,52 @@ Object.assign(App, {
     }
   },
 
-  async loadTransactions() {
+    async loadTransactions() {
     try {
       const txPage = this.pageState.transactions || 1;
       const txPerPage = 10;
       const expPage = this.pageState.txExpenses || 1;
       const expPerPage = 10;
 
-      const [recentTxs, projects, projectExpenses, allProjTxs, totalTxCount, totalExpCount] = await Promise.all([
-        API.fetchAll('transactions', "?select=*&type=in.(project_deposit,project_expense)&deleted_at=is.null&order=created_at.desc"),
-        API.request('projects', 'GET', null, '?select=*&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
-        API.fetchAll('transactions', '?select=type,amount,project_id,expense_category&type=in.(project_deposit,project_expense)&deleted_at=is.null'),
-        API.count('transactions', '?type=in.(project_deposit,project_expense)&deleted_at=is.null'),
-        API.count('transactions', '?type=eq.project_expense&deleted_at=is.null')
-      ]);
-      // KPIs (from bounded allProjTxs)
-      const deposits = allProjTxs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-      const allProjectExpenses = allProjTxs.filter(t => t.type === 'project_expense');
-      const expenses = allProjectExpenses.reduce((s, t) => s + (+t.amount || 0), 0);
-      const expByProject = {};
-      const designByProject = {};
-      allProjectExpenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-        }
-      });
-      const supervision = projects.reduce((s, p) => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        return s + ((exp - design) * (p.supervision_percentage || 0) / 100);
-      }, 0);
-      const balance = deposits - expenses - supervision;
+      // KPIs from project_balances view
+      const projectBalances = await API.request('project_balances', 'GET', null, '?select=deposits,expenses,supervision,balance');
+      const deposits = projectBalances.reduce((s, b) => s + (+b.deposits || 0), 0);
+      const expenses = projectBalances.reduce((s, b) => s + (+b.expenses || 0), 0);
+      const supervision = projectBalances.reduce((s, b) => s + (+b.supervision || 0), 0);
+      const balance = projectBalances.reduce((s, b) => s + (+b.balance || 0), 0);
       document.getElementById('tx-kpis').innerHTML = `
         <div class="kpi-card"><div class="kpi-label">إجمالي الوارد</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
         <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
-      // Main table: combine, filter, paginate in memory
-      const expByProj = {};
-      const designByProj = {};
-      allProjectExpenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProj[t.project_id] = (expByProj[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProj[t.project_id] = (designByProj[t.project_id] || 0) + amt;
-        }
-      });
-      const supRows = projects.map(p => {
-        const exp = expByProj[p.id] || 0;
-        const design = designByProj[p.id] || 0;
-        const constr = exp - design;
-        const supAmt = constr * (p.supervision_percentage || 0) / 100;
-        const rows = [];
-        if (supAmt > 0) rows.push({ created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', party_name: '-', project_name: p.name, description: `إشراف ${p.name} (${p.supervision_percentage || 0}%)` });
-        return rows;
-      }).filter(Boolean);
-      let allTxs = [...recentTxs, ...supRows.flat()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      if (App.txTypeFilter === 'deposit') allTxs = allTxs.filter(t => t.type === 'project_deposit' || t.type === 'supervision');
-      if (App.txTypeFilter === 'expense') allTxs = allTxs.filter(t => t.type === 'project_expense');
 
-      const totalTxDisplay = allTxs.length;
-      const totalTxPages = Math.max(1, Math.ceil(totalTxDisplay / txPerPage));
+      // Main table: server-side paginated project transactions view
+      let typeFilter = '';
+      if (App.txTypeFilter === 'deposit') typeFilter = '&type=in.(project_deposit,supervision)';
+      else if (App.txTypeFilter === 'expense') typeFilter = '&type=eq.project_expense';
+      const txOffset = (txPage - 1) * txPerPage;
+      const [pagedTxs, totalTxCount] = await Promise.all([
+        API.request('project_transactions_view', 'GET', null, `?select=*${typeFilter}&order=created_at.desc&limit=${txPerPage}&offset=${txOffset}`),
+        API.count('project_transactions_view', `?select=*${typeFilter}`)
+      ]);
+      const totalTxPages = Math.max(1, Math.ceil(totalTxCount / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
       this.pageState.transactions = safeTxPage;
-      const pagedTxs = allTxs.slice((safeTxPage - 1) * txPerPage, safeTxPage * txPerPage);
 
       const txHtml = pagedTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], pagedTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         let party;
         if (t.type === 'project_expense') {
-          party = t.vendor_name || '-';
-          if (t.item_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + t.item_name + '</span>';
-          else if (t.section_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + t.section_name + '</span>';
+          party = App.esc(t.vendor_name || '-');
+          if (t.item_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + App.esc(t.item_name) + '</span>';
+          else if (t.section_name) party += ' <span class="badge badge-gray" style="font-size:10px">' + App.esc(t.section_name) + '</span>';
           else if (t.expense_category === 'design') party += ' <span class="badge badge-gray" style="font-size:10px">تصميم</span>';
+        } else if (t.type === 'supervision') {
+          party = '-';
         } else {
-          party = t.vendor_name || t.employee_name || t.sector_name || '-';
+          party = App.esc(t.vendor_name || t.employee_name || t.sector_name || '-');
         }
-        const clientName = t.party_name || '-';
+        const clientName = App.esc(t.party_name || '-');
         const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
         const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
         let pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : '-';
@@ -513,13 +425,17 @@ Object.assign(App, {
           pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
         }
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
-        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), t.description || '-', {html: party}, clientName, t.project_name || '-', {html: pt}, {html: actions}];
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), App.esc(t.description || '-'), {html: party}, clientName, App.esc(t.project_name || '-'), {html: pt}, {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
-      document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxDisplay);
+      document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxCount);
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...');
 
       // Expenses-only tab with page-based pagination
       const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
+      const [projectExpenses, totalExpCount] = await Promise.all([
+        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
+        API.count('transactions', '?type=eq.project_expense&deleted_at=is.null')
+      ]);
       const expenseRows = [...projectExpenses].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
       const expHtml = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
@@ -527,10 +443,10 @@ Object.assign(App, {
         const bal = (+t.amount || 0) - paid;
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
-        const sectionLabel = t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب');
-        const itemLabel = t.item_name || '-';
+        const sectionLabel = App.esc(t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب'));
+        const itemLabel = App.esc(t.item_name || '-');
         const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
-        return [idx + 1, t.party_name || '-', t.project_name || '-', t.vendor_name || '-', sectionLabel, itemLabel, this.fmtMoney(t.amount), {html: pmBadge}, this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
+        return [idx + 1, App.esc(t.party_name || '-'), App.esc(t.project_name || '-'), App.esc(t.vendor_name || '-'), sectionLabel, itemLabel, this.fmtMoney(t.amount), {html: pmBadge}, this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...');
@@ -573,68 +489,58 @@ Object.assign(App, {
 
   async loadOffice() {
     try {
-      const [incomeTxs, expenseTxs, projects, projectExpenses, custodyRecords] = await Promise.all([
-        API.request('transactions', 'GET', null, "?select=amount,created_at,type,description,sector_name,employee_name&type=eq.owner_deposit&deleted_at=is.null&order=created_at.desc&limit=200"),
-        API.request('transactions', 'GET', null, "?select=amount,created_at,type,description,sector_name,employee_name&type=in.(office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc&limit=200"),
-        API.request('projects', 'GET', null, '?select=id,name,client_id,client_name,supervision_percentage,created_at,status&deleted_at=is.null'),
-        API.request('transactions', 'GET', null, "?select=amount,project_id,expense_category&type=eq.project_expense&deleted_at=is.null"),
-        API.request('custody_records', 'GET', null, "?select=*,employees(name)&deleted_at=is.null&order=date.desc&limit=200")
-      ]);
-      const txIncome = incomeTxs.reduce((s, t) => s + (+t.amount || 0), 0);
-      const expByProject = {};
-      const designByProject = {};
-      projectExpenses.forEach(t => {
-        const amt = +t.amount || 0;
-        expByProject[t.project_id] = (expByProject[t.project_id] || 0) + amt;
-        if (t.expense_category === 'design') {
-          designByProject[t.project_id] = (designByProject[t.project_id] || 0) + amt;
-        }
-      });
-      const calcSupervision = projects.reduce((s, p) => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        return s + ((exp - design) * (p.supervision_percentage || 0) / 100);
-      }, 0);
-      const totalIncome = txIncome + calcSupervision;
-      const expense = expenseTxs.reduce((s, t) => s + (+t.amount || 0), 0);
+      const txPage = this.pageState.officeTransactions || 1;
+      const txPerPage = 10;
+      const custodyPage = this.pageState.officeCustody || 1;
+      const custodyPerPage = 10;
 
-      // Custody totals
-      const totalCustody = custodyRecords.reduce((s, r) => s + (+r.amount || 0), 0);
-      const totalReturned = custodyRecords.reduce((s, r) => s + (+r.returned_amount || 0), 0);
+      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, allCustody] = await Promise.all([
+        API.request('office_balance', 'GET', null, '?select=*'),
+        API.request('transactions', 'GET', null, `?select=amount,created_at,type,description,sector_name,employee_name&type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
+        API.count('transactions', '?type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null'),
+        API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
+        API.count('custody_records', '?deleted_at=is.null'),
+        API.fetchAll('custody_records', '?select=amount,returned_amount&deleted_at=is.null')
+      ]);
+      const ob = officeBal[0] || {};
+      const totalIncome = ob.income || 0;
+      const expense = ob.expense || 0;
+      const officeBalance = ob.balance || 0;
+
+      const totalCustodyAmt = allCustody.reduce((s, r) => s + (+r.amount || 0), 0);
+      const totalReturnedAmt = allCustody.reduce((s, r) => s + (+r.returned_amount || 0), 0);
 
       document.getElementById('office-kpis').innerHTML = `
-        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إشراف: ${this.fmtMoney(calcSupervision)} &nbsp;|&nbsp; توريدات: ${this.fmtMoney(txIncome)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(totalIncome - expense)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(totalCustody - totalReturned)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustody)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturned)}</div></div>`;
-      const supRows = projects.map(p => {
-        const exp = expByProject[p.id] || 0;
-        const design = designByProject[p.id] || 0;
-        const constr = exp - design;
-        const supAmt = constr * (p.supervision_percentage || 0) / 100;
-        const rows = [];
-        if (supAmt > 0) rows.push({ created_at: p.created_at, type: 'supervision', amount: supAmt, employee_name: '-', sector_name: '-', description: `إشراف ${p.name}` });
-        return rows;
-      }).filter(Boolean);
-      const allTxs = [...incomeTxs, ...expenseTxs, ...supRows.flat()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      this._officeData = allTxs;
-      document.getElementById('office-tbl').innerHTML = allTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], allTxs.map(t => {
-        const badgeColor = ['owner_deposit','supervision'].includes(t.type) ? 'green' : 'red';
+        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(totalCustodyAmt - totalReturnedAmt)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedAmt)}</div></div>`;
+
+      const totalTxPages = Math.max(1, Math.ceil(totalOfficeTxs / txPerPage));
+      const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
+      this.pageState.officeTransactions = safeTxPage;
+      this._officeData = officeTxs;
+      const txHtml = officeTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], officeTxs.map(t => {
+        const badgeColor = t.type === 'owner_deposit' ? 'green' : 'red';
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
         return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
+      document.getElementById('office-tbl').innerHTML = txHtml + this._paginationHtml('officeTransactions', safeTxPage, txPerPage, totalOfficeTxs);
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...');
 
       // Custody table
+      const totalCustodyPages = Math.max(1, Math.ceil(totalCustody / custodyPerPage));
+      const safeCustodyPage = Math.min(Math.max(1, custodyPage), totalCustodyPages);
+      this.pageState.officeCustody = safeCustodyPage;
       const statusLabels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
       const custodyRows = custodyRecords.map((r, i) => {
         const bal = (+r.amount || 0) - (+r.returned_amount || 0);
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const typeBadge = r.custody_type === 'project' ? '<span class="badge badge-blue">مشروع</span>' : '<span class="badge badge-gold">مكتب</span>';
         const related = r.custody_type === 'project' ? (r.project_name || '-') : (r.sector_name || '-');
-        return [i+1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')}];
+        return [(safeCustodyPage - 1) * custodyPerPage + i + 1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody')}];
       });
-      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
+      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) + this._paginationHtml('officeCustody', safeCustodyPage, custodyPerPage, totalCustody) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
       this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...');
     } catch (e) {
       console.error(e);
@@ -642,6 +548,9 @@ Object.assign(App, {
       document.getElementById('office-kpis').innerHTML = `<p style="color:var(--red);padding:16px">⚠️ تعذر تحميل بيانات المكتب</p><button class="btn btn-secondary" onclick="App.loadOffice()">🔄 إعادة المحاولة</button>`;
     }
   },
+
+  loadOfficeTransactions() { return this.loadOffice(); },
+  loadOfficeCustody() { return this.loadOffice(); },
 
   async loadEmployees() {
     try {

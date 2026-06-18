@@ -6,7 +6,7 @@ const App = {
   txTypeFilter: 'all',
   taskStatusFilter: 'all',
   loading: false,
-  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, txExpenses: 1 },
+  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, txExpenses: 1, officeTransactions: 1, officeCustody: 1 },
   PAGE_SIZE: 50,
 
   esc(s) {

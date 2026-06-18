@@ -156,7 +156,7 @@ const Crud = {
         return;
       }
       const filtered = projects.filter(p => String(p.client_id) === String(clientId));
-      projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('');
       projSel.disabled = false;
     };
 
@@ -189,7 +189,7 @@ const Crud = {
         return;
       }
       const filtered = items.filter(i => String(i.section_id) === String(sectionId));
-      itemSel.innerHTML = '<option value="">-- اختر بند --</option>' + filtered.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+      itemSel.innerHTML = '<option value="">-- اختر بند --</option>' + filtered.map(i => `<option value="${i.id}">${App.esc(i.name)}</option>`).join('');
       itemSel.disabled = false;
     };
 
