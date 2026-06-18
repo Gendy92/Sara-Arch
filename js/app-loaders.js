@@ -956,14 +956,41 @@ Object.assign(App, {
           deductions, bonuses, penalties, net_salary: net, status: 'draft'
         };
       });
+      const payrollExpensePayload = (rec) => ({
+        type: 'office_expense',
+        amount: +rec.net_salary || 0,
+        description: `راتب ${rec.employee_name} - ${rec.month}/${rec.year}`,
+        employee_id: rec.employee_id || null,
+        employee_name: rec.employee_name || null,
+        date: `${rec.year}-${String(rec.month).padStart(2, '0')}-01`
+      });
       let created = 0, updated = 0, skipped = 0;
       for (const r of records) {
         const existing = existingMap[r.employee_id];
         if (!existing) {
-          await API.request('payroll_records', 'POST', r);
+          const inserted = await API.request('payroll_records', 'POST', r);
+          const payrollId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+          if (payrollId) {
+            try {
+              const exp = await API.request('transactions', 'POST', payrollExpensePayload(r));
+              const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
+              if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${payrollId}`);
+            } catch (expErr) { console.warn('[Payroll] failed to link office expense:', expErr.message); }
+          }
           created++;
         } else if (existing.status === 'draft' || existing.status === 'approved') {
           await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary, status: existing.status === 'approved' ? 'approved' : 'draft' }, `?id=eq.${existing.id}`);
+          if (existing.office_expense_id) {
+            try {
+              await API.request('transactions', 'PATCH', { amount: +r.net_salary || 0, description: `راتب ${r.employee_name} - ${r.month}/${r.year}`, employee_name: r.employee_name || null, date: `${r.year}-${String(r.month).padStart(2, '0')}-01` }, `?id=eq.${existing.office_expense_id}`);
+            } catch (expErr) { console.warn('[Payroll] failed to update linked office expense:', expErr.message); }
+          } else {
+            try {
+              const exp = await API.request('transactions', 'POST', payrollExpensePayload(r));
+              const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
+              if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${existing.id}`);
+            } catch (expErr) { console.warn('[Payroll] failed to create office expense:', expErr.message); }
+          }
           updated++;
         } else {
           skipped++;

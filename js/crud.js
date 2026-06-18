@@ -1279,10 +1279,11 @@ const Crud = {
       return;
     }
     const fields = [
+      { name: 'username', label: 'اسم المستخدم', attr: 'readonly' },
       { name: 'name', label: 'الاسم الكامل', req: true },
       { name: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
     ];
-    UI.openModal('تعديل مستخدم', `<form>${UI.form(fields, { name: profile.name || '', role: profile.role || 'user' })}</form>`, async (form) => {
+    UI.openModal('تعديل مستخدم', `<form>${UI.form(fields, { username: profile.username || '', name: profile.name || '', role: profile.role || 'user' })}</form>`, async (form) => {
       const fd = new FormData(form);
       await API.request('profiles', 'PATCH', { name: fd.get('name'), role: fd.get('role') }, `?id=eq.${id}`);
       UI.toast('تم التحديث'); App.loadUsers();
@@ -1482,12 +1483,16 @@ const Crud = {
 
   // ─── CLIENT & PROJECT STATEMENTS / BUDGET / TASKS ───
   async clientStatement(clientId) {
-    const [client, projects, txs] = await Promise.all([
+    const [client, projects, txs, cbRows] = await Promise.all([
       API.request('clients', 'GET', null, `?select=name&id=eq.${clientId}`),
       API.request('projects', 'GET', null, `?select=id,name&client_id=eq.${clientId}&deleted_at=is.null&order=created_at.desc`),
-      API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`)
+      API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`),
+      API.request('client_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`)
     ]);
     const clientName = client[0]?.name || 'عميل';
+    const cb = cbRows[0] || {};
+    const pbRows = await API.request('project_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`);
+    const pbByProject = Object.fromEntries(pbRows.map(b => [b.project_id, b]));
 
     // Build per-project chapters from transactions (procurements are reflected via linked project_expense transactions)
     const chapters = projects.map(p => {
@@ -1497,20 +1502,25 @@ const Crud = {
         desc: t.description || '-', amount: +t.amount || 0,
         isDeposit: t.type === 'project_deposit'
       }));
+      const pb = pbByProject[p.id] || {};
+      const sup = pb.supervision || 0;
+      if (sup > 0) rows.push({ i: '-', date: '-', type: App.fmtTxType('supervision'), desc: 'رسوم إشراف', amount: sup, isDeposit: false, isSupervision: true });
       const dep = rows.reduce((s, r) => s + (r.isDeposit ? r.amount : 0), 0);
-      const exp = rows.reduce((s, r) => s + (r.isDeposit ? 0 : r.amount), 0);
-      return { project: p, rows, dep, exp };
+      const exp = rows.reduce((s, r) => s + (!r.isDeposit && !r.isSupervision ? r.amount : 0), 0);
+      return { project: p, rows, dep, exp, sup };
     });
 
-    const totalDep = chapters.reduce((s, c) => s + c.dep, 0);
-    const totalExp = chapters.reduce((s, c) => s + c.exp, 0);
-    const balance = totalDep - totalExp;
+    const totalDep = cb.total_deposits || 0;
+    const totalExp = cb.total_expenses || 0;
+    const totalSup = cb.total_supervision || 0;
+    const balance = cb.balance || 0;
 
     const kpi = (label, value, color) => `<div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">${label}</div><div class="kpi-value" style="color:${color}">${App.fmtMoney(value)}</div></div>`;
     const clientSummary = `<h3 style="margin:0 0 12px">ملخص العميل: ${App.esc(clientName)}</h3>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         ${kpi('إجمالي الإيداعات', totalDep, 'var(--green)')}
         ${kpi('إجمالي المصروفات', totalExp, 'var(--red)')}
+        ${kpi('إجمالي الإشراف', totalSup, 'var(--gold)')}
         ${kpi('الرصيد', balance, 'var(--text)')}
       </div>
       <hr style="border-color:var(--border);margin:16px 0">`;
@@ -1524,7 +1534,8 @@ const Crud = {
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">
           ${kpi('إيداعات', c.dep, 'var(--green)')}
           ${kpi('مصروفات', c.exp, 'var(--red)')}
-          ${kpi('رصيد', c.dep - c.exp, 'var(--text)')}
+          ${kpi('إشراف', c.sup || 0, 'var(--gold)')}
+          ${kpi('رصيد', c.dep - c.exp - (c.sup || 0), 'var(--text)')}
         </div>
         ${rowsHtml}
       </div>`;
@@ -1586,27 +1597,31 @@ const Crud = {
   },
 
   async projectStatement(projectId) {
-    const [project, txs] = await Promise.all([
-      API.request('projects', 'GET', null, `?select=name,client_id,client_name&id=eq.${projectId}&deleted_at=is.null`),
-      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
+    const [project, txs, pbRows] = await Promise.all([
+      API.request('projects', 'GET', null, `?select=name,client_id,client_name,supervision_percentage&id=eq.${projectId}&deleted_at=is.null`),
+      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`),
+      API.request('project_balances', 'GET', null, `?select=*&project_id=eq.${projectId}`)
     ]);
     const p = project[0];
     const name = p?.name || 'مشروع';
     const clientId = p?.client_id || null;
     const clientName = p?.client_name || '-';
+    const pb = pbRows[0] || {};
+    const supervision = pb.supervision || 0;
 
-    // Client summary header across all client projects
+    // Client summary header across all client projects (uses client_balances for consistency)
     let clientSummaryHtml = '';
-    let clientTotals = { dep: 0, exp: 0 };
+    let clientTotals = { dep: 0, exp: 0, sup: 0 };
     if (clientId) {
-      const clientTxs = await API.fetchAll('transactions', `?select=amount,type&client_id=eq.${clientId}&deleted_at=is.null`);
-      clientTotals.dep = clientTxs.filter(t => ['project_deposit','income','deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
-      clientTotals.exp = clientTxs.filter(t => !['project_deposit','income','deposit'].includes(t.type)).reduce((s, t) => s + (+t.amount || 0), 0);
+      const cbData = await API.request('client_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`);
+      const cb = cbData[0] || {};
+      clientTotals = { dep: cb.total_deposits || 0, exp: cb.total_expenses || 0, sup: cb.total_supervision || 0 };
       clientSummaryHtml = `<h4 style="margin:0 0 8px">ملخص العميل: ${App.esc(clientName)} (كل المشاريع)</h4>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
           <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(clientTotals.dep)}</div></div>
           <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(clientTotals.exp)}</div></div>
-          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد العميل الإجمالي</div><div class="kpi-value">${App.fmtMoney(clientTotals.dep - clientTotals.exp)}</div></div>
+          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(clientTotals.sup)}</div></div>
+          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد العميل الإجمالي</div><div class="kpi-value">${App.fmtMoney(cb.balance || 0)}</div></div>
         </div>
         <hr style="border-color:var(--border);margin:16px 0">`;
     }
@@ -1619,11 +1634,14 @@ const Crud = {
       else totalExp += amt;
       rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), App.fmtMoney(amt)]);
     });
+    if (supervision > 0) rows.push(['-', '-', App.fmtTxType('supervision'), App.esc('رسوم إشراف'), App.fmtMoney(supervision)]);
+    const balance = totalDep - totalExp - supervision;
     const summary = `<h4 style="margin:0 0 8px">تفاصيل المشروع: ${App.esc(name)}</h4>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
-        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد المشروع</div><div class="kpi-value">${App.fmtMoney(totalDep - totalExp)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${App.esc(p?.supervision_percentage || 0)}%)</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد المشروع</div><div class="kpi-value">${App.fmtMoney(balance)}</div></div>
       </div>`;
     const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
 
@@ -2447,6 +2465,7 @@ const Crud = {
   async editPayroll(id) {
     const rows = await API.request('payroll_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
+    const pr = rows[0];
     const fields = [
       { name: 'base_salary', label: 'الراتب الأساسي', type: 'number', req: true },
       { name: 'deductions', label: 'الخصومات', type: 'number' },
@@ -2454,22 +2473,39 @@ const Crud = {
       { name: 'penalties', label: 'الجزاءات', type: 'number' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
-    UI.openModal('تعديل راتب', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
+    UI.openModal('تعديل راتب', `<form>${UI.form(fields, pr)}</form>`, async (form) => {
       const fd = new FormData(form);
       const base = +fd.get('base_salary') || 0;
       const ded = +fd.get('deductions') || 0;
       const bon = +fd.get('bonuses') || 0;
       const pen = +fd.get('penalties') || 0;
+      const net = base - ded + bon - pen;
       await this.save('payroll_records', {
         base_salary: base,
         deductions: ded,
         bonuses: bon,
         penalties: pen,
-        net_salary: base - ded + bon - pen,
+        net_salary: net,
         notes: fd.get('notes') || null
       }, id);
+      const expPayload = {
+        amount: net,
+        description: `راتب ${pr.employee_name || ''} - ${pr.month}/${pr.year}`,
+        employee_name: pr.employee_name || null,
+        date: `${pr.year}-${String(pr.month).padStart(2, '0')}-01`
+      };
+      if (pr.office_expense_id) {
+        try { await this.save('transactions', expPayload, pr.office_expense_id); }
+        catch (e) { console.warn('[Payroll] failed to update linked expense:', e.message); }
+      } else {
+        try {
+          const exp = await this.save('transactions', { ...expPayload, type: 'office_expense', employee_id: pr.employee_id || null });
+          const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
+          if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${id}`);
+        } catch (e) { console.warn('[Payroll] failed to create linked expense:', e.message); }
+      }
       UI.toast('تم التحديث');
-      App.loadEmpPayroll();
+      App.loadEmpPayroll(); App.loadOffice();
     });
   },
 
@@ -2489,25 +2525,37 @@ const Crud = {
       if (p.status === 'paid') { UI.toast('الراتب مسجل كمدفوع مسبقاً', 'info'); return; }
       const now = new Date().toISOString();
       await this.save('payroll_records', { status: 'paid', paid_at: now }, id);
-      // Record salary as an office expense per LOGIC_SPEC Ch6.
-      await this.save('transactions', {
-        type: 'office_expense',
-        amount: +p.net_salary || 0,
-        description: `راتب ${p.employee_name || p.employees?.name || ''} - ${p.month}/${p.year}`,
-        employee_id: p.employee_id || null,
-        employee_name: p.employee_name || p.employees?.name || null,
-        date: now.slice(0, 10)
-      });
-      UI.toast('تم تسجيل الدفع وإضافة المصروف المكتبي');
+      // The office expense is created when payroll is generated. On pay, just ensure it exists and is not deleted.
+      if (!p.office_expense_id) {
+        try {
+          const exp = await this.save('transactions', {
+            type: 'office_expense',
+            amount: +p.net_salary || 0,
+            description: `راتب ${p.employee_name || p.employees?.name || ''} - ${p.month}/${p.year}`,
+            employee_id: p.employee_id || null,
+            employee_name: p.employee_name || p.employees?.name || null,
+            date: now.slice(0, 10)
+          });
+          const expId = Array.isArray(exp) ? exp[0]?.id : exp?.id;
+          if (expId) await API.request('payroll_records', 'PATCH', { office_expense_id: expId }, `?id=eq.${id}`);
+        } catch (expErr) { console.warn('[Payroll] failed to create office expense on pay:', expErr.message); }
+      } else {
+        try { await this.save('transactions', { deleted_at: null }, p.office_expense_id); }
+        catch (e) { console.warn('[Payroll] failed to restore linked office expense:', e.message); }
+      }
+      UI.toast('تم تسجيل الدفع');
       App.loadEmpPayroll(); App.loadOffice();
     });
   },
 
   delPayroll(id) {
     UI.confirm('هل أنت متأكد من حذف سجل الراتب؟', async () => {
+      const rows = await API.request('payroll_records', 'GET', null, `?select=office_expense_id&id=eq.${id}&deleted_at=is.null`);
+      const officeExpenseId = rows[0]?.office_expense_id;
       await this.softDelete('payroll_records', id);
+      if (officeExpenseId) await this.softDelete('transactions', officeExpenseId);
       UI.toast('تم الحذف');
-      App.loadEmpPayroll();
+      App.loadEmpPayroll(); App.loadOffice();
     });
   }
 };

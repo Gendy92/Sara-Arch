@@ -465,6 +465,7 @@ ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS office_expense_id UUID REFERENCES transactions(id);
 
 -- Trigger function to auto-set created_by on insert
 CREATE OR REPLACE FUNCTION set_created_by()

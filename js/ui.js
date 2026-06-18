@@ -157,12 +157,12 @@ const UI = {
     const fieldName = f.name || f.key;
     const v = values[fieldName] !== undefined ? values[fieldName] : (f.default || '');
     const vEsc = this._escAttr(v);
-    if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" ${f.req ? 'required' : ''}>${vEsc}</textarea></div>`;
-    if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label>${this.searchableSelectHTML(`name="${fieldName}" ${f.req ? 'required' : ''}`, f.opts, v)}</div>`;
-    if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} /></div>`;
-    if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} min="0" step="any" /></div>`;
-    if (f.type === 'time') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} /></div>`;
-    return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} /></div>`;
+    if (f.type === 'textarea') return `<div class="form-group" style="grid-column:1/-1"><label>${f.label}${f.req ? ' *' : ''}</label><textarea name="${fieldName}" rows="3" ${f.req ? 'required' : ''} ${f.attr || ''}>${vEsc}</textarea></div>`;
+    if (f.type === 'select') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label>${this.searchableSelectHTML(`name="${fieldName}" ${f.req ? 'required' : ''} ${f.attr || ''}`, f.opts, v)}</div>`;
+    if (f.type === 'date') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="date" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    if (f.type === 'number') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="number" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} min="0" step="any" ${f.attr || ''} /></div>`;
+    if (f.type === 'time') return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="time" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
+    return `<div class="form-group"><label>${f.label}${f.req ? ' *' : ''}</label><input type="text" name="${fieldName}" value="${vEsc}" ${f.req ? 'required' : ''} ${f.attr || ''} /></div>`;
   },
 
   actions(id, onEdit, onDel, canEdit = true, canDelete = true) {
