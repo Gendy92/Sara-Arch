@@ -383,8 +383,8 @@ const Crud = {
       { key: 'value', label: 'القيمة', type: 'number' },
       { key: 'supervision_percentage', label: 'نسبة الإشراف %', type: 'number' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
-      { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
-      { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+      { key: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
+      { key: 'end_date', label: 'تاريخ الانتهاء *', type: 'date', req: true },
       { key: 'notes', label: 'ملاحظات' }
     ];
     const defaults = clientId ? { client_id: clientId, status: 'active' } : { status: 'active' };
@@ -418,8 +418,8 @@ const Crud = {
       { name: 'value', label: 'القيمة', type: 'number' },
       { name: 'supervision_percentage', label: 'نسبة الإشراف %', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
-      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
-      { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
+      { name: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
+      { name: 'end_date', label: 'تاريخ الانتهاء *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     const values = { ...project, client_id: project.client_id || '' };
@@ -565,7 +565,7 @@ const Crud = {
       { key: 'quantity', label: 'الكمية', type: 'number' },
       { key: 'unit_price', label: 'سعر الوحدة', type: 'number' },
       { key: 'expense_type', label: 'التصنيف', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'أخرى', l: 'أخرى' }, { v: 'مواد', l: 'مواد' }, { v: 'عمالة', l: 'عمالة' }, { v: 'معدات', l: 'معدات' }] },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('🛒 إضافة مشتريات', cols, async (rows) => {
@@ -618,7 +618,7 @@ const Crud = {
       { name: 'quantity', label: 'الكمية', type: 'number', section: 'القيمة' },
       { name: 'unit_price', label: 'سعر الوحدة', type: 'number', section: 'القيمة' },
       { name: 'expense_type', label: 'التصنيف', section: 'القيمة' },
-      { name: 'date', label: 'التاريخ', type: 'date', section: 'التفاصيل' },
+      { name: 'date', label: 'التاريخ *', type: 'date', section: 'التفاصيل', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea', section: 'التفاصيل' }
     ];
     const modalBody = `<form>${UI.form(fields, { ...p, vendor_id: p.vendor_id || '', client_id: clientId || '', project_id: p.project_id || '' })}</form><div style="padding:12px 0;font-weight:600;color:var(--gold)">الإجمالي: <span id="proc-total">${App.fmtMoney((+p.quantity || 0) * (+p.unit_price || 0))}</span></div>`;
@@ -704,7 +704,7 @@ const Crud = {
       { key: 'salary', label: 'الراتب', type: 'number' },
       { key: 'phone', label: 'الهاتف' },
       { key: 'email', label: 'البريد' },
-      { key: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
+      { key: 'hire_date', label: 'تاريخ التعيين *', type: 'date', req: true },
       { key: 'notes', label: 'ملاحظات' }
     ];
     Spreadsheet.open('إضافة موظفين', cols, async (rows) => {
@@ -727,7 +727,7 @@ const Crud = {
       { name: 'salary', label: 'الراتب', type: 'number' },
       { name: 'phone', label: 'الهاتف' },
       { name: 'email', label: 'البريد' },
-      { name: 'hire_date', label: 'تاريخ التعيين', type: 'date' },
+      { name: 'hire_date', label: 'تاريخ التعيين *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     UI.openModal('تعديل موظف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
@@ -784,7 +784,7 @@ const Crud = {
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
       { name: 'type', label: 'النوع *', type: 'select', req: true, opts: [{v:'advance',l:'سلفة'},{v:'penalty',l:'جزاء'},{v:'bonus',l:'مكافأة'},{v:'other',l:'أخرى'}] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     UI.openModal('إضافة معاملة موظف', `<form>${UI.form(fields)}</form>`, async (form) => {
@@ -814,7 +814,7 @@ const Crud = {
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
       { name: 'type', label: 'النوع *', type: 'select', req: true, opts: [{v:'advance',l:'سلفة'},{v:'penalty',l:'جزاء'},{v:'bonus',l:'مكافأة'},{v:'other',l:'أخرى'}] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     UI.openModal('تعديل معاملة موظف', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
@@ -870,7 +870,7 @@ const Crud = {
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
       { name: 'old_salary', label: 'الراتب القديم', type: 'number', default: oldSalary != null ? oldSalary : (emp ? emp.salary : 0) },
       { name: 'new_salary', label: 'الراتب الجديد *', type: 'number', req: true },
-      { name: 'effective_date', label: 'تاريخ التطبيق', type: 'date' },
+      { name: 'effective_date', label: 'تاريخ التطبيق *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     UI.openModal('إضافة تغيير راتب', `<form>${UI.form(fields)}</form>`, async (form) => {
@@ -898,7 +898,7 @@ const Crud = {
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
       { name: 'old_salary', label: 'الراتب القديم', type: 'number' },
       { name: 'new_salary', label: 'الراتب الجديد *', type: 'number', req: true },
-      { name: 'effective_date', label: 'تاريخ التطبيق', type: 'date' },
+      { name: 'effective_date', label: 'تاريخ التطبيق *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     UI.openModal('تعديل تاريخ راتب', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
@@ -941,7 +941,7 @@ const Crud = {
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }, { v: 'transfer', l: 'تحويل' }] },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('💰 عربون مشروع (من عميل)', cols, async (rows) => {
@@ -977,7 +977,7 @@ const Crud = {
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'paid_amount', label: 'المدفوع', type: 'number' },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('🔨 مصروف مشروع', cols, async (rows) => {
@@ -1017,7 +1017,7 @@ const Crud = {
       { name: 'client_id', label: 'العميل *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts], default: clientId || '' },
       { name: 'project_id', label: 'المشروع *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts], default: projectId || '' },
       { name: 'amount', label: 'المبلغ المرتجع *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'الوصف', type: 'textarea' }
     ];
     UI.openModal('⬅️ مرتجع عميل', `<form>${UI.form(fields)}</form>`, async (form) => {
@@ -1059,7 +1059,7 @@ const Crud = {
       { name: 'vendor_id', label: 'المورد *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: vendorId || '' },
       { name: 'project_id', label: 'المشروع *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'الوصف', type: 'textarea' }
     ];
     UI.openModal('💰 تسديد متأخرات مورد', `<form>${UI.form(fields)}</form>`, async (form) => {
@@ -1105,7 +1105,7 @@ const Crud = {
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
       { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: officeVendor ? officeVendor.id : '' },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('🏢 مصروف مكتبي (موظف)', cols, async (rows) => {
@@ -1124,7 +1124,7 @@ const Crud = {
   addOwnerDeposit() {
     const cols = [
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('👤 توريد صاحب المكتب', cols, async (rows) => {
@@ -1138,7 +1138,7 @@ const Crud = {
   addOwnerWithdrawal() {
     const cols = [
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('🏃 سحب صاحب المكتب', cols, async (rows) => {
@@ -1155,7 +1155,7 @@ const Crud = {
     const cols = [
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'amount', label: 'نسبة الإشراف', type: 'number', req: true },
-      { key: 'date', label: 'التاريخ', type: 'date' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('📋 إشراف مشروع', cols, async (rows) => {
@@ -1184,7 +1184,7 @@ const Crud = {
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }, { v: 'transfer', l: 'تحويل' }] },
-        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
       const overlay = UI.openModal('تعديل عربون مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '' })}</form>`, async (form) => {
@@ -1213,7 +1213,7 @@ const Crud = {
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'paid_amount', label: 'المدفوع', type: 'number' },
-        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
       const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
@@ -1250,7 +1250,7 @@ const Crud = {
         { name: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
-        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
       UI.openModal('تعديل مصروف مكتبي', `<form>${UI.form(fields, { ...tx, employee_id: tx.employee_id || '', sector_id: tx.sector_id || '', vendor_id: tx.vendor_id || '' })}</form>`, async (form) => {
@@ -1266,7 +1266,7 @@ const Crud = {
       const fields = [
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name }))] },
         { name: 'amount', label: 'نسبة الإشراف', type: 'number', req: true },
-        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
       UI.openModal('تعديل إشراف مشروع', `<form>${UI.form(fields, { ...tx, project_id: tx.project_id || '' })}</form>`, async (form) => {
@@ -1278,7 +1278,7 @@ const Crud = {
     } else {
       const fields = [
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
-        { name: 'date', label: 'التاريخ', type: 'date' },
+        { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
       const title = tx.type === 'withdrawal' ? 'تعديل سحب صاحب المكتب' : 'تعديل توريد';
@@ -1871,8 +1871,8 @@ const Crud = {
     const fields = [
       { name: 'name', label: 'اسم المهمة *', req: true },
       { name: 'assignee', label: 'المسؤول' },
-      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
-      { name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date' },
+      { name: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
+      { name: 'due_date', label: 'تاريخ الاستحقاق *', type: 'date', req: true },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'pending',l:'معلق'},{v:'in_progress',l:'قيد التنفيذ'},{v:'done',l:'منتهي'}] },
       { name: 'priority', label: 'الأولوية', type: 'select', opts: [{v:'low',l:'منخفض'},{v:'medium',l:'متوسط'},{v:'high',l:'عالي'}] },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -1900,8 +1900,8 @@ const Crud = {
     const fields = [
       { name: 'name', label: 'اسم المهمة *', req: true },
       { name: 'assignee', label: 'المسؤول' },
-      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
-      { name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date' },
+      { name: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
+      { name: 'due_date', label: 'تاريخ الاستحقاق *', type: 'date', req: true },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'pending',l:'معلق'},{v:'in_progress',l:'قيد التنفيذ'},{v:'done',l:'منتهي'}] },
       { name: 'priority', label: 'الأولوية', type: 'select', opts: [{v:'low',l:'منخفض'},{v:'medium',l:'متوسط'},{v:'high',l:'عالي'}] },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -2161,7 +2161,7 @@ const Crud = {
       { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     const overlay = UI.openModal('إضافة عهدة نقدية', `<form>${UI.form(fields)}</form>`, async (form) => {
@@ -2238,7 +2238,7 @@ const Crud = {
       { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     const overlay = UI.openModal('تعديل عهدة', `<form>${UI.form(fields, rows[0])}</form>`, async (form) => {
@@ -2367,7 +2367,7 @@ const Crud = {
     const available = (+c.amount || 0) - spent - returnedCash;
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
     UI.openModal('إضافة مصروف عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
@@ -2436,7 +2436,7 @@ const Crud = {
     const available = (+c.amount || 0) - spent - returnedCash;
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
     UI.openModal('تعديل مصروف عهدة', `<form>${UI.form(fields, expense)}</form>`, async (form) => {
@@ -2482,7 +2482,7 @@ const Crud = {
     if (remaining <= 0) { UI.toast('لا يوجد رصيد متبقي للسداد', 'error'); return; }
     const fields = [
       { name: 'amount', label: `المبلغ المرتجع * (متاح: ${App.fmtMoney(remaining)})`, type: 'number', req: true, default: remaining },
-      { name: 'date', label: 'التاريخ', type: 'date' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
     UI.openModal('سداد باقي عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
