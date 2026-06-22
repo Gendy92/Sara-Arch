@@ -835,6 +835,7 @@ WHERE t.linked_procurement_id = p.id
 -- │ STEP 10: Dashboard Aggregation RPCs                     │
 -- └─────────────────────────────────────────────────────────┐
 
+DROP FUNCTION IF EXISTS public.dashboard_kpis();
 CREATE OR REPLACE FUNCTION dashboard_kpis()
 RETURNS TABLE(
   client_count BIGINT,
@@ -886,6 +887,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP FUNCTION IF EXISTS public.dashboard_monthly_revenue_expenses(integer);
 CREATE OR REPLACE FUNCTION dashboard_monthly_revenue_expenses(months_back INT DEFAULT 6)
 RETURNS TABLE(month_key TEXT, project_revenue NUMERIC, project_expense NUMERIC, office_revenue NUMERIC, office_expense NUMERIC) AS $$
 DECLARE
