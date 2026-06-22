@@ -248,24 +248,33 @@ const Crud = {
   async softDelete(table, id, cascade = false) {
     const userId = this._currentUserId();
     const userName = this._currentUserName();
+    // Cascade soft-delete for projects
+    if (cascade && table === 'projects') {
+      try {
+        const txs = await API.request('transactions', 'GET', null, `?select=id&project_id=eq.${id}&deleted_at=is.null`);
+        for (const t of txs) { await this.softDelete('transactions', t.id, false); }
+        const procs = await API.request('procurements', 'GET', null, `?select=id,linked_transaction_id&project_id=eq.${id}&deleted_at=is.null`);
+        for (const pr of procs) {
+          if (pr.linked_transaction_id) await this.softDelete('transactions', pr.linked_transaction_id, false);
+          await this.softDelete('procurements', pr.id, false);
+        }
+        const tasks = await API.request('project_tasks', 'GET', null, `?select=id&project_id=eq.${id}&deleted_at=is.null`);
+        for (const tk of tasks) { await this.softDelete('project_tasks', tk.id, false); }
+      } catch (e) { /* cascade delete is best-effort */ }
+    }
     // Cascade soft-delete for clients
     if (cascade && table === 'clients') {
       try {
-        const now = new Date().toISOString();
         const projects = await API.request('projects', 'GET', null, `?select=id&client_id=eq.${id}&deleted_at=is.null`);
-        for (const p of projects) {
-          await this.softDelete('projects', p.id, false);
-        }
+        for (const p of projects) { await this.softDelete('projects', p.id, true); }
         const txs = await API.request('transactions', 'GET', null, `?select=id&client_id=eq.${id}&deleted_at=is.null`);
-        for (const t of txs) {
-          await this.softDelete('transactions', t.id, false);
-        }
+        for (const t of txs) { await this.softDelete('transactions', t.id, false); }
         UI.toast(`🗑️ تم حذف ${projects.length} مشروع و ${txs.length} معاملة مرتبطة`, 'info');
       } catch (e) { /* cascade delete is best-effort */ }
     }
     // Fetch old data BEFORE soft-delete so audit captures pre-delete state
     let oldData = null;
-    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id); oldData = existing[0] || null; } catch (e) {}
+    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null'); oldData = existing[0] || null; } catch (e) {}
     let payload = { deleted_at: new Date().toISOString(), updated_by: userId };
     try {
       await API.request(table, 'PATCH', payload, '?id=eq.' + id);
@@ -573,11 +582,12 @@ const Crud = {
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
       const total = qty * up;
+      const isCredit = p.payment_term === 'credit';
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
         project_id: fd.get('project_id') || null, project_name: project ? project.name : null,
         item_name: fd.get('item_name'), quantity: qty, unit_price: up,
-        payment_term: 'immediate', paid_amount: total,
+        payment_term: p.payment_term || 'immediate', paid_amount: isCredit ? (p.paid_amount || 0) : total,
         expense_type: fd.get('expense_type') || null, date: fd.get('date') || new Date().toISOString().slice(0, 10), notes: fd.get('notes') || null
       }, id, p);
       await this._syncProcurementTransaction(id);
@@ -1496,16 +1506,21 @@ const Crud = {
       const selectedSet = new Set(selected);
       const chapters = projects.filter(p => selectedSet.has(p.id)).map(p => {
         const pTxs = txs.filter(t => String(t.project_id) === String(p.id));
-        const rows = pTxs.map((t, i) => ({
-          i: i + 1, date: t.date || '-', type: App.fmtTxType(t.type),
-          desc: t.description || '-', amount: +t.amount || 0,
-          isDeposit: t.type === 'project_deposit'
-        }));
+        let dep = 0, exp = 0;
+        const rows = pTxs.map((t, i) => {
+          const amt = +t.amount || 0;
+          const paid = +t.paid_amount || amt;
+          if (t.type === 'project_deposit') dep += amt;
+          if (t.type === 'client_return') dep -= amt;
+          if (['project_expense','vendor_settlement'].includes(t.type)) exp += paid;
+          return {
+            i: i + 1, date: t.date || '-', type: App.fmtTxType(t.type),
+            desc: t.description || '-', amount: amt
+          };
+        });
         const pb = pbByProject[p.id] || {};
         const sup = pb.supervision || 0;
-        if (sup > 0) rows.push({ i: '-', date: '-', type: App.fmtTxType('supervision'), desc: 'رسوم إشراف', amount: sup, isDeposit: false, isSupervision: true });
-        const dep = rows.reduce((s, r) => s + (r.isDeposit ? r.amount : 0), 0);
-        const exp = rows.reduce((s, r) => s + (!r.isDeposit && !r.isSupervision ? r.amount : 0), 0);
+        if (sup > 0) rows.push({ i: '-', date: '-', type: App.fmtTxType('supervision'), desc: 'رسوم إشراف', amount: sup, isSupervision: true });
         return { project: p, rows, dep, exp, sup };
       });
 
@@ -1614,8 +1629,10 @@ const Crud = {
       const rows = [];
       txs.forEach((t, i) => {
         const amt = +t.amount || 0;
-        if (['project_deposit','income','deposit'].includes(t.type)) totalDep += amt;
-        else totalExp += amt;
+        const paid = +t.paid_amount || amt;
+        if (t.type === 'project_deposit') totalDep += amt;
+        else if (t.type === 'client_return') totalDep -= amt;
+        else if (['project_expense','vendor_settlement'].includes(t.type)) totalExp += paid;
         rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), App.fmtMoney(amt)]);
       });
       if (supervision > 0) rows.push(['-', '-', App.fmtTxType('supervision'), App.esc('رسوم إشراف'), App.fmtMoney(supervision)]);

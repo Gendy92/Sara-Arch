@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://tvjkctttcijymqvaetsv.supabase.co; script-src 'self' 'unsafe-inline' https://cdn.sheetjs.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; manifest-src 'self';">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#3d2e22">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,7 +15,7 @@
 <meta http-equiv="Expires" content="0">
 <title>سارة أبو العلا — النظام المالي</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="css/style.css?v=202">
+<link rel="stylesheet" href="css/style.css?v=203">
 </head>
 <body>
 <div id="app">
@@ -27,12 +27,16 @@
 
 <script>
 (function() {
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   function showError(msg) {
     document.getElementById('app').innerHTML =
       '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center;background:#3d2e22">' +
       '<div style="font-size:48px">⚠️</div>' +
       '<h2 style="color:#d4726e">حدث خطأ في التحميل</h2>' +
-      '<p style="color:#6b6560;max-width:400px">' + msg + '</p>' +
+      '<p style="color:#6b6560;max-width:400px">' + escHtml(msg) + '</p>' +
       '<button onclick="location.reload(true)" style="padding:10px 24px;background:linear-gradient(135deg,#c4a97a,#d4bc94);color:#14161f;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:600">إعادة المحاولة</button></div>';
   }
 

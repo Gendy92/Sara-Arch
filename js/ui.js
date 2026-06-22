@@ -51,7 +51,7 @@ const UI = {
   },
 
   _escAttr(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   },
   shortPlaceholder(label) {
     const clean = String(label || '').replace(/\*/g, '').trim();

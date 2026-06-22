@@ -37,6 +37,9 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Clean files not meant for deployment
+        run: rm -f .env && rm -rf backups/ node_modules/
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

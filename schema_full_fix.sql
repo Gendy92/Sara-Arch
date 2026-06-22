@@ -136,7 +136,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   payment_method TEXT,
   date DATE DEFAULT CURRENT_DATE,
   created_by UUID,
-  linked_procurement_id UUID REFERENCES procurements(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
@@ -503,7 +502,6 @@ DROP TRIGGER IF EXISTS attendance_records_cb ON attendance_records; CREATE TRIGG
 DROP TRIGGER IF EXISTS payroll_records_cb ON payroll_records; CREATE TRIGGER payroll_records_cb BEFORE INSERT ON payroll_records FOR EACH ROW EXECUTE FUNCTION set_created_by();
 DROP TRIGGER IF EXISTS work_sections_cb ON work_sections; CREATE TRIGGER work_sections_cb BEFORE INSERT ON work_sections FOR EACH ROW EXECUTE FUNCTION set_created_by();
 DROP TRIGGER IF EXISTS work_items_cb ON work_items; CREATE TRIGGER work_items_cb BEFORE INSERT ON work_items FOR EACH ROW EXECUTE FUNCTION set_created_by();
-DROP TRIGGER IF EXISTS project_tasks_cb ON project_tasks; CREATE TRIGGER project_tasks_cb BEFORE INSERT ON project_tasks FOR EACH ROW EXECUTE FUNCTION set_created_by();
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 6: Row Level Security (RLS)                        │
@@ -665,6 +663,8 @@ ALTER TABLE project_tasks ADD CONSTRAINT project_tasks_priority_check CHECK (pri
 -- Trigger for project_tasks updated_at
 DROP TRIGGER IF EXISTS project_tasks_u ON project_tasks;
 CREATE TRIGGER project_tasks_u BEFORE UPDATE ON project_tasks FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS project_tasks_cb ON project_tasks;
+CREATE TRIGGER project_tasks_cb BEFORE INSERT ON project_tasks FOR EACH ROW EXECUTE FUNCTION set_created_by();
 
 -- RLS for project_tasks
 ALTER TABLE project_tasks ENABLE ROW LEVEL SECURITY;
@@ -704,8 +704,11 @@ ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS updated_by UUID;
 CREATE INDEX IF NOT EXISTS idx_project_tasks_project ON project_tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_project_type ON transactions(project_id, type);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_procurements_created_at ON procurements(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_procurements_vendor ON procurements(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(date);
+CREATE INDEX IF NOT EXISTS idx_custody_records_created_at ON custody_records(created_at DESC);
 
 -- Admin check helper for RLS
 CREATE OR REPLACE FUNCTION is_app_admin(user_uuid UUID)
@@ -733,7 +736,7 @@ BEGIN
     WHERE schemaname = 'public'
       AND tablename IN (
         'clients','projects','employees','vendors','items','sectors','transactions',
-        'procurements','employee_transactions','custody_records',
+        'procurements','employee_transactions','employee_salary_history','custody_records',
         'custody_expenses','work_sections',
         'work_items','profiles','audit_logs','user_permissions','project_tasks',
         'attendance_records','payroll_records'
