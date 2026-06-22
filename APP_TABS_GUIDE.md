@@ -391,24 +391,25 @@ unit_price = +fd.get('unit_price') || 0
 تسليم عهدة → مصروفات منها → مرتد → تسوية
 ```
 
-**معادلات العهدة:**
+**معادلات العهدة (clearing account):**
 ```js
-given     = +custody.amount
-spent     = Σ custody_expenses للعهدة
-returned  = +custody.returned_amount
-remaining = given - spent - returned
+given           = +custody.amount
+spent           = Σ custody_expenses للعهدة
+returned_cash   = +custody.returned_cash_amount
+consumed        = spent + returned_cash
+remaining       = given - consumed
 ```
 
 **ملخص العهد للموظف:**
 ```js
-activeTotal  = Σ amount للعهود where status = 'active'
-settledTotal = Σ amount للعهود where status = 'settled'
+activeTotal    = Σ remaining للعهود where status = 'active'
+partialTotal   = Σ remaining للعهود where status = 'partial'
 ```
 
-- **تسليم عهدة:** بيفتح فورم فيه المبلغ + عميل + مشروع + تاريخ
-- **مصروف عهدة:** بيسجل في `custody_expenses` (مبلغ + وصف + تاريخ)
-- **مرتد:** بيضيف على `returned_amount`
-- **تسوية:** بيغير `status` لـ `'settled'` (مفيش validation على الرصيد)
+- **تسليم عهدة:** بينشئ `custody_records` + حركة `office_expense` مؤقتة بقيمة العهدة.
+- **مصروف عهدة:** بيسجل في `custody_expenses` وينشئ الحركة الفعلية (`project_expense` أو `office_expense`) ويخصم من المصروف المؤقت.
+- **سداد باقي:** بيسجل `custody_return` ويخصم من المصروف المؤقت ويغيّر الحالة تلقائيًا.
+- **التسوية:** الحالة `status` تتحدث تلقائيًا حسب `consumed` (active / partial / settled).
 
 ---
 
@@ -563,4 +564,4 @@ draft → approved → paid
 | **نسبة الصرف** | `Math.min(100, (expenses / budget) × 100)` |
 | **الصافي** | `baseSalary - deductions + bonuses - penalties` |
 | **الخصم اليومي** | `salary / 30` |
-| **العهدة المتبقية** | `given - spent - returned` |
+| **العهدة المتبقية** | `given - spent - returned_cash` |

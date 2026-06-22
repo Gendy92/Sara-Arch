@@ -530,7 +530,7 @@ Object.assign(App, {
         API.count('office_transactions_view', '?select=count' + txSearchFilter),
         API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${custodySearchFilter}&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
         API.count('custody_records', '?deleted_at=is.null' + custodySearchFilter),
-        API.request('custody_records', 'GET', null, '?select=amount.sum(),returned_amount.sum()&deleted_at=is.null')
+        API.request('custody_records', 'GET', null, '?select=amount.sum(),returned_amount.sum(),returned_cash_amount.sum()&deleted_at=is.null')
       ]);
       const ob = officeBal[0] || {};
       const totalIncome = ob.income || 0;
@@ -539,13 +539,15 @@ Object.assign(App, {
 
       const sumRow = custodySums[0] || {};
       const totalCustodyAmt = +(sumRow['amount.sum'] || 0);
-      const totalReturnedAmt = +(sumRow['returned_amount.sum'] || 0);
+      const totalExpensesAmt = +(sumRow['returned_amount.sum'] || 0);
+      const totalReturnedCashAmt = +(sumRow['returned_cash_amount.sum'] || 0);
+      const custodyRemaining = totalCustodyAmt - totalExpensesAmt - totalReturnedCashAmt;
 
       document.getElementById('office-kpis').innerHTML = `
         <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(totalCustodyAmt - totalReturnedAmt)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedAmt)}</div></div>`;
+        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(custodyRemaining)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مصروف: ${this.fmtMoney(totalExpensesAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedCashAmt)}</div></div>`;
 
       const totalTxPages = Math.max(1, Math.ceil((totalOfficeTxs || 0) / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
@@ -572,13 +574,13 @@ Object.assign(App, {
       this.pageState.officeCustody = safeCustodyPage;
       const statusLabels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
       const custodyRows = custodyRecords.map((r, i) => {
-        const bal = (+r.amount || 0) - (+r.returned_amount || 0);
+        const bal = (+r.amount || 0) - (+r.returned_amount || 0) - (+r.returned_cash_amount || 0);
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const typeBadge = r.custody_type === 'project' ? '<span class="badge badge-blue">مشروع</span>' : '<span class="badge badge-gold">مكتب</span>';
         const related = r.custody_type === 'project' ? (r.project_name || '-') : (r.sector_name || '-');
-        return [(safeCustodyPage - 1) * custodyPerPage + i + 1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney(r.returned_amount || 0), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody') + ` <button class="btn btn-sm btn-secondary" onclick="Crud.custodyExpenses('${r.id}')">مصروفات</button>`}];
+        return [(safeCustodyPage - 1) * custodyPerPage + i + 1, r.date || '-', {html: typeBadge}, r.employees?.name || r.employee_name || '-', related, this.fmtMoney(r.amount), this.fmtMoney((+r.returned_amount || 0) + (+r.returned_cash_amount || 0)), {html: `<span style="color:${balColor};font-weight:600">${this.fmtMoney(Math.abs(bal))}</span>`}, statusLabels[r.status] || r.status, {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody') + ` <button class="btn btn-sm btn-secondary" onclick="Crud.custodyExpenses('${r.id}')">مصروفات</button>`}];
       });
-      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المرتجع', 'الباقي', 'الحالة', ''], custodyRows) + this._paginationHtml('officeCustody', safeCustodyPage, custodyPerPage, totalCustody) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
+      document.getElementById('office-custody-tbl').innerHTML = custodyRows.length ? this.table(['#', 'التاريخ', 'النوع', 'الموظف', 'التصنيف / المشروع', 'المبلغ', 'المسوّى', 'الباقي', 'الحالة', ''], custodyRows) + this._paginationHtml('officeCustody', safeCustodyPage, custodyPerPage, totalCustody) : '<p style="color:var(--text3)">لا توجد عهد نقدية</p>';
       this.attachSearch('office-custody-tbl', '🔍 بحث في العهد النقدية...', (term) => {
         App.searchState.officeCustody = term;
         App.pageState.officeCustody = 1;
@@ -609,10 +611,10 @@ Object.assign(App, {
       const empIds = data.map(e => e.id);
       let custodyData = [];
       if (empIds.length) {
-        custodyData = await API.request('custody_records', 'GET', null, `?select=employee_id,amount,status&employee_id=in.(${empIds.join(',')})&deleted_at=is.null`);
+        custodyData = await API.request('custody_records', 'GET', null, `?select=employee_id,amount,returned_amount,returned_cash_amount&employee_id=in.(${empIds.join(',')})&deleted_at=is.null`);
       }
       const custodyByEmp = {};
-      custodyData.forEach(c => { custodyByEmp[c.employee_id] = (custodyByEmp[c.employee_id] || 0) + (+c.amount || 0); });
+      custodyData.forEach(c => { custodyByEmp[c.employee_id] = (custodyByEmp[c.employee_id] || 0) + Math.max(0, (+c.amount || 0) - (+c.returned_amount || 0) - (+c.returned_cash_amount || 0)); });
       const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
         const cAmt = custodyByEmp[e.id] || 0;
         const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';

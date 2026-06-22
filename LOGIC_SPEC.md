@@ -245,23 +245,32 @@ This keeps salary costs reflected in the office cash-flow automatically.
 
 ## 7. Custody (Employee Petty Cash)
 
-Custody is cash advanced to an employee for office or project spending.
+Custody is cash advanced to an employee for office or project spending. It is treated as a **clearing account**:
+
+1. Creating a custody posts a temporary `office_expense` for the full amount (linked via `advance_transaction_id`).
+2. Recording a custody expense creates the real transaction (`project_expense` or `office_expense`) and reduces the temporary advance by the same amount.
+3. Returning unused cash posts a `custody_return` transaction and reduces the temporary advance.
+4. The net effect never double-counts the original advance.
 
 ```
-Remaining Custody = Custody Amount − Returned Amount
+Spent            = Σ Custody Expenses
+Returned Cash    = custody_records.returned_cash_amount
+Consumed         = Spent + Returned Cash
+Remaining Cash   = Custody Amount − Consumed
 ```
 
 Status mapping:
-- `active` → money is out, not yet returned.
-- `partial` → part returned.
-- `settled` → fully returned.
+- `active` → no expenses or returns yet.
+- `partial` → part of the custody has been spent or returned.
+- `settled` → fully spent and/or returned.
 
 Employee custody summary:
 
 ```
 Total Given     = Σ Custody Amount
-Total Returned  = Σ Returned Amount
-Total Remaining = Total Given − Total Returned
+Total Spent     = Σ Custody Expenses
+Total Returned  = Σ Returned Cash
+Total Remaining = Total Given − Total Spent − Total Returned
 ```
 
 ---

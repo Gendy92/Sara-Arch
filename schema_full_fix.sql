@@ -196,9 +196,11 @@ CREATE TABLE IF NOT EXISTS custody_records (
   project_name TEXT,
   amount NUMERIC DEFAULT 0,
   returned_amount NUMERIC DEFAULT 0,
+  returned_cash_amount NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'active' CHECK (status IN ('active','settled','partial')),
   date DATE DEFAULT CURRENT_DATE,
   notes TEXT,
+  advance_transaction_id UUID REFERENCES transactions(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
@@ -366,9 +368,11 @@ ALTER TABLE transactions ALTER COLUMN project_id DROP NOT NULL;
 
 -- Custody
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS returned_amount NUMERIC DEFAULT 0;
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS returned_cash_amount NUMERIC DEFAULT 0;
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS sector_id UUID REFERENCES sectors(id);
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS sector_name TEXT;
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS custody_type TEXT DEFAULT 'office' CHECK (custody_type IN ('office','project'));
+ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS advance_transaction_id UUID REFERENCES transactions(id);
 
 -- Fix expense_category for existing rows (after column is created)
 UPDATE transactions 
@@ -382,7 +386,7 @@ WHERE expense_category IS NULL
 
 -- Transactions type constraint
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
-ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision','client_return','vendor_settlement'));
+ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision','client_return','vendor_settlement','custody_return'));
 
 -- Transactions expense_category constraint
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_expense_category_check;
@@ -841,25 +845,32 @@ RETURNS TABLE(
   total_expense NUMERIC,
   total_movement NUMERIC
 ) AS $$
+DECLARE
+  v_project_deposits NUMERIC;
+  v_owner_deposits NUMERIC;
+  v_supervision NUMERIC;
+  v_office_vendor_income NUMERIC;
+  v_project_expenses NUMERIC;
+  v_office_expenses NUMERIC;
+  v_custody_returns NUMERIC;
 BEGIN
+  v_project_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'project_deposit'), 0);
+  v_owner_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0);
+  v_supervision := COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0);
+  v_office_vendor_income := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0);
+  v_project_expenses := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement')), 0);
+  v_office_expenses := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal')), 0);
+  v_custody_returns := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'custody_return'), 0);
+
   RETURN QUERY
   SELECT
     (SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL) AS client_count,
     (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS project_count,
     (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND status = 'active') AS active_project_count,
     (SELECT COUNT(*) FROM employees WHERE deleted_at IS NULL AND is_active = true) AS employee_count,
-    COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'project_deposit'), 0)
-      + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0)
-      + COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0)
-      + COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0) AS total_income,
-    COALESCE((SELECT SUM(t.paid_amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement')), 0)
-      + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal')), 0) AS total_expense,
-    COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'project_deposit'), 0)
-      + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0)
-      + COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0)
-      + COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0)
-      + COALESCE((SELECT SUM(t.paid_amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement')), 0)
-      + COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal')), 0) AS total_movement;
+    v_project_deposits + v_owner_deposits + v_supervision + v_office_vendor_income AS total_income,
+    v_project_expenses + v_office_expenses - v_custody_returns AS total_expense,
+    v_project_deposits + v_owner_deposits + v_supervision + v_office_vendor_income + v_project_expenses + v_office_expenses - v_custody_returns AS total_movement;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
@@ -905,14 +916,24 @@ BEGIN
       AND t.type IN ('office_expense','withdrawal')
       AND t.date >= start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
+  ),
+  custody_ret AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk,
+           SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL
+      AND t.type = 'custody_return'
+      AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
   )
   SELECT m.mk::TEXT,
          COALESCE(s.amt, 0) + COALESCE(o.amt, 0) AS revenue,
-         COALESCE(e.amt, 0) AS expense
+         COALESCE(e.amt, 0) - COALESCE(cr.amt, 0) AS expense
   FROM month_keys m
   LEFT JOIN supervision s ON s.mk = m.mk
   LEFT JOIN owner_dep o ON o.mk = m.mk
   LEFT JOIN office_exp e ON e.mk = m.mk
+  LEFT JOIN custody_ret cr ON cr.mk = m.mk
   ORDER BY m.mk;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -1146,15 +1167,19 @@ WHERE v.deleted_at IS NULL
 GROUP BY v.id, v.name;
 
 CREATE OR REPLACE VIEW public.office_balance AS
+WITH base AS (
+  SELECT
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type = 'owner_deposit'), 0) AS owner_deposits,
+    COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0) AS supervision_income,
+    COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income,
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('office_expense','withdrawal')), 0) AS office_expenses,
+    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type = 'custody_return'), 0) AS custody_returns
+)
 SELECT
-  COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type = 'owner_deposit'), 0)
-    + COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0)
-    + COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0) AS income,
-  COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('office_expense','withdrawal')), 0) AS expense,
-  COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type = 'owner_deposit'), 0)
-    + COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0)
-    + COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0)
-    - COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('office_expense','withdrawal')), 0) AS balance;
+  owner_deposits + supervision_income + office_vendor_income AS income,
+  office_expenses - custody_returns AS expense,
+  owner_deposits + supervision_income + office_vendor_income - (office_expenses - custody_returns) AS balance
+FROM base;
 
 CREATE OR REPLACE VIEW public.office_transactions_view AS
 SELECT
@@ -1193,7 +1218,19 @@ SELECT
   '-'::TEXT AS vendor_name
 FROM project_balances pb
 JOIN projects p ON p.id = pb.project_id
-WHERE pb.supervision > 0;
+WHERE pb.supervision > 0
+UNION ALL
+SELECT
+  t.id,
+  t.created_at,
+  'custody_return'::TEXT AS type,
+  t.amount,
+  ('رد عهدة - ' || COALESCE(t.description, ''))::TEXT AS description,
+  t.employee_name,
+  t.sector_name,
+  NULL::TEXT AS vendor_name
+FROM transactions t
+WHERE t.deleted_at IS NULL AND t.type = 'custody_return';
 
 GRANT SELECT ON public.project_balances TO authenticated;
 GRANT SELECT ON public.client_balances TO authenticated;
@@ -1376,6 +1413,50 @@ SET payment_term = 'immediate',
 WHERE deleted_at IS NULL
   AND (payment_term IS NULL OR paid_amount IS NULL)
   AND type = 'project_expense';
+
+-- Seed a default sector for custody advance transactions.
+INSERT INTO sectors (name, description)
+VALUES ('عهود نقدية', 'تصنيف مصروفات العهد النقدية المؤقتة')
+ON CONFLICT (name) DO NOTHING;
+
+-- Backfill advance transactions for existing custody records that don't have one.
+DO $$
+DECLARE
+  rec RECORD;
+  v_spent NUMERIC;
+  v_remaining NUMERIC;
+  v_tx_id UUID;
+BEGIN
+  FOR rec IN
+    SELECT cr.id, cr.amount, cr.employee_id, cr.employee_name, cr.date
+    FROM custody_records cr
+    WHERE cr.deleted_at IS NULL
+      AND cr.advance_transaction_id IS NULL
+  LOOP
+    SELECT COALESCE(SUM(amount), 0) INTO v_spent
+    FROM custody_expenses
+    WHERE custody_id = rec.id AND deleted_at IS NULL;
+    v_remaining := GREATEST((rec.amount - v_spent), 0);
+
+    IF v_remaining > 0 THEN
+      INSERT INTO transactions (type, amount, date, description, employee_id, employee_name, sector_name)
+      VALUES (
+        'office_expense',
+        v_remaining,
+        COALESCE(rec.date, CURRENT_DATE),
+        'عهدة نقدية للموظف ' || COALESCE(rec.employee_name, ''),
+        rec.employee_id,
+        rec.employee_name,
+        'عهود نقدية'
+      )
+      RETURNING id INTO v_tx_id;
+    ELSE
+      v_tx_id := NULL;
+    END IF;
+
+    UPDATE custody_records SET advance_transaction_id = v_tx_id WHERE id = rec.id;
+  END LOOP;
+END $$;
 
 -- Application settings persisted server-side so all users share the same config.
 CREATE TABLE IF NOT EXISTS public.app_settings (

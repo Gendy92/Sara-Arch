@@ -199,7 +199,7 @@ profiles   ||--o{ user_permissions : has per-screen rights
 | Column | Type | Nullable | Default | Notes |
 |--------|------|----------|---------|-------|
 | `id` | `UUID` | NO | `uuid_generate_v4()` | Primary key |
-| `type` | `TEXT` | NO | — | CHECK: `project_deposit`, `project_expense`, `office_expense`, `owner_deposit`, `income`, `expense`, `deposit`, `withdrawal`, `supervision` |
+| `type` | `TEXT` | NO | — | CHECK: `project_deposit`, `project_expense`, `office_expense`, `owner_deposit`, `income`, `expense`, `deposit`, `withdrawal`, `supervision`, `client_return`, `vendor_settlement`, `custody_return` |
 | `amount` | `NUMERIC` | NO | `0` | |
 | `description` | `TEXT` | YES | — | |
 | `client_id` | `UUID` | YES | — | FK → `clients(id)` |
@@ -308,10 +308,12 @@ profiles   ||--o{ user_permissions : has per-screen rights
 | `project_id` | `UUID` | YES | — | FK → `projects(id)` |
 | `project_name` | `TEXT` | YES | — | |
 | `amount` | `NUMERIC` | YES | `0` | |
-| `returned_amount` | `NUMERIC` | YES | `0` | |
+| `returned_amount` | `NUMERIC` | YES | `0` | Σ of linked `custody_expenses` |
+| `returned_cash_amount` | `NUMERIC` | YES | `0` | Cash returned by the employee |
 | `status` | `TEXT` | YES | `'active'` | CHECK: `active`, `settled`, `partial` |
 | `date` | `DATE` | YES | `CURRENT_DATE` | |
 | `notes` | `TEXT` | YES | — | |
+| `advance_transaction_id` | `UUID` | YES | — | FK → `transactions(id)` — temporary office expense for the advance |
 | `created_at` | `TIMESTAMPTZ` | YES | `NOW()` | |
 | `updated_at` | `TIMESTAMPTZ` | YES | `NOW()` | Auto-updated |
 | `deleted_at` | `TIMESTAMPTZ` | YES | — | |
