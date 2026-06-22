@@ -1,12 +1,20 @@
 # Sara Arch — Changelog
 
-> **Current version:** v240  
+> **Current version:** v241  
 > **Branch:** `dev.2` / `main` (fast-forward synced)  
 > **Last updated:** 2026-06-22
 
 ---
 
-## Version 240 (Current)
+## Version 241 (Current)
+
+### Fixed
+- **🔨 مصروف عهدة - مشروع**: The Client ↔ Project cascade was not active because the cascade config was accidentally passed as the `excelMode` argument. Fixed so the project dropdown is disabled until a client is selected and only shows projects for the chosen client.
+
+### Changed
+- Bumped runtime, service-worker cache, and asset query-string version to `241`.
+
+## Version 240
 
 ### Added
 - **Real screenshots** inserted into the user manual (`Sara_Abo_El_Ela_Architecture_Office_System_Manual.docx`) using Playwright.

@@ -2466,7 +2466,7 @@ const Crud = {
       await this._updateCustodyAdvance(c.id);
       UI.toast(`تم حفظ ${rows.length} مصروف عهدة مشروع`);
       App.loadOffice();
-    }, defaults, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects }, sectionItem: { sectionKey: 'section_id', itemKey: 'item_id', items: workItems } });
+    }, defaults, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects }, sectionItem: { sectionKey: 'section_id', itemKey: 'item_id', items: workItems } });
   },
 
   async editCustody(id) {
