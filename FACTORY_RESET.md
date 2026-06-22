@@ -7,11 +7,16 @@ Use this when you want to delete all test/demo data and start using Sara Arch wi
 - Database schema (tables, views, RLS, triggers)
 - Admin user(s) in `profiles` / `auth.users`
 - Tenant configuration (`tenants`, `user_tenants`)
-- Company settings in `app_settings` (unless you uncomment the delete line)
+- Company settings in `app_settings`
+- Master data: sectors, items, work sections, work items
+- Audit logs and user permissions
 
 ## What gets deleted
 
-All clients, projects, transactions, procurements, vendors, employees, payroll, attendance, custody records, tasks, audit logs, and user permissions.
+- Clients, projects, project tasks
+- Transactions and procurements
+- Vendors, employees, payroll, attendance
+- Custody records and custody expenses
 
 ## Steps
 
