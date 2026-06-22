@@ -1964,7 +1964,7 @@ const Crud = {
       const amount = +p.total_price || 0;
       const paid = +p.paid_amount || 0;
       allRows.push({
-        i: idx + 1, date: p.date || '-', desc: App.esc(p.item_name || '-'),
+        i: idx + 1, date: p.date || '-', item: App.esc(p.item_name || '-'), section: App.esc(p.section_name || '-'), desc: App.esc(p.description || '-'),
         amount, paid, balance: amount - paid,
         project_id: p.project_id || '_none', project_name: p.projects?.name || p.project_name || 'بدون مشروع'
       });
@@ -1973,7 +1973,7 @@ const Crud = {
       const amount = +t.amount || 0;
       const paid = +t.paid_amount || 0;
       allRows.push({
-        i: idx + 1, date: t.date || '-', desc: App.fmtTxType(t.type) + (t.description ? ' — ' + App.esc(t.description) : ''),
+        i: idx + 1, date: t.date || '-', item: App.esc(t.item_name || '-'), section: App.esc(t.section_name || '-'), desc: App.esc(t.description || '-'),
         amount, paid, balance: amount - paid,
         project_id: t.project_id || '_none', project_name: t.projects?.name || t.project_name || 'بدون مشروع'
       });
@@ -2007,7 +2007,7 @@ const Crud = {
 
     const chapterHtml = chapters.map(c => {
       const rowsHtml = c.rows.length
-        ? App.table(['#', 'التاريخ', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], c.rows.map(r => [r.i, r.date, r.desc, App.fmtMoney(r.amount), App.fmtMoney(r.paid), {html: balHtml(r.balance)}]))
+        ? App.table(['#', 'التاريخ', 'الصنف', 'القسم', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], c.rows.map(r => [r.i, r.date, r.item, r.section, r.desc, App.fmtMoney(r.amount), App.fmtMoney(r.paid), {html: balHtml(r.balance)}]))
         : '<p style="color:var(--text3)">لا توجد بيانات</p>';
       return `<div class="stmt-chapter">
         <h4 style="margin:16px 0 8px;color:var(--gold)">📁 ${App.esc(c.projectName)}</h4>
@@ -2046,13 +2046,13 @@ const Crud = {
     ];
     data.chapters.forEach(c => {
       sheet.push(['المشروع: ' + c.projectName], ['مستحق', c.owed], ['مدفوع', c.paid], ['باقي', c.balance]);
-      sheet.push(['#', 'التاريخ', 'البيان', 'المبلغ', 'المدفوع', 'الباقي']);
-      c.rows.forEach(r => sheet.push([r.i, r.date, r.desc, r.amount, r.paid, r.balance]));
+      sheet.push(['#', 'التاريخ', 'الصنف', 'القسم', 'البيان', 'المبلغ', 'المدفوع', 'الباقي']);
+      c.rows.forEach(r => sheet.push([r.i, r.date, r.item, r.section, r.desc, r.amount, r.paid, r.balance]));
       sheet.push([]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(sheet);
-    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب المورد');
