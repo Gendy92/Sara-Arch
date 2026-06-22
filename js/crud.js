@@ -2217,22 +2217,32 @@ const Crud = {
   },
 
   async addOfficeCustodyExpense() {
-    const custodies = await API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc");
+    const [custodies, sectors, projects] = await Promise.all([
+      API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc"),
+      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
+    ]);
     if (!custodies.length) { UI.toast('لا توجد عهد مفتوحة لإضافة مصروف', 'error'); return; }
     const custodyOpts = custodies.map(c => ({ v: c.id, l: `${c.employees?.name || c.employee_name || '-'} — ${App.fmtMoney(c.amount)} (متبقي: ${App.fmtMoney(c.remaining_balance || 0)})` }));
+    const typeOpts = [{ v: 'office', l: 'مكتب' }, { v: 'project', l: 'مشروع' }];
     const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const fields = [
       { name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] },
+      { name: 'expense_type', label: 'نوع المصروف *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر نوع --' }, ...typeOpts], default: 'office' },
+      { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
+      { name: 'project_id', label: 'المشروع *', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
       { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
       { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: 'cash' },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
-    UI.openModal('🔨 مصروف عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+    const overlay = UI.openModal('🔨 مصروف عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
       const custodyId = fd.get('custody_id');
+      const expenseType = fd.get('expense_type');
       const amount = +fd.get('amount') || 0;
       if (!custodyId) { UI.toast('يجب اختيار العهدة', 'error'); return; }
+      if (!expenseType) { UI.toast('يجب اختيار نوع المصروف', 'error'); return; }
       const c = custodies.find(x => x.id === custodyId);
       if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
       const available = +c.remaining_balance || 0;
@@ -2240,18 +2250,46 @@ const Crud = {
       const date = fd.get('date') || new Date().toISOString().slice(0, 10);
       const desc = fd.get('description') || 'مصروف عهدة';
       const paymentMethod = fd.get('payment_method') || 'cash';
-      const txResult = await this.save('transactions', {
-        type: 'office_expense',
-        amount,
-        paid_amount: amount,
-        payment_method: paymentMethod,
-        employee_id: c.employee_id || null,
-        employee_name: c.employee_name || null,
-        sector_id: c.sector_id || null,
-        sector_name: c.sector_name || null,
-        date,
-        description: desc
-      });
+      let txPayload;
+      if (expenseType === 'project') {
+        const projectId = fd.get('project_id');
+        if (!projectId) { UI.toast('يجب اختيار المشروع', 'error'); return; }
+        const proj = projects.find(p => p.id === projectId);
+        txPayload = {
+          type: 'project_expense',
+          amount,
+          paid_amount: amount,
+          payment_method: paymentMethod,
+          payment_term: 'immediate',
+          expense_category: 'construction',
+          client_id: proj ? proj.client_id : null,
+          party_id: proj ? proj.client_id : null,
+          party_name: proj ? proj.client_name : null,
+          party_type: 'client',
+          project_id: proj ? proj.id : null,
+          project_name: proj ? proj.name : null,
+          employee_id: c.employee_id || null,
+          employee_name: c.employee_name || null,
+          date,
+          description: desc
+        };
+      } else {
+        const sectorId = fd.get('sector_id') || null;
+        const sector = sectors.find(s => s.id === sectorId);
+        txPayload = {
+          type: 'office_expense',
+          amount,
+          paid_amount: amount,
+          payment_method: paymentMethod,
+          employee_id: c.employee_id || null,
+          employee_name: c.employee_name || null,
+          sector_id: sectorId,
+          sector_name: sector ? sector.name : null,
+          date,
+          description: desc
+        };
+      }
+      const txResult = await this.save('transactions', txPayload);
       const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
       await this.save('custody_expenses', {
         custody_id: custodyId,
@@ -2264,6 +2302,35 @@ const Crud = {
       UI.toast('تم حفظ مصروف العهدة');
       App.loadOffice();
     });
+    const form = overlay.querySelector('form');
+    const typeSel = form.querySelector('[name="expense_type"]');
+    const custodySel = form.querySelector('[name="custody_id"]');
+    const sectorGroup = form.querySelector('[name="sector_id"]').closest('.form-group');
+    const projectGroup = form.querySelector('[name="project_id"]').closest('.form-group');
+    const toggle = () => {
+      if (typeSel.value === 'project') { sectorGroup.style.display = 'none'; projectGroup.style.display = ''; }
+      else { sectorGroup.style.display = ''; projectGroup.style.display = 'none'; }
+    };
+    const syncFromCustody = () => {
+      const c = custodies.find(x => x.id === custodySel.value);
+      if (!c) return;
+      if (c.custody_type === 'project') {
+        typeSel.value = 'project';
+        const projSel = form.querySelector('[name="project_id"]');
+        if (c.project_id) projSel.value = c.project_id;
+        projSel.dispatchEvent(new Event('change'));
+      } else {
+        typeSel.value = 'office';
+        const secSel = form.querySelector('[name="sector_id"]');
+        if (c.sector_id) secSel.value = c.sector_id;
+        secSel.dispatchEvent(new Event('change'));
+      }
+      typeSel.dispatchEvent(new Event('change'));
+      toggle();
+    };
+    typeSel.addEventListener('change', toggle);
+    custodySel.addEventListener('change', syncFromCustody);
+    toggle();
   },
 
   async editCustody(id) {
