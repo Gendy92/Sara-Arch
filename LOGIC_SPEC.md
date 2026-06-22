@@ -122,6 +122,16 @@ Interpretation:
 - **Zero** → fully paid.
 - **Negative** → vendor was over-paid.
 
+### 3.4 Office Vendor
+
+The system seeds one special vendor marked `is_office = true` (e.g. "مكتب سارة أبو العلا"). This vendor represents the office itself and can be used for:
+
+- Project expenses where the office is the service provider.
+- Procurements where the office is the supplier.
+- Office expenses linked to a vendor for traceability.
+
+Transactions linked to the office vendor are **not** included in vendor balances or top-vendor dashboards; instead, their paid amounts are treated as **office income** and appear in the office cash-flow.
+
 ---
 
 ## 4. Office Cash Flow
@@ -296,6 +306,8 @@ Client ──project_deposit──► Project ◄──project_expense── Ven
                          Design Expense (excluded from supervision base)
 
 Office Cash ──office_expense──► Operating Costs / Sectors
+Office Vendor ──project_expense──► Office Income
+Office Vendor ──procurement──► Office Income
 Employee ──custody──► Project / Office expense
 Employee ──payroll──► Salary expense
 ```
@@ -332,7 +344,8 @@ Employee ──payroll──► Salary expense
 | Client supervision | `Σ Project Supervision across all client projects` |
 | Supervision fee | `(Expenses − Design Expenses) × Supervision% / 100` |
 | Vendor balance | `(Service Owed + Merchandise Owed) − (Service Paid + Merchandise Paid)` |
-| Office balance | `(Owner Deposits + Supervision Income) − (Office Expenses + Withdrawals)` |
+| Office balance | `(Owner Deposits + Supervision Income + Office Vendor Income) − (Office Expenses + Withdrawals)` |
+| Office vendor income | `Σ paid_amount of project_expense/vendor_settlement where vendor.is_office = true` |
 | Net salary | `Base Salary − Deductions + Bonuses − Penalties` |
 | Custody remaining | `Given − Returned` |
 | Unpaid balance (row) | `Amount − Paid Amount` |
@@ -349,5 +362,5 @@ Office-level configuration is persisted server-side in the `app_settings` table 
 
 ---
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Branch:** `dev.2`
