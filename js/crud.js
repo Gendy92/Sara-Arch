@@ -1937,8 +1937,8 @@ const Crud = {
   async vendorStatement(vendorId) {
     const [vendor, txs, procs] = await Promise.all([
       API.request('vendors', 'GET', null, `?select=name&id=eq.${vendorId}`),
-      API.request('transactions', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=eq.project_expense&deleted_at=is.null&order=date.desc&limit=200`),
-      API.request('procurements', 'GET', null, `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc&limit=200`)
+      API.fetchAll('transactions', `?select=*,projects(name)&vendor_id=eq.${vendorId}&type=in.(project_expense,vendor_settlement)&deleted_at=is.null&order=date.desc`),
+      API.fetchAll('procurements', `?select=*,projects(name)&vendor_id=eq.${vendorId}&deleted_at=is.null&order=date.desc`)
     ]);
     const name = vendor[0]?.name || 'مورد';
 
@@ -1948,62 +1948,77 @@ const Crud = {
       return `<span style="color:${color};font-weight:700;font-size:12px">${App.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${label}</span>`;
     };
 
-    // Raw data for Excel export
-    const txData = txs.map((t, i) => {
-      const isNew = t.payment_term !== undefined && t.payment_term !== null;
+    const allRows = [];
+    procs.forEach((p, idx) => {
+      const amount = +p.total_price || 0;
+      const paid = +p.paid_amount || 0;
+      allRows.push({
+        i: idx + 1, date: p.date || '-', desc: App.esc(p.item_name || '-'),
+        amount, paid, balance: amount - paid,
+        project_id: p.project_id || '_none', project_name: p.projects?.name || p.project_name || 'بدون مشروع'
+      });
+    });
+    txs.forEach((t, idx) => {
       const amount = +t.amount || 0;
-      const paid = isNew ? (+t.paid_amount || 0) : amount;
-      return {
-        i: i+1, date: t.date || '-', type: App.fmtTxType(t.type),
-        project: t.projects?.name || t.project_name || '-',
-        description: t.description || '-', amount, paid, balance: amount - paid
-      };
+      const paid = +t.paid_amount || 0;
+      allRows.push({
+        i: idx + 1, date: t.date || '-', desc: App.fmtTxType(t.type) + (t.description ? ' — ' + App.esc(t.description) : ''),
+        amount, paid, balance: amount - paid,
+        project_id: t.project_id || '_none', project_name: t.projects?.name || t.project_name || 'بدون مشروع'
+      });
     });
-    const totalTx = txData.reduce((s, t) => s + t.amount, 0);
-    const totalTxPaid = txData.reduce((s, t) => s + t.paid, 0);
 
-    const procData = procs.map((p, i) => {
-      const isNew = p.payment_term !== undefined && p.payment_term !== null;
-      const total = +p.total_price || 0;
-      const paid = isNew ? (+p.paid_amount || 0) : total;
-      return {
-        i: i+1, date: p.date || '-', item: p.item_name || '-',
-        qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
-        total, paid, balance: total - paid,
-        project: p.projects?.name || p.project_name || '-'
-      };
+    const byProject = {};
+    allRows.forEach(r => {
+      if (!byProject[r.project_id]) byProject[r.project_id] = { projectName: r.project_name, rows: [] };
+      byProject[r.project_id].rows.push(r);
     });
-    const totalProc = procData.reduce((s, p) => s + p.total, 0);
-    const totalProcPaid = procData.reduce((s, p) => s + p.paid, 0);
 
-    const totalOwed = totalTx + totalProc;
-    const totalPaid = totalTxPaid + totalProcPaid;
+    const chapters = Object.values(byProject).map(ch => {
+      const owed = ch.rows.reduce((s, r) => s + r.amount, 0);
+      const paid = ch.rows.reduce((s, r) => s + r.paid, 0);
+      return { projectName: ch.projectName, rows: ch.rows, owed, paid, balance: owed - paid };
+    });
+
+    const totalOwed = chapters.reduce((s, c) => s + c.owed, 0);
+    const totalPaid = chapters.reduce((s, c) => s + c.paid, 0);
     const netBalance = totalOwed - totalPaid;
     const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
     const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
-    // HTML rows (formatted)
-    const txRows = txData.map(t => [t.i, t.date, t.type, App.esc(t.project), App.esc(t.description), App.fmtMoney(t.amount), App.fmtMoney(t.paid), {html: balHtml(t.balance)}]);
-    const procRows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), {html: balHtml(p.balance)}, App.esc(p.project)]);
+    const kpi = (label, value, color) => `<div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">${label}</div><div class="kpi-value" style="color:${color}">${App.fmtMoney(value)}</div></div>`;
+    const summary = `<div class="stmt-summary"><h3 style="margin:0 0 12px">ملخص المورد: ${App.esc(name)}</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        ${kpi('إجمالي المستحق', totalOwed, 'var(--red)')}
+        ${kpi('إجمالي المدفوع', totalPaid, 'var(--green)')}
+        ${kpi('الرصيد (' + balLabel + ')', Math.abs(netBalance), balColor)}
+      </div></div>`;
 
-    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المستحق</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalOwed)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد (${balLabel})</div><div class="kpi-value" style="color:${balColor}">${App.fmtMoney(Math.abs(netBalance))}</div></div>
-    </div>`;
-    const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المعاملات</h4>' + App.table(['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], txRows) : '';
-    const procTable = procRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🛒 المشتريات</h4>' + App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'], procRows) : '';
+    const chapterHtml = chapters.map(c => {
+      const rowsHtml = c.rows.length
+        ? App.table(['#', 'التاريخ', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'], c.rows.map(r => [r.i, r.date, r.desc, App.fmtMoney(r.amount), App.fmtMoney(r.paid), {html: balHtml(r.balance)}]))
+        : '<p style="color:var(--text3)">لا توجد بيانات</p>';
+      return `<div class="stmt-chapter">
+        <h4 style="margin:16px 0 8px;color:var(--gold)">📁 ${App.esc(c.projectName)}</h4>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+          ${kpi('مستحق', c.owed, 'var(--red)')}
+          ${kpi('مدفوع', c.paid, 'var(--green)')}
+          ${kpi('باقي', c.balance, 'var(--text)')}
+        </div>
+        ${rowsHtml}
+      </div>`;
+    }).join('');
 
     const logoHtml = `<div class="print-logo" style="display:none;text-align:center;margin-bottom:16px"><img src="logo.png" alt="logo" style="max-height:60px"></div>`;
     const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm btn-secondary" onclick="Crud._exportVendorStatement('${vendorId}')">📥 تحميل Excel</button>
       <button class="btn btn-sm btn-secondary" onclick="Crud._printVendorStatement('${vendorId}')">🖨️ طباعة / PDF</button>
     </div>`;
-    this._vendorStatementData = this._vendorStatementData || {};
-    this._vendorStatementData[vendorId] = { txData, procData, totalTx, totalTxPaid, totalProc, totalProcPaid, totalOwed, totalPaid, netBalance, name };
 
-    const content = logoHtml + actionsHtml + summary + (txTable || '') + (procTable || '') || '<p style="color:var(--text3)">لا توجد بيانات</p>';
-    UI.openModal(`كشف حساب مورد: ${App.esc(name)}`, content, null);
+    this._vendorStatementData = this._vendorStatementData || {};
+    this._vendorStatementData[vendorId] = { vendorName: name, chapters, totalOwed, totalPaid, netBalance };
+
+    UI.openModal(`كشف حساب مورد: ${App.esc(name)}`, logoHtml + actionsHtml + summary + (chapterHtml || '<p style="color:var(--text3)">لا توجد بيانات</p>'), null);
   },
 
   _exportVendorStatement(vendorId) {
@@ -2011,37 +2026,32 @@ const Crud = {
     if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
+    const sheet = [
+      ['كشف حساب مورد: ' + data.vendorName],
+      ['إجمالي المستحق', data.totalOwed],
+      ['إجمالي المدفوع', data.totalPaid],
+      ['الرصيد', data.netBalance],
+      []
+    ];
+    data.chapters.forEach(c => {
+      sheet.push(['المشروع: ' + c.projectName], ['مستحق', c.owed], ['مدفوع', c.paid], ['باقي', c.balance]);
+      sheet.push(['#', 'التاريخ', 'البيان', 'المبلغ', 'المدفوع', 'الباقي']);
+      c.rows.forEach(r => sheet.push([r.i, r.date, r.desc, r.amount, r.paid, r.balance]));
+      sheet.push([]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(sheet);
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+
     const wb = XLSX.utils.book_new();
-    if (data.txData.length) {
-      const txSheet = [
-        ['كشف حساب مورد: ' + data.name],
-        ['المعاملات'],
-        ['#', 'التاريخ', 'النوع', 'المشروع', 'البيان', 'المبلغ', 'المدفوع', 'الباقي'],
-        ...data.txData.map(t => [t.i, t.date, t.type, t.project, t.description, t.amount, t.paid, t.balance]),
-        ['', '', '', '', 'الإجمالي', data.totalTx, data.totalTxPaid, data.totalTx - data.totalTxPaid]
-      ];
-      const txWs = XLSX.utils.aoa_to_sheet(txSheet);
-      txWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(wb, txWs, 'المعاملات');
-    }
-    if (data.procData.length) {
-      const procSheet = [
-        ['المشتريات'],
-        ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'],
-        ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project]),
-        ['', '', '', '', '', 'الإجمالي', data.totalProc, data.totalProcPaid, data.totalProc - data.totalProcPaid]
-      ];
-      const procWs = XLSX.utils.aoa_to_sheet(procSheet);
-      procWs['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
-      XLSX.utils.book_append_sheet(wb, procWs, 'المشتريات');
-    }
+    XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب المورد');
 
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `كشف-حساب-مورد-${data.name}-${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.download = `كشف-حساب-مورد-${data.vendorName}-${new Date().toISOString().slice(0,10)}.xlsx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2051,7 +2061,7 @@ const Crud = {
   _printVendorStatement(vendorId) {
     const data = this._vendorStatementData?.[vendorId];
     if (!data) { UI.toast('لا توجد بيانات للطباعة', 'error'); return; }
-    App.printReport(`كشف-حساب-مورد-${data.name}`);
+    App.printReport(`كشف-حساب-مورد-${data.vendorName}`);
   },
 
   async vendorPurchases(vendorId) {
