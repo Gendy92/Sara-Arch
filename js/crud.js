@@ -2220,15 +2220,22 @@ const Crud = {
     const custodies = await API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc");
     if (!custodies.length) { UI.toast('لا توجد عهد مفتوحة لإضافة مصروف', 'error'); return; }
     const custodyOpts = custodies.map(c => ({ v: c.id, l: `${c.employees?.name || c.employee_name || '-'} — ${App.fmtMoney(c.amount)} (متبقي: ${App.fmtMoney(c.remaining_balance || 0)})` }));
-    const fields = [{ name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] }];
+    const typeOpts = [{ v: 'office', l: 'مكتب' }, { v: 'project', l: 'مشروع' }];
+    const fields = [
+      { name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] },
+      { name: 'expense_type', label: 'نوع المصروف *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر نوع --' }, ...typeOpts], default: 'office' }
+    ];
     UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
-      const custodyId = new FormData(form).get('custody_id');
+      const fd = new FormData(form);
+      const custodyId = fd.get('custody_id');
+      const expenseType = fd.get('expense_type');
       const c = custodies.find(x => x.id === custodyId);
       if (!custodyId || !c) { UI.toast('يجب اختيار العهدة', 'error'); return; }
+      if (!expenseType) { UI.toast('يجب اختيار نوع المصروف', 'error'); return; }
       const available = +c.remaining_balance || 0;
       if (available <= 0) { UI.toast('لا يوجد رصيد متاح لهذه العهدة', 'error'); return; }
       UI.closeModal();
-      if (c.custody_type === 'project') await this._openProjectCustodyExpenseSheet(c);
+      if (expenseType === 'project') await this._openProjectCustodyExpenseSheet(c);
       else await this._openOfficeCustodyExpenseSheet(c);
     });
   },
