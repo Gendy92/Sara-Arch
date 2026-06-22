@@ -88,21 +88,12 @@ Object.assign(App, {
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
-      // If the new RPC isn't deployed yet, fall back to the vendor_balances view so the dashboard still renders.
-      const fetchVendorAlerts = async () => {
-        try { return await API.rpc('dashboard_vendor_alerts', { limit_count: 10 }); }
-        catch (err) {
-          const rows = await API.request('vendor_balances', 'GET', null, '?select=vendor_id,vendor_name,balance&balance=gt.0&order=balance.desc&limit=10');
-          return rows.map(r => ({ vendor_id: r.vendor_id, vendor_name: r.vendor_name, balance: r.balance }));
-        }
-      };
-      const [[kpi], vendorBalances, clientBalances, monthly, officeSectors, vendorAlerts, custodyAlerts] = await Promise.all([
+      const [[kpi], vendorBalances, clientBalances, monthly, officeSectors, custodyAlerts] = await Promise.all([
         API.rpc('dashboard_kpis'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
         API.rpc('dashboard_active_client_balances', { limit_count: 10 }),
         API.rpc('dashboard_monthly_revenue_expenses', { months_back: 6 }),
         API.rpc('dashboard_office_expense_sectors'),
-        fetchVendorAlerts(),
         API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc&limit=10")
       ]);
       const k = kpi || {};
@@ -135,14 +126,14 @@ Object.assign(App, {
       document.getElementById('dash-office-sectors').innerHTML = sectorRows.length
         ? this._renderPie(sectorRows, 160, 'لا توجد مصروفات مكتبية')
         : '<p style="color:var(--text3)">لا توجد مصروفات مكتبية</p>';
-      // ─── Top 10 Vendor Outstanding Balances ───
+      // ─── Vendor balances & alerts (merged) ───
       const vendorRows = (vendorBalances || [])
         .filter(v => (v.balance || 0) > 0)
         .sort((a, b) => (b.balance || 0) - (a.balance || 0))
         .slice(0, 10)
-        .map(v => [{html: `<a href="#" onclick="Crud.vendorStatement('${v.vendor_id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.vendor_name || '-')}</a>`}, {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
+        .map(v => [{html: `<a href="#" onclick="Crud.vendorStatement('${v.vendor_id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.vendor_name || '-')}</a>`}, {html: '<span class="badge badge-red">مستحق</span>'}, {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
       document.getElementById('dash-vendors').innerHTML = vendorRows.length
-        ? this.table(['المورد', 'المبلغ المستحق'], vendorRows) + '<div style="text-align:left;margin-top:8px"><a href="#" onclick="App.go(\'vendors\');return false;" style="font-size:12px;color:var(--gold)">عرض كل الموردين →</a></div>'
+        ? this.table(['المورد', 'الحالة', 'المبلغ'], vendorRows) + '<div style="text-align:left;margin-top:8px"><a href="#" onclick="App.go(\'vendors\');return false;" style="font-size:12px;color:var(--gold)">عرض كل الموردين →</a></div>'
         : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
       // ─── Top 10 Active Customer Balances ───
       const clientRows = (clientBalances || [])
@@ -150,14 +141,6 @@ Object.assign(App, {
       document.getElementById('dash-clients').innerHTML = clientRows.length
         ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientRows) + '<div style="text-align:left;margin-top:8px"><a href="#" onclick="App.go(\'clients\');return false;" style="font-size:12px;color:var(--gold)">عرض كل العملاء →</a></div>'
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
-      // ─── Vendor Alerts ───
-      const alertRows = (vendorAlerts || [])
-        .filter(v => (v.balance || 0) > 0)
-        .slice(0, 10)
-        .map(v => [{html: `<a href="#" onclick="Crud.vendorStatement('${v.vendor_id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.vendor_name || '-')}</a>`}, {html: '<span class="badge badge-red">مستحق</span>'}, {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
-      document.getElementById('dash-vendor-alerts').innerHTML = alertRows.length
-        ? this.table(['المورد', 'الحالة', 'المبلغ'], alertRows)
-        : '<p style="color:var(--text3)">لا توجد مستحقات متأخرة</p>';
       // ─── Custody Alerts ───
       const custodyAlertRows = (custodyAlerts || [])
         .map(r => {
