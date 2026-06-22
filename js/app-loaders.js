@@ -494,7 +494,7 @@ Object.assign(App, {
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
       this.pageState.transactions = safeTxPage;
 
-      const txHtml = pagedTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], pagedTxs.map(t => {
+      const txHtml = pagedTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'المدفوع', 'الباقي', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], pagedTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         let party;
         if (t.type === 'project_expense') {
@@ -514,8 +514,12 @@ Object.assign(App, {
         if (t.type === 'project_expense') {
           pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
         }
+        const paid = t.paid_amount !== undefined && t.paid_amount !== null ? +t.paid_amount : +t.amount;
+        const balance = (+t.amount || 0) - paid;
+        const balColor = balance > 0 ? 'var(--red)' : balance < 0 ? 'var(--green)' : 'var(--text3)';
+        const balLabel = balance > 0 ? 'متبقي' : balance < 0 ? 'زيادة' : 'تسوية';
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
-        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), App.esc(t.description || '-'), {html: party}, clientName, App.esc(t.project_name || '-'), {html: pt}, {html: actions}];
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, App.esc(t.description || '-'), {html: party}, clientName, App.esc(t.project_name || '-'), {html: pt}, {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxCount);
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...', (term) => {
