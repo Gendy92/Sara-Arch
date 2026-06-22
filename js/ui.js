@@ -44,10 +44,11 @@ const UI = {
     if (overlay) { overlay.remove(); document.body.style.overflow = ''; document.body.classList.remove('modal-open'); }
   },
 
-  confirm(msg, onYes) {
+  confirm(msg, onYes, onNo) {
     const safeMsg = (typeof App !== 'undefined' && App.esc) ? App.esc(msg) : String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    this.openModal('تأكيد', `<p style="margin-bottom:20px;color:var(--text2)">${safeMsg}</p><div style="display:flex;gap:8px"><button class="btn btn-red" id="confirm-yes">نعم، متأكد</button><button class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button></div>`);
+    this.openModal('تأكيد', `<p style="margin-bottom:20px;color:var(--text2)">${safeMsg}</p><div style="display:flex;gap:8px"><button class="btn btn-red" id="confirm-yes">نعم، متأكد</button><button class="btn btn-secondary" id="confirm-no">إلغاء</button></div>`);
     document.getElementById('confirm-yes').addEventListener('click', () => { UI.closeModal(); onYes(); });
+    if (onNo) document.getElementById('confirm-no').addEventListener('click', () => { UI.closeModal(); onNo(); });
   },
 
   _escAttr(s) {

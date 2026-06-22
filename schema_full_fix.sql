@@ -1018,6 +1018,7 @@ DECLARE
   v_vendor_settlements NUMERIC;
   v_owner_deposits NUMERIC;
   v_office_vendor_income NUMERIC;
+  v_office_income NUMERIC;
   v_office_expenses NUMERIC;
   v_withdrawals NUMERIC;
   v_custody_returns NUMERIC;
@@ -1028,6 +1029,7 @@ BEGIN
   v_vendor_settlements := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'vendor_settlement'), 0);
   v_owner_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0);
   v_office_vendor_income := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0);
+  v_office_income := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'income'), 0);
   v_office_expenses := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'office_expense'), 0);
   v_withdrawals := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'withdrawal'), 0);
   v_custody_returns := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'custody_return'), 0);
@@ -1040,11 +1042,11 @@ BEGIN
     (SELECT COUNT(*) FROM employees WHERE deleted_at IS NULL AND is_active = true) AS employee_count,
     v_project_deposits + v_supervision AS project_income,
     v_project_expenses + v_vendor_settlements AS project_expense,
-    v_owner_deposits + v_office_vendor_income AS office_income,
+    v_owner_deposits + v_office_vendor_income + v_office_income AS office_income,
     v_office_expenses + v_withdrawals - v_custody_returns AS office_expense,
-    v_project_deposits + v_supervision + v_owner_deposits + v_office_vendor_income AS total_income,
+    v_project_deposits + v_supervision + v_owner_deposits + v_office_vendor_income + v_office_income AS total_income,
     v_project_expenses + v_vendor_settlements + v_office_expenses + v_withdrawals - v_custody_returns AS total_expense,
-    v_project_deposits + v_supervision + v_owner_deposits + v_office_vendor_income + v_project_expenses + v_vendor_settlements + v_office_expenses + v_withdrawals - v_custody_returns AS total_movement;
+    v_project_deposits + v_supervision + v_owner_deposits + v_office_vendor_income + v_office_income + v_project_expenses + v_vendor_settlements + v_office_expenses + v_withdrawals - v_custody_returns AS total_movement;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
@@ -1102,6 +1104,12 @@ BEGIN
     WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement') AND t.date >= start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
+  office_income AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL AND t.type = 'income' AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
+  ),
   office_exp AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
@@ -1117,7 +1125,7 @@ BEGIN
   SELECT m.mk::TEXT,
          COALESCE(pd.amt, 0) + COALESCE(s.amt, 0) AS project_revenue,
          COALESCE(pe.amt, 0) + COALESCE(vs.amt, 0) AS project_expense,
-         COALESCE(od.amt, 0) + COALESCE(ovi.amt, 0) AS office_revenue,
+         COALESCE(od.amt, 0) + COALESCE(ovi.amt, 0) + COALESCE(oi.amt, 0) AS office_revenue,
          COALESCE(oe.amt, 0) - COALESCE(cr.amt, 0) AS office_expense
   FROM month_keys m
   LEFT JOIN project_dep pd ON pd.mk = m.mk
@@ -1126,6 +1134,7 @@ BEGIN
   LEFT JOIN vendor_settlement vs ON vs.mk = m.mk
   LEFT JOIN owner_dep od ON od.mk = m.mk
   LEFT JOIN office_vendor_income ovi ON ovi.mk = m.mk
+  LEFT JOIN office_income oi ON oi.mk = m.mk
   LEFT JOIN office_exp oe ON oe.mk = m.mk
   LEFT JOIN custody_ret cr ON cr.mk = m.mk
   ORDER BY m.mk;
@@ -1374,23 +1383,23 @@ WHERE v.deleted_at IS NULL
 GROUP BY v.id, v.name;
 
 -- Default legacy office transactions to cash so the cash/bank split is consistent
-UPDATE transactions SET payment_method = 'cash' WHERE payment_method IS NULL AND deleted_at IS NULL AND type IN ('owner_deposit','office_expense','withdrawal','custody_return');
+UPDATE transactions SET payment_method = 'cash' WHERE payment_method IS NULL AND deleted_at IS NULL AND type IN ('owner_deposit','office_expense','withdrawal','custody_return','income');
 
 DROP VIEW IF EXISTS public.office_balance;
 DROP VIEW IF EXISTS public.office_transactions_view;
 CREATE OR REPLACE VIEW public.office_balance AS
 WITH base AS (
   SELECT
-    COALESCE(SUM(CASE WHEN t.type = 'owner_deposit' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN t.type IN ('owner_deposit','income') AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) -
     COALESCE(SUM(CASE WHEN t.type IN ('office_expense','withdrawal') AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) +
     COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) AS cash_balance,
-    COALESCE(SUM(CASE WHEN t.type = 'owner_deposit' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN t.type IN ('owner_deposit','income') AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) -
     COALESCE(SUM(CASE WHEN t.type IN ('office_expense','withdrawal') AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) +
     COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) AS bank_balance,
     COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0) AS supervision_income,
     COALESCE((SELECT SUM(t2.paid_amount) FROM transactions t2 JOIN vendors v ON v.id = t2.vendor_id WHERE t2.deleted_at IS NULL AND v.is_office IS TRUE AND t2.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income
   FROM transactions t
-  WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','custody_return')
+  WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','custody_return','income')
 )
 SELECT
   cash_balance,
@@ -1412,7 +1421,7 @@ SELECT
   t.sector_name,
   t.vendor_name
 FROM transactions t
-WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal')
+WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','income')
 UNION ALL
 SELECT
   t.id,

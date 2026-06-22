@@ -56,6 +56,31 @@ const Crud = {
     }
   },
 
+  _isOfficeVendor(vendorId, vendors) {
+    if (!vendorId || !vendors) return false;
+    const v = vendors.find(x => String(x.id) === String(vendorId));
+    return !!v && v.is_office;
+  },
+
+  _confirmOfficeVendor(vendorId, vendors, onYes) {
+    if (this._isOfficeVendor(vendorId, vendors)) {
+      UI.confirm('⚠️ المورد المختار هو مكتب سارة. هذا قد يسبب تكرارًا في كشف حساب المكتب إذا كان يشمل دفعات لباطن. استخدمه فقط إذا كانت الخدمة من المكتب نفسه بدون أي مورد باطن.', onYes);
+    } else {
+      onYes();
+    }
+  },
+
+  _confirmOfficeVendorAsync(vendorId, vendors) {
+    return new Promise((resolve, reject) => {
+      if (!this._isOfficeVendor(vendorId, vendors)) return resolve();
+      UI.confirm(
+        '⚠️ المورد المختار هو مكتب سارة. هذا قد يسبب تكرارًا في كشف حساب المكتب إذا كان يشمل دفعات لباطن. استخدمه فقط إذا كانت الخدمة من المكتب نفسه بدون أي مورد باطن.',
+        () => resolve(),
+        () => reject(new Error('cancelled'))
+      );
+    });
+  },
+
   async _fetchOldData(table, id) {
     try {
       const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
@@ -552,7 +577,7 @@ const Crud = {
     const [clients, projects, vendors] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc')
     ]);
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
@@ -589,6 +614,7 @@ const Crud = {
           expense_type: r.expense_type || null, date: r.date || new Date().toISOString().slice(0, 10), notes: r.notes || null
         };
       });
+      for (const r of enriched) await this._confirmOfficeVendorAsync(r.vendor_id, vendors);
       const result = await this.bulkSave('procurements', enriched);
       const saved = Array.isArray(result) ? result : [];
       for (const proc of saved) {
@@ -607,7 +633,7 @@ const Crud = {
     const [clients, projects, vendors] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc')
     ]);
     const clientId = p.client_id || (p.project_id ? projects.find(pr => pr.id === p.project_id)?.client_id : null);
     const fields = [
@@ -630,6 +656,7 @@ const Crud = {
       const qty = +fd.get('quantity') || 1;
       const up = +fd.get('unit_price') || 0;
       const total = qty * up;
+      await this._confirmOfficeVendorAsync(fd.get('vendor_id'), vendors);
       const isCredit = p.payment_term === 'credit';
       await this.save('procurements', {
         vendor_id: fd.get('vendor_id'), vendor_name: vendor ? vendor.name : null,
@@ -960,7 +987,7 @@ const Crud = {
     const [clients, projects, vendors, workSections, workItems] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc'),
       API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('work_items', 'GET', null, '?select=id,name,section_id&deleted_at=is.null&order=name.asc')
     ]);
@@ -1000,6 +1027,7 @@ const Crud = {
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
         return { type: 'project_expense', expense_category, section_id: r.section_id || null, section_name: sectionName || null, item_id: r.item_id || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: r.project_id, project_name: project.name, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
+      for (const r of enriched) await this._confirmOfficeVendorAsync(r.vendor_id, vendors);
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف`);
       App.loadTransactions(); App.loadOffice();
@@ -1050,7 +1078,7 @@ const Crud = {
 
   async addVendorSettlement(vendorId) {
     const [vendors, projects] = await Promise.all([
-      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
     ]);
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
@@ -1067,6 +1095,7 @@ const Crud = {
       const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
       const project = projects.find(p => p.id === fd.get('project_id'));
       if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
+      await this._confirmOfficeVendorAsync(fd.get('vendor_id'), vendors);
       const amount = +fd.get('amount') || 0;
       await this.save('transactions', {
         type: 'vendor_settlement',
@@ -1098,13 +1127,12 @@ const Crud = {
     ]);
     const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
     const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
-    const officeVendor = vendors.find(v => v.is_office);
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
-      { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: officeVendor ? officeVendor.id : '' },
+      { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
@@ -1117,6 +1145,7 @@ const Crud = {
         const vendor = vendors.find(v => v.id === r.vendor_id);
         return { type: 'office_expense', amount: r.amount, payment_method: r.payment_method || 'cash', employee_id: r.employee_id, employee_name: emp ? emp.name : null, sector_id: r.sector_id, sector_name: sector ? sector.name : null, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
+      for (const r of enriched) await this._confirmOfficeVendorAsync(r.vendor_id, vendors);
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف مكتبي`);
       App.loadTransactions();
@@ -1137,6 +1166,27 @@ const Crud = {
       UI.toast(`تم حفظ ${rows.length} توريد`);
       App.loadTransactions(); App.loadOffice();
     });
+  },
+
+  async addOfficeIncome() {
+    const sectors = await API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
+    const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
+    const cols = [
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
+      { key: 'sector_id', label: 'التصنيف', type: 'select', opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { key: 'description', label: 'البيان' }
+    ];
+    Spreadsheet.open('📈 إيراد مكتبي', cols, async (rows) => {
+      const enriched = rows.map(r => {
+        const sector = sectors.find(s => s.id === r.sector_id);
+        return { type: 'income', amount: r.amount, payment_method: r.payment_method || 'cash', sector_id: r.sector_id || null, sector_name: sector ? sector.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+      });
+      await this.bulkSave('transactions', enriched);
+      UI.toast(`تم حفظ ${rows.length} إيراد مكتبي`);
+      App.loadOffice(); App.loadTransactions();
+    }, { date: new Date().toISOString().slice(0, 10), payment_method: 'cash' });
   },
 
   addOwnerWithdrawal() {
@@ -1205,7 +1255,7 @@ const Crud = {
       const [clients, projects, vendors, workSections, workItems] = await Promise.all([
         API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-        API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+        API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc'),
         API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('work_items', 'GET', null, '?select=id,name,section_id&deleted_at=is.null&order=name.asc')
       ]);
@@ -1240,6 +1290,7 @@ const Crud = {
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
+        await this._confirmOfficeVendorAsync(fd.get('vendor_id'), vendors);
         await this.save('transactions', { type: 'project_expense', expense_category, section_id: fd.get('section_id') || null, section_name: sectionName || null, item_id: fd.get('item_id') || null, item_name: item ? item.name : null, payment_method, payment_term, amount, paid_amount, client_id: project.client_id, party_id: project.client_id, party_name: project.client_name, party_type: 'client', project_id: fd.get('project_id'), project_name: project.name, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
@@ -1266,6 +1317,7 @@ const Crud = {
         const emp = employees.find(e => e.id === fd.get('employee_id'));
         const sector = sectors.find(s => s.id === fd.get('sector_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+        await this._confirmOfficeVendorAsync(fd.get('vendor_id'), vendors);
         await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, payment_method: fd.get('payment_method') || 'cash', employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
@@ -2257,13 +2309,12 @@ const Crud = {
     ]);
     const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
     const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
-    const officeVendor = vendors.find(v => v.is_office);
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
-      { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: officeVendor ? officeVendor.id : '' },
+      { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
@@ -2274,6 +2325,7 @@ const Crud = {
       const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
       if (total > (+c.remaining_balance || 0)) { UI.toast('إجمالي المصروفات يتجاوز الرصيد المتاح للعهدة', 'error'); throw new Error('over balance'); }
       for (const r of rows) {
+        await this._confirmOfficeVendorAsync(r.vendor_id, vendors);
         const emp = employees.find(e => e.id === r.employee_id);
         const sector = sectors.find(s => s.id === r.sector_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
@@ -2312,7 +2364,7 @@ const Crud = {
     const [clients, projects, vendors, workSections, workItems] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
-      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc'),
       API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('work_items', 'GET', null, '?select=id,name,section_id&deleted_at=is.null&order=name.asc')
     ]);
@@ -2339,6 +2391,7 @@ const Crud = {
       const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
       if (total > (+c.remaining_balance || 0)) { UI.toast('إجمالي المصروفات يتجاوز الرصيد المتاح للعهدة', 'error'); throw new Error('over balance'); }
       for (const r of rows) {
+        await this._confirmOfficeVendorAsync(r.vendor_id, vendors);
         const project = projects.find(p => p.id === r.project_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
         const section = workSections.find(s => s.id === r.section_id);
