@@ -841,25 +841,33 @@ RETURNS TABLE(
   project_count BIGINT,
   active_project_count BIGINT,
   employee_count BIGINT,
+  project_income NUMERIC,
+  project_expense NUMERIC,
+  office_income NUMERIC,
+  office_expense NUMERIC,
   total_income NUMERIC,
   total_expense NUMERIC,
   total_movement NUMERIC
 ) AS $$
 DECLARE
   v_project_deposits NUMERIC;
-  v_owner_deposits NUMERIC;
   v_supervision NUMERIC;
-  v_office_vendor_income NUMERIC;
   v_project_expenses NUMERIC;
+  v_vendor_settlements NUMERIC;
+  v_owner_deposits NUMERIC;
+  v_office_vendor_income NUMERIC;
   v_office_expenses NUMERIC;
+  v_withdrawals NUMERIC;
   v_custody_returns NUMERIC;
 BEGIN
   v_project_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'project_deposit'), 0);
-  v_owner_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0);
   v_supervision := COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0);
+  v_project_expenses := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'project_expense'), 0);
+  v_vendor_settlements := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'vendor_settlement'), 0);
+  v_owner_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0);
   v_office_vendor_income := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0);
-  v_project_expenses := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement')), 0);
-  v_office_expenses := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal')), 0);
+  v_office_expenses := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'office_expense'), 0);
+  v_withdrawals := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'withdrawal'), 0);
   v_custody_returns := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'custody_return'), 0);
 
   RETURN QUERY
@@ -868,14 +876,18 @@ BEGIN
     (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) AS project_count,
     (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND status = 'active') AS active_project_count,
     (SELECT COUNT(*) FROM employees WHERE deleted_at IS NULL AND is_active = true) AS employee_count,
-    v_project_deposits + v_owner_deposits + v_supervision + v_office_vendor_income AS total_income,
-    v_project_expenses + v_office_expenses - v_custody_returns AS total_expense,
-    v_project_deposits + v_owner_deposits + v_supervision + v_office_vendor_income + v_project_expenses + v_office_expenses - v_custody_returns AS total_movement;
+    v_project_deposits + v_supervision AS project_income,
+    v_project_expenses + v_vendor_settlements AS project_expense,
+    v_owner_deposits + v_office_vendor_income AS office_income,
+    v_office_expenses + v_withdrawals - v_custody_returns AS office_expense,
+    v_project_deposits + v_supervision + v_owner_deposits + v_office_vendor_income AS total_income,
+    v_project_expenses + v_vendor_settlements + v_office_expenses + v_withdrawals - v_custody_returns AS total_expense,
+    v_project_deposits + v_supervision + v_owner_deposits + v_office_vendor_income + v_project_expenses + v_vendor_settlements + v_office_expenses + v_withdrawals - v_custody_returns AS total_movement;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION dashboard_monthly_revenue_expenses(months_back INT DEFAULT 6)
-RETURNS TABLE(month_key TEXT, revenue NUMERIC, expense NUMERIC) AS $$
+RETURNS TABLE(month_key TEXT, project_revenue NUMERIC, project_expense NUMERIC, office_revenue NUMERIC, office_expense NUMERIC) AS $$
 DECLARE
   start_date DATE;
 BEGIN
@@ -888,51 +900,70 @@ BEGIN
     SELECT to_char(date_trunc('month', CURRENT_DATE) - (i || ' months')::INTERVAL, 'YYYY-MM') AS mk
     FROM months
   ),
+  project_dep AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL AND t.type = 'project_deposit' AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
+  ),
   supervision AS (
     SELECT to_char(p.created_at, 'YYYY-MM') AS mk,
            SUM((COALESCE(t.amount, 0) - COALESCE(t.paid_amount, 0)) * COALESCE(p.supervision_percentage, 0) / 100) AS amt
     FROM projects p
     JOIN transactions t ON t.project_id = p.id
-    WHERE t.deleted_at IS NULL
-      AND p.deleted_at IS NULL
-      AND t.type = 'project_expense'
-      AND t.expense_category != 'design'
+    WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL AND t.type = 'project_expense' AND t.expense_category != 'design'
     GROUP BY to_char(p.created_at, 'YYYY-MM')
   ),
-  owner_dep AS (
-    SELECT to_char(t.date, 'YYYY-MM') AS mk,
-           SUM(t.amount) AS amt
+  project_exp AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL
-      AND t.type = 'owner_deposit'
-      AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'project_expense' AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
+  ),
+  vendor_settlement AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL AND t.type = 'vendor_settlement' AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
+  ),
+  owner_dep AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
+    FROM transactions t
+    WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit' AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
+  ),
+  office_vendor_income AS (
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
+    FROM transactions t
+    JOIN vendors v ON v.id = t.vendor_id
+    WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement') AND t.date >= start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   office_exp AS (
-    SELECT to_char(t.date, 'YYYY-MM') AS mk,
-           SUM(t.amount) AS amt
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL
-      AND t.type IN ('office_expense','withdrawal')
-      AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal') AND t.date >= start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   custody_ret AS (
-    SELECT to_char(t.date, 'YYYY-MM') AS mk,
-           SUM(t.amount) AS amt
+    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL
-      AND t.type = 'custody_return'
-      AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'custody_return' AND t.date >= start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   )
   SELECT m.mk::TEXT,
-         COALESCE(s.amt, 0) + COALESCE(o.amt, 0) AS revenue,
-         COALESCE(e.amt, 0) - COALESCE(cr.amt, 0) AS expense
+         COALESCE(pd.amt, 0) + COALESCE(s.amt, 0) AS project_revenue,
+         COALESCE(pe.amt, 0) + COALESCE(vs.amt, 0) AS project_expense,
+         COALESCE(od.amt, 0) + COALESCE(ovi.amt, 0) AS office_revenue,
+         COALESCE(oe.amt, 0) - COALESCE(cr.amt, 0) AS office_expense
   FROM month_keys m
+  LEFT JOIN project_dep pd ON pd.mk = m.mk
   LEFT JOIN supervision s ON s.mk = m.mk
-  LEFT JOIN owner_dep o ON o.mk = m.mk
-  LEFT JOIN office_exp e ON e.mk = m.mk
+  LEFT JOIN project_exp pe ON pe.mk = m.mk
+  LEFT JOIN vendor_settlement vs ON vs.mk = m.mk
+  LEFT JOIN owner_dep od ON od.mk = m.mk
+  LEFT JOIN office_vendor_income ovi ON ovi.mk = m.mk
+  LEFT JOIN office_exp oe ON oe.mk = m.mk
   LEFT JOIN custody_ret cr ON cr.mk = m.mk
   ORDER BY m.mk;
 END;

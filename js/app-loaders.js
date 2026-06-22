@@ -106,17 +106,28 @@ Object.assign(App, {
         ${kpiClick('employees', '<div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">' + (k.employee_count || 0) + '</div>')}
         ${kpiClick('transactions', '<div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">' + this.fmtMoney(k.total_movement || 0) + '</div>')}
         ${kpiClick('office', '<div class="kpi-icon">🏢</div><div class="kpi-label">صافي المركز</div><div class="kpi-value" style="color:' + (netPosition >= 0 ? 'var(--green)' : 'var(--red)') + '">' + this.fmtMoney(netPosition) + '</div>')}`;
-      // ─── Income vs Expenses Totals (Pie Chart) ───
-      const totalRows = [
-        ['إيرادات', +k.total_income || 0],
-        ['مصروفات', +k.total_expense || 0]
+      // ─── Project Income vs Expense (Pie Chart) ───
+      const projectTotalRows = [
+        ['إيرادات مشاريع', +k.project_income || 0],
+        ['مصروفات مشاريع', +k.project_expense || 0]
       ].filter(r => r[1] > 0);
-      document.getElementById('income-expense-total-chart').innerHTML = this._renderPie(totalRows, 160, 'لا توجد إيرادات أو مصروفات');
-      // ─── Monthly Revenue vs Expense Bar Chart ───
-      const monthlyRows = (monthly || []).map(m => [m.month_key, +m.revenue || 0, +m.expense || 0]).reverse();
-      document.getElementById('dash-monthly-chart').innerHTML = monthlyRows.length
-        ? this._renderBar(monthlyRows, 420, 220)
-        : '<p style="color:var(--text3)">لا توجد بيانات شهرية</p>';
+      document.getElementById('project-income-expense-total-chart').innerHTML = this._renderPie(projectTotalRows, 160, 'لا توجد إيرادات أو مصروفات للمشاريع');
+      // ─── Office Income vs Expense (Pie Chart) ───
+      const officeTotalRows = [
+        ['إيرادات مكتب', +k.office_income || 0],
+        ['مصروفات مكتب', +k.office_expense || 0]
+      ].filter(r => r[1] > 0);
+      document.getElementById('office-income-expense-total-chart').innerHTML = this._renderPie(officeTotalRows, 160, 'لا توجد إيرادات أو مصروفات للمكتب');
+      // ─── Monthly Project Revenue vs Expense Bar Chart ───
+      const projectMonthlyRows = (monthly || []).map(m => [m.month_key, +m.project_revenue || 0, +m.project_expense || 0]).reverse();
+      document.getElementById('dash-project-monthly-chart').innerHTML = projectMonthlyRows.length
+        ? this._renderBar(projectMonthlyRows, 420, 220)
+        : '<p style="color:var(--text3)">لا توجد بيانات شهرية للمشاريع</p>';
+      // ─── Monthly Office Revenue vs Expense Bar Chart ───
+      const officeMonthlyRows = (monthly || []).map(m => [m.month_key, +m.office_revenue || 0, +m.office_expense || 0]).reverse();
+      document.getElementById('dash-office-monthly-chart').innerHTML = officeMonthlyRows.length
+        ? this._renderBar(officeMonthlyRows, 420, 220)
+        : '<p style="color:var(--text3)">لا توجد بيانات شهرية للمكتب</p>';
       // ─── Office Expense Sectors Pie Chart ───
       const sectorRows = (officeSectors || [])
         .filter(s => (s.amount || 0) > 0)
