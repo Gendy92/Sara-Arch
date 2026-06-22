@@ -1476,10 +1476,6 @@ const Crud = {
         <div style="font-weight:600;margin-bottom:8px">اختر المشاريع:</div>
         <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;background:var(--bg)">${projectsHtml}</div>
       </div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-        <div class="form-group"><label>من تاريخ</label><input type="date" id="stmt-from" class="stmt-date" style="width:100%"></div>
-        <div class="form-group"><label>إلى تاريخ</label><input type="date" id="stmt-to" class="stmt-date" style="width:100%"></div>
-      </div>
       <button type="button" class="btn btn-primary" id="stmt-generate">عرض كشف الحساب</button>`;
 
     UI.openModal(`اختيار مشاريع لكشف حساب: ${App.esc(clientName)}`, filterHtml, null);
@@ -1487,16 +1483,9 @@ const Crud = {
     document.getElementById('stmt-generate').addEventListener('click', async () => {
       const selected = Array.from(document.querySelectorAll('.stmt-project:checked')).map(cb => cb.value);
       if (!selected.length) { UI.toast('اختر مشروعاً واحداً على الأقل', 'error'); return; }
-      const fromDate = document.getElementById('stmt-from').value;
-      const toDate = document.getElementById('stmt-to').value;
-
-      const dateFilter = [];
-      if (fromDate) dateFilter.push(`date=gte.${fromDate}`);
-      if (toDate) dateFilter.push(`date=lte.${toDate}`);
-      const dateQuery = dateFilter.length ? '&' + dateFilter.join('&') : '';
 
       const [txs, cbRows, pbRows] = await Promise.all([
-        API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null${dateQuery}&order=date.desc`),
+        API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`),
         API.request('client_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`),
         API.request('project_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`)
       ]);
@@ -1613,26 +1602,8 @@ const Crud = {
     if (!p) return UI.toast('المشروع غير موجود', 'error');
     const name = p.name || 'مشروع';
 
-    const filterHtml = `
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-        <div class="form-group"><label>من تاريخ</label><input type="date" id="stmt-from" class="stmt-date" style="width:100%"></div>
-        <div class="form-group"><label>إلى تاريخ</label><input type="date" id="stmt-to" class="stmt-date" style="width:100%"></div>
-      </div>
-      <button type="button" class="btn btn-primary" id="stmt-generate">عرض كشف الحساب</button>`;
-
-    UI.openModal(`فلترة كشف حساب: ${App.esc(name)}`, filterHtml, null);
-
-    document.getElementById('stmt-generate').addEventListener('click', async () => {
-      const fromDate = document.getElementById('stmt-from').value;
-      const toDate = document.getElementById('stmt-to').value;
-
-      const dateFilter = [];
-      if (fromDate) dateFilter.push(`date=gte.${fromDate}`);
-      if (toDate) dateFilter.push(`date=lte.${toDate}`);
-      const dateQuery = dateFilter.length ? '&' + dateFilter.join('&') : '';
-
-      const [txs, pbRows] = await Promise.all([
-        API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null${dateQuery}&order=date.desc`),
+    const [txs, pbRows] = await Promise.all([
+      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`),
         API.request('project_balances', 'GET', null, `?select=*&project_id=eq.${projectId}`)
       ]);
       const pb = pbRows[0] || {};
@@ -1666,7 +1637,6 @@ const Crud = {
       this._projectStatementData[projectId] = { rows, totalDep, totalExp, name };
 
       UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
-    });
   },
 
   _exportProjectStatement(projectId) {
