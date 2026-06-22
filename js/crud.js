@@ -2225,19 +2225,28 @@ const Crud = {
       { name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] },
       { name: 'expense_type', label: 'نوع المصروف *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر نوع --' }, ...typeOpts], default: 'office' }
     ];
-    UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
-      const fd = new FormData(form);
-      const custodyId = fd.get('custody_id');
-      const expenseType = fd.get('expense_type');
+    const openSheet = async (custodyId, expenseType) => {
       const c = custodies.find(x => x.id === custodyId);
-      if (!custodyId || !c) { UI.toast('يجب اختيار العهدة', 'error'); return; }
-      if (!expenseType) { UI.toast('يجب اختيار نوع المصروف', 'error'); return; }
+      if (!custodyId || !c) return;
+      if (!expenseType) return;
       const available = +c.remaining_balance || 0;
       if (available <= 0) { UI.toast('لا يوجد رصيد متاح لهذه العهدة', 'error'); return; }
       UI.closeModal();
       if (expenseType === 'project') await this._openProjectCustodyExpenseSheet(c);
       else await this._openOfficeCustodyExpenseSheet(c);
+    };
+    const overlay = UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      await openSheet(fd.get('custody_id'), fd.get('expense_type'));
     });
+    const form = overlay.querySelector('form');
+    const custodySel = form.querySelector('[name="custody_id"]');
+    const typeSel = form.querySelector('[name="expense_type"]');
+    const autoOpen = () => {
+      if (custodySel.value && typeSel.value) openSheet(custodySel.value, typeSel.value);
+    };
+    custodySel.addEventListener('change', autoOpen);
+    typeSel.addEventListener('change', autoOpen);
   },
 
   async _openOfficeCustodyExpenseSheet(c) {
