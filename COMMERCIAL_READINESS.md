@@ -103,10 +103,10 @@
 - Cons: Manual setup per client, higher overhead.
 - Setup time: 2–4 hours.
 
-### Option 2 — Multi-Tenant Single Supabase Project (Future)
-- Pros: One deployment serves many clients.
-- Cons: Requires schema refactor (tenant_id on every table), stricter RLS, more testing.
-- Effort: +40–60 hours development.
+### Option 2 — Multi-Tenant Single Supabase Project (Implemented in v240)
+- Pros: One deployment serves many clients; foundation is already in place.
+- Cons: Needs migration `migration_v240_rls_tenants.sql` applied, tenant selector UI, and user-onboarding workflow.
+- See `MULTITENANCY_PLAN.md` for full instructions.
 
 ---
 

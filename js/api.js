@@ -5,12 +5,15 @@ const API = {
 
   getHeaders() {
     const token = (typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY;
-    return {
+    const headers = {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + token,
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
+    const tenant = (typeof localStorage !== 'undefined') ? localStorage.getItem('sara_tenant_id') : null;
+    if (tenant) headers['X-App-Tenant'] = tenant;
+    return headers;
   },
 
   _parseError(text, status) {

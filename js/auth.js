@@ -67,10 +67,26 @@ const Auth = {
           this.user.displayName = this.safeName(user.user_metadata?.name, this.fromEmail(user.email));
           this.user.role = user.user_metadata?.role || 'user';
         }
+        await this._loadDefaultTenant();
         await this.loadPermissions();
       } else {
         this.logout();
       }
+    }
+  },
+
+  async _loadDefaultTenant() {
+    if (!this.user) return;
+    try {
+      const rows = await API.request('user_tenants', 'GET', null, `?user_id=eq.${this.user.id}&is_default=eq.true&select=tenant_id&limit=1`);
+      if (rows && rows.length) {
+        localStorage.setItem('sara_tenant_id', rows[0].tenant_id);
+      } else {
+        localStorage.removeItem('sara_tenant_id');
+      }
+    } catch (e) {
+      // user_tenants may not exist yet (pre-migration)
+      localStorage.removeItem('sara_tenant_id');
     }
   },
 
@@ -109,6 +125,7 @@ const Auth = {
     }
     sessionStorage.setItem('sara_token', this.token);
     localStorage.removeItem('sara_token');
+    await this._loadDefaultTenant();
     await this.loadPermissions();
     return data;
   },
@@ -129,6 +146,7 @@ const Auth = {
     this.token = null;
     sessionStorage.removeItem('sara_token');
     localStorage.removeItem('sara_token');
+    localStorage.removeItem('sara_tenant_id');
   },
 
   isLoggedIn() {

@@ -1,12 +1,30 @@
 # Sara Arch — Changelog
 
-> **Current version:** v239  
+> **Current version:** v240  
 > **Branch:** `dev.2` / `main` (fast-forward synced)  
 > **Last updated:** 2026-06-22
 
 ---
 
-## Version 239 (Current)
+## Version 240 (Current)
+
+### Added
+- **Real screenshots** inserted into the user manual (`Sara_Abo_El_Ela_Architecture_Office_System_Manual.docx`) using Playwright.
+- **Employee RLS hardening**: non-admins can view employee data but cannot modify employees, attendance, payroll, employee transactions, or salary history.
+- **Multi-tenancy foundation**:
+  - `tenants` and `user_tenants` tables.
+  - `tenant_id` column added to all business tables with automatic assignment triggers.
+  - `get_current_tenant_id()` reads the `X-App-Tenant` header or falls back to the user's default tenant.
+  - Tenant-scoped RLS policies replace the old open policies.
+  - App sends `X-App-Tenant` header and loads the user's default tenant on login.
+- New migration: `migration_v240_rls_tenants.sql`.
+- New documentation: `MULTITENANCY_PLAN.md`.
+
+### Changed
+- `COMMERCIAL_READINESS.md` updated to reference multi-tenancy and the landing page.
+- Bumped runtime, service-worker cache, and asset query-string version to `240`.
+
+## Version 239
 
 ### Added
 - **Restore-from-backup UI** in the Backup screen: preview ZIP contents and restore data table-by-table using upsert.
@@ -227,11 +245,13 @@
 
 ---
 
-## Known Issues at v239
+## Known Issues at v240
 
 - Some documentation (`APP_TABS_GUIDE.md`, `TEST_PLAN.md`, `acceptance-results.md`) lags behind runtime version.
-- Employee module is documented as on hold; attendance RLS is currently open per `LOGIC_SPEC.md`.
-- RLS policies are currently open to all authenticated users; true data isolation requires separate Supabase projects per client or a multi-tenancy refactor.
+- Tenant selector UI is not built yet; users are locked to their default tenant.
+- `app_settings` is not tenant-scoped yet.
+- Admin-created users still need manual linking to a tenant in `user_tenants`.
+- Per-tenant backup export is not implemented yet.
 
 ### Resolved at v175
 - ✅ Orphaned `auth.users` rows on partial user creation (profile upsert moved into atomic RPC).

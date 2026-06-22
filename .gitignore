@@ -11,6 +11,7 @@ backups/
 Thumbs.db
 node_modules/
 .venv-manual/
+screenshots/
 *.docx
 
 # Allow generated specification workbooks
