@@ -38,7 +38,7 @@
 | AUTH-05 | Non-admin access to Settings/Users/Permissions/Audit/Backup | Pass | `App.go` (`app-core.js:132`) redirects non-admin users away from admin-only screens. |
 | DASH-01 | KPI cards display | Pass | `App.loadDashboard` (`app-loaders.js:81–96`) calls `dashboard_kpis` RPC and renders all KPI cards. |
 | DASH-02 | Income vs expenses totals pie chart | Pass | `loadDashboard` builds income/expense rows and renders `_renderPie` (`app-loaders.js:98–102`). |
-| DASH-03 | Top vendors list | Pass | `loadDashboard` calls `dashboard_top_vendors` RPC and renders outstanding balances (`app-loaders.js:103–111`). |
+| DASH-03 | Top vendors list | Pass | `loadDashboard` calls `dashboard_top_vendors` RPC and renders outstanding balances, now including the office vendor (`app-loaders.js:72–80`). |
 | DASH-04 | Active client balances list | Pass | `loadDashboard` calls `dashboard_active_client_balances` RPC and renders balances (`app-loaders.js:112–117`). |
 | DASH-05 | Reload dashboard | Blocked | Reload / no-console-errors verification requires actual browser interaction. |
 | CLNT-01 | Add a new client | Pass | `Crud.addClient` (`crud.js:255–272`) opens spreadsheet modal, checks duplicates, and bulk-saves. |

@@ -130,7 +130,7 @@ The system seeds one special vendor marked `is_office = true` (e.g. "مكتب س
 - Procurements where the office is the supplier.
 - Office expenses linked to a vendor for traceability.
 
-Transactions linked to the office vendor are **not** included in vendor balances or top-vendor dashboards; instead, their paid amounts are treated as **office income** and appear in the office cash-flow.
+Transactions linked to the office vendor are included in vendor balances and the top-vendor dashboard like any other vendor. Their paid amounts are also still treated as **office income** and appear in the office cash-flow.
 
 ---
 

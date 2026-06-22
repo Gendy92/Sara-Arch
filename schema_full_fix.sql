@@ -976,7 +976,7 @@ BEGIN
   SELECT g.vendor_id, v.name AS vendor_name, g.balance
   FROM grouped g
   JOIN vendors v ON v.id = g.vendor_id
-  WHERE g.balance > 0 AND v.is_office IS NOT TRUE
+  WHERE g.balance > 0
   ORDER BY g.balance DESC
   LIMIT limit_count;
 END;
@@ -1142,7 +1142,7 @@ LEFT JOIN (
   WHERE deleted_at IS NULL AND type = 'vendor_settlement' AND vendor_id IS NOT NULL
   GROUP BY vendor_id
 ) amounts ON amounts.vendor_id = v.id
-WHERE v.deleted_at IS NULL AND v.is_office IS NOT TRUE
+WHERE v.deleted_at IS NULL
 GROUP BY v.id, v.name;
 
 CREATE OR REPLACE VIEW public.office_balance AS
