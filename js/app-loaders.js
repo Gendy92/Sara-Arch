@@ -88,13 +88,21 @@ Object.assign(App, {
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
+      // If the new RPC isn't deployed yet, fall back to the vendor_balances view so the dashboard still renders.
+      const fetchVendorAlerts = async () => {
+        try { return await API.rpc('dashboard_vendor_alerts', { limit_count: 10 }); }
+        catch (err) {
+          const rows = await API.request('vendor_balances', 'GET', null, '?select=vendor_id,vendor_name,balance&balance=gt.0&order=balance.desc&limit=10');
+          return rows.map(r => ({ vendor_id: r.vendor_id, vendor_name: r.vendor_name, balance: r.balance }));
+        }
+      };
       const [[kpi], vendorBalances, clientBalances, monthly, officeSectors, vendorAlerts, custodyAlerts] = await Promise.all([
         API.rpc('dashboard_kpis'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
         API.rpc('dashboard_active_client_balances', { limit_count: 10 }),
         API.rpc('dashboard_monthly_revenue_expenses', { months_back: 6 }),
         API.rpc('dashboard_office_expense_sectors'),
-        API.rpc('dashboard_vendor_alerts', { limit_count: 10 }),
+        fetchVendorAlerts(),
         API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc&limit=10")
       ]);
       const k = kpi || {};
