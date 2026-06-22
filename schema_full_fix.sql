@@ -357,6 +357,8 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS paid_amount NUMERIC DEFAULT 0;
 -- Procurements payment tracking
 ALTER TABLE procurements ADD COLUMN IF NOT EXISTS payment_term TEXT DEFAULT 'immediate';
 ALTER TABLE procurements ADD COLUMN IF NOT EXISTS paid_amount NUMERIC DEFAULT 0;
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id);
+ALTER TABLE procurements ADD COLUMN IF NOT EXISTS client_name TEXT;
 
 -- Make nullable (for backward compatibility)
 ALTER TABLE transactions ALTER COLUMN client_id DROP NOT NULL;
@@ -794,6 +796,12 @@ CREATE POLICY "auth_admin_modify_user_permissions" ON user_permissions FOR ALL T
 -- Linkage columns
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS linked_procurement_id UUID REFERENCES procurements(id);
 ALTER TABLE procurements ADD COLUMN IF NOT EXISTS linked_transaction_id UUID REFERENCES transactions(id);
+
+-- Backfill client linkage for existing procurements
+UPDATE procurements p
+SET client_id = pr.client_id, client_name = pr.client_name
+FROM projects pr
+WHERE p.project_id = pr.id AND p.client_id IS NULL;
 
 -- Backfill: create project_expense transactions for existing procurements that have a project
 INSERT INTO transactions (
