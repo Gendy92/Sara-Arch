@@ -224,8 +224,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .modal-body{overflow:visible!important;max-height:none!important}
   .print-logo{display:block !important;text-align:center;margin-bottom:20px}
   .print-logo img{max-height:50px}
-  .stmt-chapter{page-break-after:always}
-  .stmt-chapter:last-child{page-break-after:auto}
+  .stmt-chapter{page-break-before:always}
 }
 
 /* ─── SIDEBAR BACKDROP ─── */
