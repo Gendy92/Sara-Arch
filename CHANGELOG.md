@@ -1,12 +1,23 @@
 # Sara Arch — Changelog
 
-> **Current version:** v238  
+> **Current version:** v239  
 > **Branch:** `dev.2` / `main` (fast-forward synced)  
 > **Last updated:** 2026-06-22
 
 ---
 
-## Version 238 (Current)
+## Version 239 (Current)
+
+### Added
+- **Restore-from-backup UI** in the Backup screen: preview ZIP contents and restore data table-by-table using upsert.
+- `API.upsert()` helper in `api.js` for conflict-aware bulk inserts.
+- Marketing **landing page** (`landing.html`) with hero, features, pricing, and CTA.
+
+### Changed
+- `COMMERCIAL_READINESS.md` updated to reference the landing page.
+- Bumped runtime, service-worker cache, and asset query-string version to `239`.
+
+## Version 238
 
 ### Added
 - Commercial readiness package: `COMMERCIAL_READINESS.md` with pricing, terms, SLA, support workflow, privacy policy, and onboarding checklist.
@@ -216,9 +227,8 @@
 
 ---
 
-## Known Issues at v238
+## Known Issues at v239
 
-- No restore-from-backup feature yet.
 - Some documentation (`APP_TABS_GUIDE.md`, `TEST_PLAN.md`, `acceptance-results.md`) lags behind runtime version.
 - Employee module is documented as on hold; attendance RLS is currently open per `LOGIC_SPEC.md`.
 - RLS policies are currently open to all authenticated users; true data isolation requires separate Supabase projects per client or a multi-tenancy refactor.

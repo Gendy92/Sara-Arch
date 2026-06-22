@@ -133,13 +133,13 @@
 ## 10. Next Steps Before First Sale
 
 1. Pick Option A (subscription) or Option B (license).
-2. Customize this document with your company name, prices, and contact info.
-3. Have a local lawyer review the terms.
-4. Prepare a simple contract template.
-5. Create a demo account with sample data.
-6. Build a one-page marketing landing page (`landing.html`).
+2. Customize `landing.html` with your branding, WhatsApp number, and real pricing.
+3. Customize this document with your company name, prices, and contact info.
+4. Have a local lawyer review the terms.
+5. Prepare a simple contract template.
+6. Create a demo account with sample data.
 
 ---
 
 **Last updated:** 2026-06-22  
-**Version:** v238
+**Version:** v239

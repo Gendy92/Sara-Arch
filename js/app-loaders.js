@@ -1206,6 +1206,69 @@ Object.assign(App, {
     this.loadBackup();
   },
 
+  // ─── RESTORE FROM BACKUP ───
+  _restoreOrder: [
+    'app_settings', 'clients', 'employees', 'vendors', 'sectors', 'items',
+    'work_sections', 'work_items', 'projects', 'transactions', 'procurements',
+    'employee_transactions', 'employee_salary_history', 'custody_records', 'custody_expenses',
+    'attendance_records', 'payroll_records', 'project_tasks', 'audit_logs', 'user_permissions', 'profiles'
+  ],
+  _restoreData: null,
+
+  async previewRestoreBackup() {
+    const input = document.getElementById('restore-file');
+    const preview = document.getElementById('restore-preview');
+    const btn = document.getElementById('restore-btn');
+    if (!input || !input.files[0]) { UI.toast('اختر ملف ZIP أولاً', 'error'); return; }
+    preview.innerHTML = '<p style="color:var(--gold)">⏳ جاري قراءة الملف...</p>';
+    btn.style.display = 'none';
+    try {
+      const zip = await JSZip.loadAsync(input.files[0]);
+      const files = Object.values(zip.files).filter(f => !f.dir && f.name.endsWith('.json'));
+      const data = {};
+      for (const f of files) {
+        const name = f.name.split('/').pop().replace('.json', '');
+        const json = await f.async('string');
+        try { data[name] = JSON.parse(json); } catch (e) { data[name] = []; }
+      }
+      this._restoreData = data;
+      const rows = Object.entries(data).map(([table, rows]) => `<tr><td>${App.esc(table)}</td><td>${(Array.isArray(rows) ? rows.length : 0)}</td></tr>`).join('');
+      preview.innerHTML = `<table class="data-table"><thead><tr><th>الجدول</th><th>عدد السجلات</th></tr></thead><tbody>${rows}</tbody></table>`;
+      btn.style.display = 'inline-block';
+    } catch (e) {
+      preview.innerHTML = `<p style="color:var(--red)">خطأ في قراءة الملف: ${App.esc(e.message)}</p>`;
+    }
+  },
+
+  async restoreFromBackup() {
+    if (!this._restoreData) { UI.toast('استعرض الملف أولاً', 'error'); return; }
+    const progress = document.getElementById('restore-progress');
+    const btn = document.getElementById('restore-btn');
+    btn.disabled = true;
+    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري الاستعادة...</p>';
+    let ok = 0, fail = 0, failTables = [];
+    const chunkSize = 100;
+    for (const table of this._restoreOrder) {
+      const rows = this._restoreData[table];
+      if (!Array.isArray(rows) || !rows.length) continue;
+      const onConflict = table === 'app_settings' ? 'key' : 'id';
+      try {
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+          await API.upsert(table, chunk, onConflict);
+        }
+        ok++;
+      } catch (e) {
+        fail++;
+        failTables.push(`${table}: ${e.message}`);
+      }
+    }
+    btn.disabled = false;
+    const failMsg = fail ? ` <br><span style="color:var(--red)">فشل: ${App.esc(failTables.join(' | '))}</span>` : '';
+    progress.innerHTML = `<p style="color:${fail ? 'var(--red)' : 'var(--green)'}">${fail ? '⚠️' : '✅'} تم استعادة ${ok} جدول${fail ? ` (فشل ${fail})` : ''}${failMsg}</p>`;
+    this.loadBackup();
+  },
+
   clearAppCache() {
     try {
       // Tokens are stored in sessionStorage; preserve login across cache clear.

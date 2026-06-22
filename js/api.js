@@ -99,6 +99,22 @@ const API = {
     return text ? JSON.parse(text) : [];
   },
 
+  // Upsert rows into a table (used by restore-from-backup).
+  // `onConflict` should be the primary-key column(s), e.g. 'id'.
+  async upsert(table, rows, onConflict = 'id') {
+    if (!rows || !rows.length) return [];
+    const url = `${this.base}/${table}?on_conflict=${encodeURIComponent(onConflict)}`;
+    const headers = this.getHeaders();
+    headers['Prefer'] = 'resolution=merge-duplicates';
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(rows) });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(this._parseError(text, res.status));
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : [];
+  },
+
   // Auth endpoints (use anon key)
   async authSignIn(email, password) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
