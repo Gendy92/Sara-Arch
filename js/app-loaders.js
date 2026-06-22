@@ -200,9 +200,9 @@ Object.assign(App, {
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
           const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-          return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
+          return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
         });
-        const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
+        const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'الإشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
         const clientBalColor = (cb.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)';
         return `<div class="card client-card" style="margin-bottom:16px">
           <div class="client-card-header">
@@ -264,9 +264,9 @@ Object.assign(App, {
         const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
         const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
         const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
-        return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
+        return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
       });
-      const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
+      const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'الإشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
 
       const html = `<div class="card client-card" style="margin-bottom:16px">
         <div class="client-card-header">
@@ -291,11 +291,12 @@ Object.assign(App, {
 
   async loadProject(projectId) {
     try {
-      const [projectRows, pbRows, txs, tasks] = await Promise.all([
+      const [projectRows, pbRows, txs, tasks, sectionRates] = await Promise.all([
         API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}&deleted_at=is.null`),
         API.request('project_balances', 'GET', null, `?select=*&project_id=eq.${projectId}`),
         API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=100`),
-        API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc&limit=50`)
+        API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc&limit=50`),
+        API.request('project_section_supervision', 'GET', null, `?select=section_id,percentage,work_sections(name)&project_id=eq.${projectId}`)
       ]);
       const project = projectRows[0];
       if (!project) { document.getElementById('project-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المشروع غير موجود</p>'; return; }
@@ -310,19 +311,23 @@ Object.assign(App, {
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">القيمة</div><div class="kpi-value">${this.fmtMoney(project.value)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
-        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${App.esc(project.supervision_percentage || 0)}%)</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
       </div>`;
 
       const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${project.client_id}', '${project.id}')">⬅️ مرتجع</button>`;
+      const ratesHtml = sectionRates.length ? `<div style="margin-bottom:16px"><h4 style="margin:0 0 8px;color:var(--text2)">نسب الإشراف حسب القسم</h4><div style="display:flex;gap:8px;flex-wrap:wrap">` +
+        sectionRates.map(r => `<span class="badge badge-gray">${App.esc(r.work_sections?.name || r.section_id)}: ${r.percentage || 0}%</span>`).join('') +
+        `</div></div>` : '';
       const info = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>
             <h3 style="margin-bottom:4px">${App.esc(project.name)}</h3>
-            <div style="font-size:12px;color:var(--text2)">العميل: <a href="#" onclick="App.go('client',{clientId:'${project.client_id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(project.clients?.name || project.client_name || '-')}</a> · ${App.esc(project.address || '-')} · الإشراف: ${App.esc(project.supervision_percentage || 0)}%</div>
+            <div style="font-size:12px;color:var(--text2)">العميل: <a href="#" onclick="App.go('client',{clientId:'${project.client_id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(project.clients?.name || project.client_name || '-')}</a> · ${App.esc(project.address || '-')}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
         </div>
+        ${ratesHtml}
       </div>`;
 
       const txRows = txs.map((t, i) => [i+1, t.date || '-', App.fmtTxType(t.type), t.description || '-', this.fmtMoney(t.amount)]);
@@ -1123,15 +1128,17 @@ Object.assign(App, {
         id: p.id,
         username: p.username || p.id.slice(0, 8),
         name: p.name || p.id.slice(0, 8),
+        email: p.email || '-',
         role: p.role || 'user',
         created_at: p.created_at
       }));
-      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'الدور', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
+      document.getElementById('users-tbl').innerHTML = users.length ? this.table(['المستخدم', 'الاسم', 'البريد الإلكتروني', 'الدور', 'تاريخ الإنشاء', 'الإجراءات'], users.map(u => [
         App.esc(u.username),
         App.esc(u.name),
+        App.esc(u.email),
         {html: u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>'},
         this.fmtDate(u.created_at),
-        {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل الاسم</button>`}
+        {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل</button>`}
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) {

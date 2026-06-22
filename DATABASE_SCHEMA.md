@@ -423,13 +423,33 @@ profiles   ||--o{ user_permissions : has per-screen rights
 
 ---
 
-### 3.17 `profiles` — الملفات الشخصية
+### 3.17 `project_section_supervision` — نسب الإشراف حسب القسم
+
+| Column | Type | Nullable | Default | Notes |
+|--------|------|----------|---------|-------|
+| `id` | `UUID` | NO | `uuid_generate_v4()` | Primary key |
+| `project_id` | `UUID` | NO | — | FK → `projects(id)` ON DELETE CASCADE |
+| `section_id` | `UUID` | NO | — | FK → `work_sections(id)` ON DELETE CASCADE |
+| `percentage` | `NUMERIC` | YES | `0` | Supervision % for this section in this project |
+| `tenant_id` | `UUID` | YES | — | |
+| `created_by` | `UUID` | YES | — | |
+| `created_at` | `TIMESTAMPTZ` | YES | `NOW()` | |
+| `updated_at` | `TIMESTAMPTZ` | YES | `NOW()` | Auto-updated |
+
+**Relationships:**
+- Child of `projects` and `work_sections`.
+- Used by `project_balances` and dashboard functions to calculate supervision.
+
+---
+
+### 3.18 `profiles` — الملفات الشخصية
 
 | Column | Type | Nullable | Default | Notes |
 |--------|------|----------|---------|-------|
 | `id` | `UUID` | NO | — | PK, FK → `auth.users(id)` ON DELETE CASCADE |
 | `name` | `TEXT` | YES | — | Arabic display name |
 | `username` | `TEXT` | YES | — | Present in `schema.sql`; used by app code |
+| `email` | `TEXT` | YES | — | Real email address for password resets |
 | `role` | `TEXT` | YES | `'user'` | `admin` or `user` |
 | `created_at` | `TIMESTAMPTZ` | YES | `NOW()` | |
 | `updated_at` | `TIMESTAMPTZ` | YES | `NOW()` | Auto-updated |
@@ -601,4 +621,4 @@ For new deployments, run migrations in the order listed in `README.md` and verif
 
 The GitHub Actions backup and in-app backup export the following tables:
 
-`clients`, `projects`, `employees`, `vendors`, `items`, `sectors`, `transactions`, `procurements`, `employee_transactions`, `employee_salary_history`, `custody_records`, `custody_expenses`, `attendance_records`, `payroll_records`, `work_sections`, `work_items`, `profiles`, `audit_logs`, `user_permissions`, `project_tasks`.
+`clients`, `projects`, `employees`, `vendors`, `items`, `sectors`, `transactions`, `procurements`, `employee_transactions`, `employee_salary_history`, `custody_records`, `custody_expenses`, `attendance_records`, `payroll_records`, `work_sections`, `work_items`, `project_section_supervision`, `profiles`, `audit_logs`, `user_permissions`, `project_tasks`.

@@ -286,9 +286,23 @@ CREATE TABLE IF NOT EXISTS work_items (
   deleted_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS project_section_supervision (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  section_id UUID REFERENCES work_sections(id) ON DELETE CASCADE,
+  percentage NUMERIC DEFAULT 0,
+  tenant_id UUID,
+  created_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(project_id, section_id)
+);
+
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT,
+  username TEXT,
+  email TEXT UNIQUE,
   role TEXT DEFAULT 'user',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -452,6 +466,7 @@ DROP TRIGGER IF EXISTS attendance_records_u ON attendance_records; CREATE TRIGGE
 DROP TRIGGER IF EXISTS payroll_records_u ON payroll_records; CREATE TRIGGER payroll_records_u BEFORE UPDATE ON payroll_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS work_sections_u ON work_sections; CREATE TRIGGER work_sections_u BEFORE UPDATE ON work_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS work_items_u ON work_items; CREATE TRIGGER work_items_u BEFORE UPDATE ON work_items FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DROP TRIGGER IF EXISTS project_section_supervision_u ON project_section_supervision; CREATE TRIGGER project_section_supervision_u BEFORE UPDATE ON project_section_supervision FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS profiles_u ON profiles; CREATE TRIGGER profiles_u BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS user_permissions_u ON user_permissions; CREATE TRIGGER user_permissions_u BEFORE UPDATE ON user_permissions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
@@ -669,6 +684,7 @@ DROP TRIGGER IF EXISTS attendance_records_cb ON attendance_records; CREATE TRIGG
 DROP TRIGGER IF EXISTS payroll_records_cb ON payroll_records; CREATE TRIGGER payroll_records_cb BEFORE INSERT ON payroll_records FOR EACH ROW EXECUTE FUNCTION set_created_by();
 DROP TRIGGER IF EXISTS work_sections_cb ON work_sections; CREATE TRIGGER work_sections_cb BEFORE INSERT ON work_sections FOR EACH ROW EXECUTE FUNCTION set_created_by();
 DROP TRIGGER IF EXISTS work_items_cb ON work_items; CREATE TRIGGER work_items_cb BEFORE INSERT ON work_items FOR EACH ROW EXECUTE FUNCTION set_created_by();
+DROP TRIGGER IF EXISTS project_section_supervision_cb ON project_section_supervision; CREATE TRIGGER project_section_supervision_cb BEFORE INSERT ON project_section_supervision FOR EACH ROW EXECUTE FUNCTION set_created_by();
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 6: Row Level Security (RLS)                        │
@@ -690,6 +706,7 @@ ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payroll_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_sections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE work_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_section_supervision ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
@@ -711,6 +728,7 @@ DROP POLICY IF EXISTS "authenticated_all" ON attendance_records; CREATE POLICY "
 DROP POLICY IF EXISTS "authenticated_all" ON payroll_records; CREATE POLICY "authenticated_all" ON payroll_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON work_sections; CREATE POLICY "authenticated_all" ON work_sections FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON work_items; CREATE POLICY "authenticated_all" ON work_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "authenticated_all" ON project_section_supervision; CREATE POLICY "authenticated_all" ON project_section_supervision FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON profiles; CREATE POLICY "authenticated_all" ON profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON audit_logs; CREATE POLICY "authenticated_all" ON audit_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON user_permissions; CREATE POLICY "authenticated_all" ON user_permissions FOR ALL TO authenticated USING (true) WITH CHECK (true);
@@ -730,6 +748,7 @@ DROP POLICY IF EXISTS "Allow all for authenticated" ON custody_records;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON custody_expenses;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON work_sections;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON work_items;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON project_section_supervision;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON profiles;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON audit_logs;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON user_permissions;
@@ -840,12 +859,21 @@ CREATE POLICY "authenticated_all" ON project_tasks FOR ALL TO authenticated USIN
 
 -- Missing columns required by application code
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email TEXT;
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'profiles_username_unique'
   ) THEN
     ALTER TABLE profiles ADD CONSTRAINT profiles_username_unique UNIQUE (username);
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'profiles_email_unique'
+  ) THEN
+    ALTER TABLE profiles ADD CONSTRAINT profiles_email_unique UNIQUE (email);
   END IF;
 END $$;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS notes TEXT;
@@ -1072,12 +1100,13 @@ BEGIN
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   supervision AS (
-    SELECT to_char(p.created_at, 'YYYY-MM') AS mk,
-           SUM((COALESCE(t.amount, 0) - COALESCE(t.paid_amount, 0)) * COALESCE(p.supervision_percentage, 0) / 100) AS amt
+    SELECT to_char(t.date, 'YYYY-MM') AS mk,
+           ROUND(SUM(COALESCE(t.paid_amount, 0) * COALESCE(pss.percentage, p.supervision_percentage) / 100.0), 2) AS amt
     FROM projects p
     JOIN transactions t ON t.project_id = p.id
-    WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL AND t.type = 'project_expense' AND t.expense_category != 'design'
-    GROUP BY to_char(p.created_at, 'YYYY-MM')
+    LEFT JOIN project_section_supervision pss ON pss.project_id = p.id AND pss.section_id = t.section_id
+    WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement') AND t.expense_category != 'design' AND t.date >= start_date
+    GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   project_exp AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
@@ -1246,21 +1275,14 @@ BEGIN
   ),
   project_supervision AS (
     SELECT p.client_id,
-           SUM(GREATEST(0, COALESCE(total_exp.amt, 0) - COALESCE(design_exp.amt, 0)) * (p.supervision_percentage / 100.0)) AS amt
+           ROUND(SUM(COALESCE(t.paid_amount, 0) * COALESCE(pss.percentage, p.supervision_percentage) / 100.0), 2) AS amt
     FROM projects p
-    LEFT JOIN (
-      SELECT project_id, SUM(paid_amount) AS amt
-      FROM transactions
-      WHERE deleted_at IS NULL AND type IN ('project_expense','vendor_settlement')
-      GROUP BY project_id
-    ) total_exp ON total_exp.project_id = p.id
-    LEFT JOIN (
-      SELECT project_id, SUM(paid_amount) AS amt
-      FROM transactions
-      WHERE deleted_at IS NULL AND type IN ('project_expense','vendor_settlement') AND expense_category = 'design'
-      GROUP BY project_id
-    ) design_exp ON design_exp.project_id = p.id
+    JOIN transactions t ON t.project_id = p.id
+    LEFT JOIN project_section_supervision pss ON pss.project_id = p.id AND pss.section_id = t.section_id
     WHERE p.deleted_at IS NULL
+      AND t.deleted_at IS NULL
+      AND t.type IN ('project_expense','vendor_settlement')
+      AND t.expense_category != 'design'
     GROUP BY p.client_id
   )
   SELECT ac.id AS client_id,
@@ -1316,8 +1338,8 @@ SELECT
   COALESCE(e.amt, 0) AS expenses,
   COALESCE(de.amt, 0) AS design_expenses,
   COALESCE(e.amt, 0) - COALESCE(de.amt, 0) AS construction_expenses,
-  ROUND((COALESCE(e.amt, 0) - COALESCE(de.amt, 0)) * COALESCE(p.supervision_percentage, 0) / 100, 2) AS supervision,
-  COALESCE(d.amt, 0) - COALESCE(cr.amt, 0) - COALESCE(e.amt, 0) - ROUND((COALESCE(e.amt, 0) - COALESCE(de.amt, 0)) * COALESCE(p.supervision_percentage, 0) / 100, 2) AS balance
+  COALESCE(sv.amt, 0) AS supervision,
+  COALESCE(d.amt, 0) - COALESCE(cr.amt, 0) - COALESCE(e.amt, 0) - COALESCE(sv.amt, 0) AS balance
 FROM projects p
 LEFT JOIN (
   SELECT project_id, SUM(amount) AS amt FROM transactions WHERE deleted_at IS NULL AND type = 'project_deposit' GROUP BY project_id
@@ -1331,6 +1353,18 @@ LEFT JOIN (
 LEFT JOIN (
   SELECT project_id, SUM(paid_amount) AS amt FROM transactions WHERE deleted_at IS NULL AND type IN ('project_expense','vendor_settlement') AND expense_category = 'design' GROUP BY project_id
 ) de ON de.project_id = p.id
+LEFT JOIN (
+  SELECT t.project_id,
+         ROUND(SUM(COALESCE(t.paid_amount, 0) * COALESCE(pss.percentage, p.supervision_percentage) / 100.0), 2) AS amt
+  FROM transactions t
+  JOIN projects p ON p.id = t.project_id
+  LEFT JOIN project_section_supervision pss ON pss.project_id = p.id AND pss.section_id = t.section_id
+  WHERE t.deleted_at IS NULL
+    AND p.deleted_at IS NULL
+    AND t.type IN ('project_expense','vendor_settlement')
+    AND t.expense_category != 'design'
+  GROUP BY t.project_id
+) sv ON sv.project_id = p.id
 WHERE p.deleted_at IS NULL;
 
 CREATE OR REPLACE VIEW public.client_balances AS
@@ -1443,7 +1477,7 @@ SELECT
   'supervision'::TEXT AS type,
   pb.supervision AS amount,
   'cash'::TEXT AS payment_method,
-  ('إشراف ' || p.name || ' (' || COALESCE(p.supervision_percentage,0) || '%)')::TEXT AS description,
+  ('إشراف ' || p.name)::TEXT AS description,
   '-'::TEXT AS employee_name,
   '-'::TEXT AS sector_name,
   '-'::TEXT AS vendor_name
@@ -1496,7 +1530,7 @@ SELECT
   p.created_at,
   'supervision'::TEXT AS type,
   pb.supervision AS amount,
-  ('إشراف ' || p.name || ' (' || COALESCE(p.supervision_percentage,0) || '%)')::TEXT AS description,
+  ('إشراف ' || p.name)::TEXT AS description,
   NULL::TEXT AS party_name,
   p.name AS project_name,
   NULL::TEXT AS vendor_name,
@@ -1574,16 +1608,18 @@ BEGIN
   );
 
   -- Create or update the profile row atomically in the same transaction.
-  INSERT INTO public.profiles (id, name, username, role)
+  INSERT INTO public.profiles (id, name, username, email, role)
   VALUES (
     new_id,
     meta->>'name',
     meta->>'username',
+    NULLIF(meta->>'email', ''),
     COALESCE(meta->>'role', 'user')
   )
   ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     username = EXCLUDED.username,
+    email = EXCLUDED.email,
     role = EXCLUDED.role;
 
   RETURN jsonb_build_object('id', new_id, 'email', user_email, 'existing', false);
@@ -1592,6 +1628,39 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.is_app_admin(uuid) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.admin_create_auth_user(text, text, jsonb) FROM anon;
+
+-- Admin-only RPC to update a user's auth email and profile email.
+CREATE OR REPLACE FUNCTION public.admin_update_auth_email(
+  p_user_id UUID,
+  p_email TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_app_admin(auth.uid()) THEN
+    RAISE EXCEPTION 'Admin only';
+  END IF;
+
+  IF p_email IS NOT NULL AND p_email <> '' THEN
+    IF EXISTS (SELECT 1 FROM auth.users WHERE email = p_email AND id <> p_user_id) THEN
+      RETURN jsonb_build_object('success', false, 'error', 'Email already in use');
+    END IF;
+
+    UPDATE auth.users SET email = p_email WHERE id = p_user_id;
+    UPDATE auth.identities
+    SET identity_data = jsonb_build_object('sub', user_id::text, 'email', p_email)
+    WHERE user_id = p_user_id AND provider = 'email';
+  END IF;
+
+  UPDATE public.profiles SET email = NULLIF(p_email, '') WHERE id = p_user_id;
+  RETURN jsonb_build_object('success', true);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_update_auth_email(uuid, text) FROM anon;
 
 -- Helper for admins to check whether an email is already registered.
 CREATE OR REPLACE FUNCTION public.auth_user_exists(user_email TEXT)

@@ -405,14 +405,16 @@ const Crud = {
 
   // ─── PROJECTS (linked to Clients) ───
   async addProject(clientId) {
-    const clients = await API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
+    const [clients, workSections] = await Promise.all([
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('work_sections', 'GET', null, '?select=id&deleted_at=is.null')
+    ]);
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
     const cols = [
       { key: 'name', label: 'اسم المشروع *', req: true },
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'address', label: 'العنوان' },
       { key: 'value', label: 'القيمة', type: 'number' },
-      { key: 'supervision_percentage', label: 'نسبة الإشراف %', type: 'number' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { key: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
       { key: 'end_date', label: 'تاريخ الانتهاء *', type: 'date', req: true },
@@ -427,7 +429,16 @@ const Crud = {
         const client = clients.find(c => c.id === r.client_id);
         return { ...r, client_id: r.client_id || null, client_name: client ? client.name : null };
       });
-      await this.bulkSave('projects', enriched);
+      const saved = await this.bulkSave('projects', enriched);
+      // Pre-fill default supervision rates for each new project
+      const defaultRate = +(App.settings && App.settings.default_supervision) || 0;
+      const newProjects = Array.isArray(saved) ? saved : [];
+      const rateRows = [];
+      for (const proj of newProjects) {
+        if (!proj || !proj.id) continue;
+        for (const s of workSections) rateRows.push({ project_id: proj.id, section_id: s.id, percentage: defaultRate });
+      }
+      if (rateRows.length) await API.upsert('project_section_supervision', rateRows, 'project_id,section_id');
       UI.toast(`تم حفظ ${rows.length} مشروع`);
       if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
       else App.loadClients();
@@ -435,9 +446,11 @@ const Crud = {
   },
 
   async editProject(id) {
-    const [projectRows, clients] = await Promise.all([
+    const [projectRows, clients, workSections, rates] = await Promise.all([
       API.request('projects', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null'),
-      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('project_section_supervision', 'GET', null, `?select=section_id,percentage&project_id=eq.${id}`)
     ]);
     if (!projectRows.length) return;
     const project = projectRows[0];
@@ -447,14 +460,14 @@ const Crud = {
       { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { name: 'address', label: 'العنوان' },
       { name: 'value', label: 'القيمة', type: 'number' },
-      { name: 'supervision_percentage', label: 'نسبة الإشراف %', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { name: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
       { name: 'end_date', label: 'تاريخ الانتهاء *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     const values = { ...project, client_id: project.client_id || '' };
-    UI.openModal('تعديل مشروع', `<form>${UI.form(fields, values)}</form>`, async (form) => {
+    const rateMap = Object.fromEntries(rates.map(r => [r.section_id, r.percentage]));
+    const overlay = UI.openModal('تعديل مشروع', `<form>${UI.form(fields, values)}</form>`, async (form) => {
       const fd = new FormData(form);
       const newName = String(fd.get('name') || '').trim();
       const newClientId = fd.get('client_id');
@@ -465,12 +478,25 @@ const Crud = {
         if (existing.length) { UI.toast('⚠️ اسم المشروع موجود مسبقاً لهذا العميل', 'error'); return; }
       }
       const client = clients.find(c => c.id === fd.get('client_id'));
-      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, supervision_percentage: +fd.get('supervision_percentage') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
+      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
+      // Save per-section supervision rates
+      const rateRows = [];
+      form.querySelectorAll('[name^="section_rate_"]').forEach(input => {
+        const sectionId = input.name.replace('section_rate_', '');
+        rateRows.push({ project_id: id, section_id: sectionId, percentage: +input.value || 0 });
+      });
+      if (rateRows.length) await API.upsert('project_section_supervision', rateRows, 'project_id,section_id');
       UI.toast('تم التحديث');
       if (App.screen === 'project' && App.projectId) App.loadProject(App.projectId);
       else if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
       else App.loadClients();
     });
+    const formEl = overlay.querySelector('form');
+    const actions = formEl.querySelector('.modal-actions');
+    const ratesHtml = `<div class="modal-section"><div class="modal-section-title">نسب الإشراف حسب القسم</div><div class="form-grid">` +
+      workSections.map(s => `<div class="form-group"><label>${App.esc(s.name)}</label><input type="number" name="section_rate_${s.id}" value="${rateMap[s.id] ?? 0}" min="0" step="any" /></div>`).join('') +
+      `</div></div>`;
+    if (actions) actions.insertAdjacentHTML('beforebegin', ratesHtml);
   },
 
 
@@ -1005,7 +1031,7 @@ const Crud = {
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
-      { key: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
+      { key: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
       { key: 'item_id', label: 'البند', type: 'select', opts: [{ v: '', l: '-- اختر بند --' }] },
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -1278,7 +1304,7 @@ const Crud = {
         { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))] },
         { name: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
         { name: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name }))] },
-        { name: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
+        { name: 'section_id', label: 'القسم', type: 'select', req: true, opts: [{ v: '', l: '-- اختر قسم --' }, ...workSections.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'item_id', label: 'البند', type: 'select', opts: itemOpts },
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -1376,6 +1402,7 @@ const Crud = {
     const cols = [
       { key: 'username', label: 'اسم المستخدم *', req: true },
       { key: 'name', label: 'الاسم الكامل *', req: true },
+      { key: 'email', label: 'البريد الإلكتروني' },
       { key: 'password', label: 'كلمة المرور *', req: true },
       { key: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
     ];
@@ -1386,26 +1413,32 @@ const Crud = {
         try {
           const username = String(row.username || '').trim();
           const name = String(row.name || '').trim();
+          const rawEmail = String(row.email || '').trim();
           const password = String(row.password || '');
           const role = row.role || 'user';
           if (!username || !name || !password) {
             throw new Error('اسم المستخدم والاسم الكامل وكلمة المرور مطلوبة');
           }
-          const email = Auth.toEmail(username);
+          if (rawEmail && !rawEmail.includes('@')) {
+            throw new Error('البريد الإلكتروني غير صالح');
+          }
+          const email = rawEmail ? rawEmail.toLowerCase() : Auth.toEmail(username);
           // Pre-check duplicates before calling the RPC.
-          const [profileDup, authDup] = await Promise.all([
+          const [profileDup, authDup, emailDup] = await Promise.all([
             API.request('profiles', 'GET', null, `?select=id&username=eq.${encodeURIComponent(username)}`),
-            API.rpc('auth_user_exists', { user_email: email })
+            API.rpc('auth_user_exists', { user_email: email }),
+            rawEmail ? API.request('profiles', 'GET', null, `?select=id&email=eq.${encodeURIComponent(rawEmail.toLowerCase())}`) : Promise.resolve([])
           ]);
           if (profileDup.length) throw new Error('اسم المستخدم مستخدم مسبقاً');
           if (authDup) throw new Error('البريد الإلكتروني مستخدم مسبقاً');
+          if (emailDup.length) throw new Error('البريد الإلكتروني مستخدم مسبقاً في الملفات الشخصية');
 
           // Server-side admin RPC creates the auth user, identity, and profile atomically.
           // No confirmation email is sent, so there is no rate limit.
           const result = await API.rpc('admin_create_auth_user', {
             user_email: email,
             user_password: password,
-            user_meta: { name, username, role }
+            user_meta: { name, username, email: rawEmail ? rawEmail.toLowerCase() : '', role }
           });
           if (result?.existing) throw new Error('البريد الإلكتروني مستخدم مسبقاً');
           if (!result?.id) throw new Error('فشل إنشاء المستخدم');
@@ -1434,10 +1467,22 @@ const Crud = {
     const fields = [
       { name: 'username', label: 'اسم المستخدم', attr: 'readonly' },
       { name: 'name', label: 'الاسم الكامل', req: true },
+      { name: 'email', label: 'البريد الإلكتروني' },
       { name: 'role', label: 'الدور', type: 'select', opts: [{ v: 'user', l: 'موظف' }, { v: 'admin', l: 'مدير' }] }
     ];
-    UI.openModal('تعديل مستخدم', `<form>${UI.form(fields, { username: profile.username || '', name: profile.name || '', role: profile.role || 'user' })}</form>`, async (form) => {
+    const originalEmail = (profile.email || '').toLowerCase();
+    UI.openModal('تعديل مستخدم', `<form>${UI.form(fields, { username: profile.username || '', name: profile.name || '', email: profile.email || '', role: profile.role || 'user' })}</form>`, async (form) => {
       const fd = new FormData(form);
+      const newEmail = String(fd.get('email') || '').trim().toLowerCase();
+      if (newEmail && !newEmail.includes('@')) {
+        UI.toast('البريد الإلكتروني غير صالح', 'error'); return;
+      }
+      if (newEmail && newEmail !== originalEmail) {
+        const dup = await API.request('profiles', 'GET', null, `?select=id&email=eq.${encodeURIComponent(newEmail)}`);
+        if (dup.length) { UI.toast('البريد الإلكتروني مستخدم مسبقاً', 'error'); return; }
+        const upd = await API.rpc('admin_update_auth_email', { p_user_id: id, p_email: newEmail });
+        if (!upd?.success) { UI.toast(upd?.error || 'فشل تحديث البريد الإلكتروني', 'error'); return; }
+      }
       await API.request('profiles', 'PATCH', { name: fd.get('name'), role: fd.get('role') }, `?id=eq.${id}`);
       UI.toast('تم التحديث'); App.loadUsers();
     });
@@ -1776,7 +1821,7 @@ const Crud = {
   },
 
   async projectStatement(projectId) {
-    const project = await API.request('projects', 'GET', null, `?select=name,client_id,client_name,supervision_percentage&id=eq.${projectId}&deleted_at=is.null`);
+    const project = await API.request('projects', 'GET', null, `?select=name,client_id,client_name&id=eq.${projectId}&deleted_at=is.null`);
     const p = project[0];
     if (!p) return UI.toast('المشروع غير موجود', 'error');
     const name = p.name || 'مشروع';
@@ -1804,7 +1849,7 @@ const Crud = {
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
           <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalDep)}</div></div>
           <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExp)}</div></div>
-          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${App.esc(p.supervision_percentage || 0)}%)</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
+          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
           <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد المشروع</div><div class="kpi-value">${App.fmtMoney(balance)}</div></div>
         </div>`;
       const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], rows) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
@@ -1859,29 +1904,33 @@ const Crud = {
   },
 
   async projectBudget(projectId) {
-    const [project, txs] = await Promise.all([
+    const [project, txs, rates] = await Promise.all([
       API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}&deleted_at=is.null`),
-      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
+      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`),
+      API.request('project_section_supervision', 'GET', null, `?select=section_id,percentage&project_id=eq.${projectId}`)
     ]);
     const p = project[0];
     if (!p) return UI.toast('المشروع غير موجود', 'error');
+    const rateMap = Object.fromEntries(rates.map(r => [r.section_id, +r.percentage || 0]));
+    const isProjectExpense = t => ['project_expense', 'vendor_settlement'].includes(t.type);
     const deposits = txs.filter(t => t.type === 'project_deposit').reduce((s, t) => s + (+t.amount || 0), 0);
-    const expenses = txs.filter(t => t.type === 'project_expense').reduce((s, t) => s + (+t.amount || 0), 0);
-    const constr = txs.filter(t => t.type === 'project_expense' && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-    const design = txs.filter(t => t.type === 'project_expense' && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
-    const supervision = Math.max(0, constr) * (p.supervision_percentage || 0) / 100;
+    const expenses = txs.filter(isProjectExpense).reduce((s, t) => s + (+t.amount || 0), 0);
+    const constr = txs.filter(t => isProjectExpense(t) && t.expense_category !== 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const design = txs.filter(t => isProjectExpense(t) && t.expense_category === 'design').reduce((s, t) => s + (+t.amount || 0), 0);
+    const supervision = txs.filter(t => isProjectExpense(t) && t.expense_category !== 'design')
+      .reduce((s, t) => s + ((+t.amount || 0) * (rateMap[t.section_id] ?? p.supervision_percentage ?? 0) / 100), 0);
     const balance = deposits - expenses - supervision;
     const html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(deposits)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(expenses)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مصروفات الإنشاء</div><div class="kpi-value">${App.fmtMoney(constr)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مصروفات التصميم</div><div class="kpi-value">${App.fmtMoney(design)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف (${p.supervision_percentage || 0}%)</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(supervision)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${App.fmtMoney(balance)}</div></div>
     </div>`;
     const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportProjectBudget('${projectId}')">📥 تحميل Excel</button></div>`;
     this._projectBudgetData = this._projectBudgetData || {};
-    this._projectBudgetData[projectId] = { name: p.name, deposits, expenses, constr, design, supervision, balance, supervisionPercentage: p.supervision_percentage || 0 };
+    this._projectBudgetData[projectId] = { name: p.name, deposits, expenses, constr, design, supervision, balance, supervisionPercentage: '-' };
 
     UI.openModal(`📊 ميزانية مشروع: ${App.esc(p.name)}`, downloadBtn + html, null);
   },

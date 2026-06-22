@@ -250,7 +250,15 @@ const App = {
   },
 
   renderLogin() {
-    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h1>سارة أبو العلا</h1><p>النظام المالي والمحاسبي</p></div><form data-form="login" class="auth-form"><div class="form-group"><label>اسم المستخدم</label><input type="text" name="username" required placeholder="admin" dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required placeholder="••••••••" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">دخول</button></form></div></div>`;
+    document.getElementById('app').innerHTML = `<div class="auth-page"><div class="auth-card"><div class="auth-logo"><img src="logo.png" alt="Sara Abo Elelaa"><h1>سارة أبو العلا</h1><p>النظام المالي والمحاسبي</p></div><form data-form="login" class="auth-form"><div class="form-group"><label>اسم المستخدم أو البريد الإلكتروني</label><input type="text" name="username" required placeholder="admin" dir="ltr"></div><div class="form-group"><label>كلمة المرور</label><input type="password" name="password" required placeholder="••••••••" dir="ltr"></div><button type="submit" class="btn btn-primary btn-block">دخول</button><div style="text-align:center;margin-top:12px"><a href="#" onclick="App.showForgotPassword();return false;" style="font-size:13px;color:var(--gold)">نسيت كلمة المرور؟</a></div></form></div></div>`;
+  },
+
+  showForgotPassword() {
+    UI.openModal('استعادة كلمة المرور', `<form id="forgot-form"><div class="form-group"><label>اسم المستخدم أو البريد الإلكتروني</label><input type="text" name="username" required placeholder="admin" dir="ltr"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button><button type="submit" class="btn btn-primary">إرسال رابط الاستعادة</button></div></form>`, async (form) => {
+      const input = form.querySelector('[name="username"]').value;
+      await Auth.forgotPassword(input);
+      UI.toast('تم إرسال رابط استعادة كلمة المرور إلى بريدك');
+    });
   },
 
   renderRegister() {
