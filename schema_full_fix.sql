@@ -1379,14 +1379,16 @@ UPDATE transactions SET payment_method = 'cash' WHERE payment_method IS NULL AND
 CREATE OR REPLACE VIEW public.office_balance AS
 WITH base AS (
   SELECT
-    COALESCE(SUM(CASE WHEN type = 'owner_deposit' AND COALESCE(payment_method,'cash') = 'cash' THEN amount ELSE 0 END), 0) -
-    COALESCE(SUM(CASE WHEN type IN ('office_expense','withdrawal') AND COALESCE(payment_method,'cash') = 'cash' THEN amount ELSE 0 END), 0) +
-    COALESCE(SUM(CASE WHEN type = 'custody_return' AND COALESCE(payment_method,'cash') = 'cash' THEN amount ELSE 0 END), 0) AS cash_balance,
-    COALESCE(SUM(CASE WHEN type = 'owner_deposit' AND payment_method = 'bank' THEN amount ELSE 0 END), 0) -
-    COALESCE(SUM(CASE WHEN type IN ('office_expense','withdrawal') AND payment_method = 'bank' THEN amount ELSE 0 END), 0) +
-    COALESCE(SUM(CASE WHEN type = 'custody_return' AND payment_method = 'bank' THEN amount ELSE 0 END), 0) AS bank_balance,
+    COALESCE(SUM(CASE WHEN t.type = 'owner_deposit' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN t.type IN ('office_expense','withdrawal') AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) +
+    COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) AS cash_balance,
+    COALESCE(SUM(CASE WHEN t.type = 'owner_deposit' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN t.type IN ('office_expense','withdrawal') AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) +
+    COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) AS bank_balance,
     COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0) AS supervision_income,
-    COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income
+    COALESCE((SELECT SUM(t2.paid_amount) FROM transactions t2 JOIN vendors v ON v.id = t2.vendor_id WHERE t2.deleted_at IS NULL AND v.is_office IS TRUE AND t2.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income
+  FROM transactions t
+  WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','custody_return')
 )
 SELECT
   cash_balance,
