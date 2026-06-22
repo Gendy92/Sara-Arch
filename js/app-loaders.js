@@ -155,7 +155,7 @@ Object.assign(App, {
       // ─── Custody Alerts ───
       const custodyAlertRows = (custodyAlerts || [])
         .map(r => {
-          const remaining = (+r.amount || 0) - (+r.returned_amount || 0) - (+r.returned_cash_amount || 0);
+          const remaining = +r.remaining_balance || 0;
           return [{html: `<a href="#" onclick="Crud.custodyExpenses('${r.id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(r.employees?.name || r.employee_name || '-')}</a>`}, this.fmtMoney(r.amount || 0), {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(remaining)}</span>`}, {html: `<span class="badge badge-${r.status === 'active' ? 'green' : 'orange'}">${r.status === 'active' ? 'نشطة' : 'جزئي'}</span>`}];
         });
       document.getElementById('dash-custody-alerts').innerHTML = custodyAlertRows.length
@@ -651,7 +651,7 @@ Object.assign(App, {
       this.pageState.officeCustody = safeCustodyPage;
       const statusLabels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
       const custodyRows = custodyRecords.map((r, i) => {
-        const bal = (+r.amount || 0) - (+r.returned_amount || 0) - (+r.returned_cash_amount || 0);
+        const bal = +r.remaining_balance || 0;
         const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
         const typeBadge = r.custody_type === 'project' ? '<span class="badge badge-blue">مشروع</span>' : '<span class="badge badge-gold">مكتب</span>';
         const related = r.custody_type === 'project' ? (r.project_name || '-') : (r.sector_name || '-');

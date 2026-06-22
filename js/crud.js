@@ -2307,17 +2307,10 @@ const Crud = {
   },
 
   async _updateCustodyAdvance(custodyId) {
-    const [custody, expenses] = await Promise.all([
-      API.request('custody_records', 'GET', null, `?select=amount,returned_amount,returned_cash_amount,advance_transaction_id,employee_id,employee_name,date&id=eq.${custodyId}&deleted_at=is.null`),
-      API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`)
-    ]);
+    const custody = await API.request('custody_records', 'GET', null, `?select=amount,remaining_balance,advance_transaction_id,employee_id,employee_name,date&id=eq.${custodyId}&deleted_at=is.null`);
     const c = custody[0];
     if (!c) return;
-    const totalExpenses = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
-    const returnedCash = +c.returned_cash_amount || 0;
-    const consumed = totalExpenses + returnedCash;
-    const remaining = Math.max(0, (+c.amount || 0) - consumed);
-    const status = this._custodyStatus(c.amount, consumed);
+    const remaining = Math.max(0, +c.remaining_balance || 0);
 
     // Keep the linked advance transaction equal to the unspent/unreturned cash.
     if (c.advance_transaction_id && remaining >= 0) {
@@ -2330,8 +2323,6 @@ const Crud = {
         employee_name: c.employee_name || null
       }, c.advance_transaction_id);
     }
-
-    await API.request('custody_records', 'PATCH', { returned_amount: totalExpenses, status }, '?id=eq.' + custodyId);
   },
 
   async custodyExpenses(custodyId) {
@@ -2343,7 +2334,7 @@ const Crud = {
     if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const totalExpenses = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
     const returnedCash = +c.returned_cash_amount || 0;
-    const remaining = (+c.amount || 0) - totalExpenses - returnedCash;
+    const remaining = +c.remaining_balance || 0;
     const empName = c.employees?.name || c.employee_name || '-';
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مبلغ العهدة</div><div class="kpi-value">${App.fmtMoney(c.amount || 0)}</div></div>
@@ -2361,10 +2352,7 @@ const Crud = {
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${custodyId}&deleted_at=is.null`);
     if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const c = custodyRows[0];
-    const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`);
-    const spent = existing.reduce((s, x) => s + (+x.amount || 0), 0);
-    const returnedCash = +c.returned_cash_amount || 0;
-    const available = (+c.amount || 0) - spent - returnedCash;
+    const available = +c.remaining_balance || 0;
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
@@ -2430,10 +2418,7 @@ const Crud = {
     const expense = rows[0];
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${expense.custody_id}&deleted_at=is.null`);
     const c = custodyRows[0] || {};
-    const existing = await API.request('custody_expenses', 'GET', null, `?select=amount&id=neq.${id}&custody_id=eq.${expense.custody_id}&deleted_at=is.null`);
-    const spent = existing.reduce((s, x) => s + (+x.amount || 0), 0);
-    const returnedCash = +c.returned_cash_amount || 0;
-    const available = (+c.amount || 0) - spent - returnedCash;
+    const available = (+c.remaining_balance || 0) + (+expense.amount || 0);
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
@@ -2475,10 +2460,7 @@ const Crud = {
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*,employees(name)&id=eq.${custodyId}&deleted_at=is.null`);
     if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const c = custodyRows[0];
-    const expenses = await API.request('custody_expenses', 'GET', null, `?select=amount&custody_id=eq.${custodyId}&deleted_at=is.null`);
-    const spent = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
-    const returnedCash = +c.returned_cash_amount || 0;
-    const remaining = (+c.amount || 0) - spent - returnedCash;
+    const remaining = +c.remaining_balance || 0;
     if (remaining <= 0) { UI.toast('لا يوجد رصيد متبقي للسداد', 'error'); return; }
     const fields = [
       { name: 'amount', label: `المبلغ المرتجع * (متاح: ${App.fmtMoney(remaining)})`, type: 'number', req: true, default: remaining },
