@@ -103,7 +103,6 @@ Object.assign(App, {
         ${kpiClick('clients', '<div class="kpi-icon">👥</div><div class="kpi-label">العملاء</div><div class="kpi-value">' + (k.client_count || 0) + '</div>')}
         ${kpiClick('clients', '<div class="kpi-icon">📁</div><div class="kpi-label">المشاريع</div><div class="kpi-value">' + (k.project_count || 0) + '</div>')}
         ${kpiClick('clients', '<div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">' + (k.active_project_count || 0) + '</div>')}
-        ${kpiClick('employees', '<div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">' + (k.employee_count || 0) + '</div>')}
         ${kpiClick('transactions', '<div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">' + this.fmtMoney(k.total_movement || 0) + '</div>')}
         ${kpiClick('office', '<div class="kpi-icon">🏢</div><div class="kpi-label">صافي المركز</div><div class="kpi-value" style="color:' + (netPosition >= 0 ? 'var(--green)' : 'var(--red)') + '">' + this.fmtMoney(netPosition) + '</div>')}`;
       // ─── Office Income vs Expense (Pie Chart) ───
@@ -694,9 +693,9 @@ Object.assign(App, {
         API.request('employees', 'GET', null, `?select=*&is_active=eq.true&deleted_at=is.null${searchFilter}&order=created_at.desc&limit=${limit}&offset=${offset}`),
         API.count('employees', '?is_active=eq.true&deleted_at=is.null' + searchFilter)
       ]);
-      const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'الإجراءات'], data.map(e => {
-        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeTransactions('${e.id}')">المعاملات</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeSalaryHistory('${e.id}')">الرواتب</button>`;
-        return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), {html: actions}];
+      const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الإجراءات'], data.map(e => {
+        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.employeeTransactions('${e.id}')">المعاملات</button>`;
+        return [App.esc(e.name), App.esc(e.job_title || '-'), {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
       document.getElementById('emp-tbl').innerHTML = html + (data.length ? this._paginationHtml('employees', page, limit, total) : '');
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...', (term) => {
@@ -706,9 +705,7 @@ Object.assign(App, {
       });
       const searchInput = document.getElementById('emp-tbl-search');
       if (searchInput) searchInput.value = App.searchState.employees || '';
-      await this.loadEmpPayroll();
       await this.loadEmpTransactions();
-      await this.loadEmpSalaryHistory();
     } catch (e) {
       UI.toast('Employees load failed: ' + e.message, 'error');
       App.loadErrorHtml('emp-tbl', 'تعذر تحميل الموظفين', 'App.loadEmployees()', e);

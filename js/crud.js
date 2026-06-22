@@ -760,7 +760,6 @@ const Crud = {
     const cols = [
       { key: 'name', label: 'اسم الموظف *', req: true },
       { key: 'job_title', label: 'الوظيفة' },
-      { key: 'salary', label: 'الراتب', type: 'number' },
       { key: 'phone', label: 'الهاتف' },
       { key: 'email', label: 'البريد' },
       { key: 'hire_date', label: 'تاريخ التعيين *', type: 'date', req: true },
@@ -783,7 +782,6 @@ const Crud = {
     const fields = [
       { name: 'name', label: 'اسم الموظف', req: true },
       { name: 'job_title', label: 'الوظيفة' },
-      { name: 'salary', label: 'الراتب', type: 'number' },
       { name: 'phone', label: 'الهاتف' },
       { name: 'email', label: 'البريد' },
       { name: 'hire_date', label: 'تاريخ التعيين *', type: 'date', req: true },

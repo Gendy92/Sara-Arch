@@ -1,10 +1,23 @@
 # Sara Arch — Changelog
 
-> **Current version:** v243  
+> **Current version:** v244  
 > **Branch:** `dev.2` / `main` (fast-forward synced)  
 > **Last updated:** 2026-06-22
 
 ---
+
+## Version 244 (Current)
+
+### Changed
+- Removed the **Employees** item from the main sidebar.
+- Moved employee management into **Settings** as a new admin-only card.
+- Removed salary and attendance UI from the Employees screen:
+  - Removed salary column from the employee list.
+  - Removed salary, attendance, and salary-history action buttons.
+  - Removed fingerprint upload and monthly payroll cards.
+- Removed the employee-count KPI card from the Dashboard.
+- Removed salary field from the add/edit employee forms.
+- Bumped runtime, service-worker cache, and asset query-string version to `244`.
 
 ## Version 243 (Current)
 
