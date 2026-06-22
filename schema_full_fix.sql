@@ -1416,7 +1416,7 @@ WHERE deleted_at IS NULL
 
 -- Seed a default sector for custody advance transactions.
 INSERT INTO sectors (name, description)
-VALUES ('عهود نقدية', 'تصنيف مصروفات العهد النقدية المؤقتة')
+VALUES ('عهدة نقدية', 'تصنيف مصروف العهد النقدية المؤقت')
 ON CONFLICT (name) DO NOTHING;
 
 -- Backfill advance transactions for existing custody records that don't have one.
@@ -1447,7 +1447,7 @@ BEGIN
         'عهدة نقدية للموظف ' || COALESCE(rec.employee_name, ''),
         rec.employee_id,
         rec.employee_name,
-        'عهود نقدية'
+        'عهدة نقدية'
       )
       RETURNING id INTO v_tx_id;
     ELSE

@@ -2231,7 +2231,7 @@ const Crud = {
           description: 'عهدة نقدية للموظف ' + (emp ? emp.name : ''),
           employee_id: fd.get('employee_id') || null,
           employee_name: emp ? emp.name : null,
-          sector_name: 'عهود نقدية'
+          sector_name: 'عهدة نقدية'
         });
         const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
         if (txId) {
@@ -2537,7 +2537,7 @@ const Crud = {
         description: desc,
         employee_id: c.employee_id || null,
         employee_name: c.employee_name || null,
-        sector_name: 'عهود نقدية'
+        sector_name: 'عهدة نقدية'
       });
       const newReturnedCash = returnedCash + amount;
       await API.request('custody_records', 'PATCH', { returned_cash_amount: newReturnedCash }, '?id=eq.' + custodyId);
