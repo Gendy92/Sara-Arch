@@ -2297,11 +2297,21 @@ const Crud = {
     const form = overlay.querySelector('form');
     const custodySel = form.querySelector('[name="custody_id"]');
     const typeSel = form.querySelector('[name="expense_type"]');
+    const custodyWrapper = custodySel.closest('.searchable-select');
+    const custodyInput = custodyWrapper?.querySelector('.searchable-select-input');
+    const setCustodyEnabled = (enabled) => {
+      custodySel.disabled = !enabled;
+      if (custodyInput) custodyInput.disabled = !enabled;
+    };
+    setCustodyEnabled(false);
     const autoOpen = () => {
       if (custodySel.value && typeSel.value) openSheet(custodySel.value, typeSel.value);
     };
     custodySel.addEventListener('change', autoOpen);
-    typeSel.addEventListener('change', autoOpen);
+    typeSel.addEventListener('change', () => {
+      setCustodyEnabled(!!typeSel.value);
+      autoOpen();
+    });
   },
 
   async _openOfficeCustodyExpenseSheet(c) {
