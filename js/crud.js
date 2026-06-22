@@ -1483,6 +1483,7 @@ const Crud = {
     document.getElementById('stmt-generate').addEventListener('click', async () => {
       const selected = Array.from(document.querySelectorAll('.stmt-project:checked')).map(cb => cb.value);
       if (!selected.length) { UI.toast('اختر مشروعاً واحداً على الأقل', 'error'); return; }
+      UI.closeModal();
 
       const [txs, cbRows, pbRows] = await Promise.all([
         API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`),
