@@ -2290,10 +2290,18 @@ const Crud = {
       if (expenseType === 'project') await this._openProjectCustodyExpenseSheet(c);
       else await this._openOfficeCustodyExpenseSheet(c);
     };
-    UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+    const overlay = UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
       await openSheet(fd.get('custody_id'), fd.get('expense_type'));
     });
+    const form = overlay.querySelector('form');
+    const custodySel = form.querySelector('[name="custody_id"]');
+    const typeSel = form.querySelector('[name="expense_type"]');
+    const autoOpen = () => {
+      if (custodySel.value && typeSel.value) openSheet(custodySel.value, typeSel.value);
+    };
+    custodySel.addEventListener('change', autoOpen);
+    typeSel.addEventListener('change', autoOpen);
   },
 
   async _openOfficeCustodyExpenseSheet(c) {
