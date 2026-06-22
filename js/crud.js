@@ -2217,120 +2217,163 @@ const Crud = {
   },
 
   async addOfficeCustodyExpense() {
-    const [custodies, sectors, projects] = await Promise.all([
-      API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc"),
-      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
-    ]);
+    const custodies = await API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc");
     if (!custodies.length) { UI.toast('لا توجد عهد مفتوحة لإضافة مصروف', 'error'); return; }
     const custodyOpts = custodies.map(c => ({ v: c.id, l: `${c.employees?.name || c.employee_name || '-'} — ${App.fmtMoney(c.amount)} (متبقي: ${App.fmtMoney(c.remaining_balance || 0)})` }));
-    const typeOpts = [{ v: 'office', l: 'مكتب' }, { v: 'project', l: 'مشروع' }];
-    const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
-    const fields = [
-      { name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] },
-      { name: 'expense_type', label: 'نوع المصروف *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر نوع --' }, ...typeOpts], default: 'office' },
-      { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
-      { name: 'project_id', label: 'المشروع *', type: 'select', opts: [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }))] },
-      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: 'cash' },
-      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
-      { name: 'description', label: 'البيان', type: 'textarea' }
-    ];
-    const overlay = UI.openModal('🔨 مصروف عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
-      const fd = new FormData(form);
-      const custodyId = fd.get('custody_id');
-      const expenseType = fd.get('expense_type');
-      const amount = +fd.get('amount') || 0;
-      if (!custodyId) { UI.toast('يجب اختيار العهدة', 'error'); return; }
-      if (!expenseType) { UI.toast('يجب اختيار نوع المصروف', 'error'); return; }
+    const fields = [{ name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] }];
+    UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const custodyId = new FormData(form).get('custody_id');
       const c = custodies.find(x => x.id === custodyId);
-      if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
+      if (!custodyId || !c) { UI.toast('يجب اختيار العهدة', 'error'); return; }
       const available = +c.remaining_balance || 0;
-      if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
-      const date = fd.get('date') || new Date().toISOString().slice(0, 10);
-      const desc = fd.get('description') || 'مصروف عهدة';
-      const paymentMethod = fd.get('payment_method') || 'cash';
-      let txPayload;
-      if (expenseType === 'project') {
-        const projectId = fd.get('project_id');
-        if (!projectId) { UI.toast('يجب اختيار المشروع', 'error'); return; }
-        const proj = projects.find(p => p.id === projectId);
-        txPayload = {
-          type: 'project_expense',
-          amount,
-          paid_amount: amount,
-          payment_method: paymentMethod,
-          payment_term: 'immediate',
-          expense_category: 'construction',
-          client_id: proj ? proj.client_id : null,
-          party_id: proj ? proj.client_id : null,
-          party_name: proj ? proj.client_name : null,
-          party_type: 'client',
-          project_id: proj ? proj.id : null,
-          project_name: proj ? proj.name : null,
-          employee_id: c.employee_id || null,
-          employee_name: c.employee_name || null,
-          date,
-          description: desc
-        };
-      } else {
-        const sectorId = fd.get('sector_id') || null;
-        const sector = sectors.find(s => s.id === sectorId);
-        txPayload = {
+      if (available <= 0) { UI.toast('لا يوجد رصيد متاح لهذه العهدة', 'error'); return; }
+      UI.closeModal();
+      if (c.custody_type === 'project') await this._openProjectCustodyExpenseSheet(c);
+      else await this._openOfficeCustodyExpenseSheet(c);
+    });
+  },
+
+  async _openOfficeCustodyExpenseSheet(c) {
+    const [employees, sectors, vendors] = await Promise.all([
+      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
+      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc')
+    ]);
+    const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
+    const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
+    const officeVendor = vendors.find(v => v.is_office);
+    const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
+    const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
+    const cols = [
+      { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
+      { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
+      { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: officeVendor ? officeVendor.id : '' },
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { key: 'description', label: 'البيان' }
+    ];
+    const defaults = { employee_id: c.employee_id || '', date: new Date().toISOString().slice(0, 10), payment_method: 'cash' };
+    Spreadsheet.open('🔨 مصروف عهدة - مكتب', cols, async (rows) => {
+      const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
+      if (total > (+c.remaining_balance || 0)) { UI.toast('إجمالي المصروفات يتجاوز الرصيد المتاح للعهدة', 'error'); throw new Error('over balance'); }
+      for (const r of rows) {
+        const emp = employees.find(e => e.id === r.employee_id);
+        const sector = sectors.find(s => s.id === r.sector_id);
+        const vendor = vendors.find(v => v.id === r.vendor_id);
+        const amount = +r.amount || 0;
+        const date = r.date || new Date().toISOString().slice(0, 10);
+        const txResult = await this.save('transactions', {
           type: 'office_expense',
           amount,
           paid_amount: amount,
-          payment_method: paymentMethod,
+          payment_method: r.payment_method || 'cash',
+          employee_id: r.employee_id || null,
+          employee_name: emp ? emp.name : null,
+          sector_id: r.sector_id || null,
+          sector_name: sector ? sector.name : null,
+          vendor_id: r.vendor_id || null,
+          vendor_name: vendor ? vendor.name : null,
+          date,
+          description: r.description || 'مصروف عهدة'
+        });
+        const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
+        await this.save('custody_expenses', {
+          custody_id: c.id,
+          linked_transaction_id: txId || null,
+          amount,
+          date,
+          description: r.description || 'مصروف عهدة'
+        });
+      }
+      await this._updateCustodyAdvance(c.id);
+      UI.toast(`تم حفظ ${rows.length} مصروف عهدة مكتبي`);
+      App.loadOffice();
+    }, defaults);
+  },
+
+  async _openProjectCustodyExpenseSheet(c) {
+    const [clients, projects, vendors, workSections, workItems] = await Promise.all([
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('work_items', 'GET', null, '?select=id,name,section_id&deleted_at=is.null&order=name.asc')
+    ]);
+    const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const projectOpts = projects.map(p => ({ v: p.id, l: p.name + ' (' + p.client_name + ')' }));
+    const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
+    const sectionOpts = workSections.map(s => ({ v: s.id, l: s.name }));
+    const cols = [
+      { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
+      { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
+      { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
+      { key: 'section_id', label: 'القسم', type: 'select', opts: [{ v: '', l: '-- اختر قسم --' }, ...sectionOpts] },
+      { key: 'item_id', label: 'البند', type: 'select', opts: [{ v: '', l: '-- اختر بند --' }] },
+      { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'paid_amount', label: 'المدفوع', type: 'number' },
+      { key: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { key: 'description', label: 'البيان' }
+    ];
+    const defaults = { date: new Date().toISOString().slice(0, 10) };
+    if (c.client_id) defaults.client_id = c.client_id;
+    if (c.project_id) defaults.project_id = c.project_id;
+    Spreadsheet.open('🔨 مصروف عهدة - مشروع', cols, async (rows) => {
+      const total = rows.reduce((s, r) => s + (+r.amount || 0), 0);
+      if (total > (+c.remaining_balance || 0)) { UI.toast('إجمالي المصروفات يتجاوز الرصيد المتاح للعهدة', 'error'); throw new Error('over balance'); }
+      for (const r of rows) {
+        const project = projects.find(p => p.id === r.project_id);
+        const vendor = vendors.find(v => v.id === r.vendor_id);
+        const section = workSections.find(s => s.id === r.section_id);
+        const item = workItems.find(i => i.id === r.item_id);
+        if (!project) { UI.toast('مشروع غير موجود', 'error'); throw new Error('invalid project'); }
+        if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
+        let amount = +r.amount || 0;
+        let paid_amount = +r.paid_amount || 0;
+        const payment_method = r.payment_method || null;
+        let payment_term = 'immediate';
+        if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
+        else if (amount > paid_amount) payment_term = 'credit';
+        const sectionName = section ? section.name : '';
+        const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
+        const txResult = await this.save('transactions', {
+          type: 'project_expense',
+          expense_category,
+          section_id: r.section_id || null,
+          section_name: sectionName || null,
+          item_id: r.item_id || null,
+          item_name: item ? item.name : null,
+          payment_method,
+          payment_term,
+          amount,
+          paid_amount,
+          client_id: project.client_id,
+          party_id: project.client_id,
+          party_name: project.client_name,
+          party_type: 'client',
+          project_id: r.project_id,
+          project_name: project.name,
+          vendor_id: r.vendor_id || null,
+          vendor_name: vendor ? vendor.name : null,
           employee_id: c.employee_id || null,
           employee_name: c.employee_name || null,
-          sector_id: sectorId,
-          sector_name: sector ? sector.name : null,
-          date,
-          description: desc
-        };
+          date: r.date || new Date().toISOString().slice(0, 10),
+          description: r.description || 'مصروف عهدة'
+        });
+        const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
+        await this.save('custody_expenses', {
+          custody_id: c.id,
+          linked_transaction_id: txId || null,
+          amount,
+          date: r.date || new Date().toISOString().slice(0, 10),
+          description: r.description || 'مصروف عهدة'
+        });
       }
-      const txResult = await this.save('transactions', txPayload);
-      const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
-      await this.save('custody_expenses', {
-        custody_id: custodyId,
-        linked_transaction_id: txId || null,
-        amount,
-        date,
-        description: desc
-      });
-      await this._updateCustodyAdvance(custodyId);
-      UI.toast('تم حفظ مصروف العهدة');
+      await this._updateCustodyAdvance(c.id);
+      UI.toast(`تم حفظ ${rows.length} مصروف عهدة مشروع`);
       App.loadOffice();
-    });
-    const form = overlay.querySelector('form');
-    const typeSel = form.querySelector('[name="expense_type"]');
-    const custodySel = form.querySelector('[name="custody_id"]');
-    const sectorGroup = form.querySelector('[name="sector_id"]').closest('.form-group');
-    const projectGroup = form.querySelector('[name="project_id"]').closest('.form-group');
-    const toggle = () => {
-      if (typeSel.value === 'project') { sectorGroup.style.display = 'none'; projectGroup.style.display = ''; }
-      else { sectorGroup.style.display = ''; projectGroup.style.display = 'none'; }
-    };
-    const syncFromCustody = () => {
-      const c = custodies.find(x => x.id === custodySel.value);
-      if (!c) return;
-      if (c.custody_type === 'project') {
-        typeSel.value = 'project';
-        const projSel = form.querySelector('[name="project_id"]');
-        if (c.project_id) projSel.value = c.project_id;
-        projSel.dispatchEvent(new Event('change'));
-      } else {
-        typeSel.value = 'office';
-        const secSel = form.querySelector('[name="sector_id"]');
-        if (c.sector_id) secSel.value = c.sector_id;
-        secSel.dispatchEvent(new Event('change'));
-      }
-      typeSel.dispatchEvent(new Event('change'));
-      toggle();
-    };
-    typeSel.addEventListener('change', toggle);
-    custodySel.addEventListener('change', syncFromCustody);
-    toggle();
+    }, defaults, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects }, sectionItem: { sectionKey: 'section_id', itemKey: 'item_id', items: workItems } });
   },
 
   async editCustody(id) {
