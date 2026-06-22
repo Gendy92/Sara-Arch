@@ -1077,6 +1077,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+CREATE OR REPLACE FUNCTION dashboard_vendor_alerts(limit_count INT DEFAULT 10)
+RETURNS TABLE(vendor_id UUID, vendor_name TEXT, balance NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT vb.vendor_id, vb.vendor_name, vb.balance
+  FROM public.vendor_balances vb
+  WHERE vb.balance > 0
+  ORDER BY vb.balance DESC
+  LIMIT limit_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 -- Revoke anon execute on SECURITY DEFINER functions to reduce exposed API surface.
 -- Authenticated users still need these (dashboard via RPC, is_app_admin via RLS policies).
 REVOKE EXECUTE ON FUNCTION public.dashboard_kpis() FROM anon;
@@ -1085,6 +1097,7 @@ REVOKE EXECUTE ON FUNCTION public.dashboard_office_expense_sectors() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_office_income_expense_sectors() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_top_vendors(int) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.dashboard_active_client_balances(int) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.dashboard_vendor_alerts(int) FROM anon;
 
 -- ┌─────────────────────────────────────────────────────────┐
 -- │ STEP 10b: Balance Views                                 │

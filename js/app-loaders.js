@@ -46,44 +46,119 @@ Object.assign(App, {
     return `<div class="pie-chart-wrap"><div class="pie-chart"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}</svg></div><div class="pie-legend">${legend}<div class="pie-legend-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-weight:600;color:var(--text)"><span style="width:12px"></span><span>الإجمالي</span><span>${this.fmtMoney(total)}</span></div></div></div>`;
   },
 
+  _renderBar(rows, width = 420, height = 220, emptyMsg = 'لا توجد بيانات') {
+    if (!rows || !rows.length) return `<p style="color:var(--text3)">${emptyMsg}</p>`;
+    const max = Math.max(...rows.map(r => Math.max(+r[1] || 0, +r[2] || 0)));
+    if (max <= 0) return `<p style="color:var(--text3)">${emptyMsg}</p>`;
+    const padLeft = 44, padRight = 12, padBottom = 44, padTop = 16;
+    const chartW = width - padLeft - padRight;
+    const chartH = height - padBottom - padTop;
+    const groupW = chartW / rows.length;
+    const barW = groupW * 0.32;
+    const zeroY = padTop + chartH;
+    const scale = chartH / max;
+    const gridLines = 4;
+    let grid = '';
+    for (let i = 0; i <= gridLines; i++) {
+      const y = padTop + chartH - (i * chartH / gridLines);
+      const val = Math.round(i * max / gridLines);
+      grid += `<line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="var(--border)" stroke-dasharray="2,2"/>`;
+      grid += `<text x="${padLeft - 6}" y="${y + 4}" text-anchor="end" font-size="10" fill="var(--text3)">${this.fmtMoney(val)}</text>`;
+    }
+    let bars = '';
+    let labels = '';
+    rows.forEach((r, i) => {
+      const rev = +r[1] || 0;
+      const exp = +r[2] || 0;
+      const x = padLeft + i * groupW + groupW / 2;
+      const revH = rev * scale;
+      const expH = exp * scale;
+      bars += `<rect x="${x - barW - 1}" y="${zeroY - revH}" width="${barW}" height="${revH}" fill="var(--green)" rx="2"/>`;
+      bars += `<rect x="${x + 1}" y="${zeroY - expH}" width="${barW}" height="${expH}" fill="var(--red)" rx="2"/>`;
+      labels += `<text x="${x}" y="${height - 10}" text-anchor="middle" font-size="10" fill="var(--text2)">${App.esc(r[0] || '')}</text>`;
+      if (rev > 0) bars += `<text x="${x - barW / 2 - 1}" y="${zeroY - revH - 4}" text-anchor="middle" font-size="9" fill="var(--green)">${this.fmtMoney(rev)}</text>`;
+      if (exp > 0) bars += `<text x="${x + barW / 2 + 1}" y="${zeroY - expH - 4}" text-anchor="middle" font-size="9" fill="var(--red)">${this.fmtMoney(exp)}</text>`;
+    });
+    const legend = `<div class="pie-legend"><div class="pie-legend-item"><span class="pie-legend-color" style="background:var(--green)"></span><span>إيرادات</span></div><div class="pie-legend-item"><span class="pie-legend-color" style="background:var(--red)"></span><span>مصروفات</span></div></div>`;
+    return `<div class="bar-chart-wrap" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center"><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="max-width:100%;height:auto">${grid}<line x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${zeroY}" stroke="var(--text3)" stroke-width="1"/>${bars}${labels}</svg>${legend}</div>`;
+  },
+
   // ─── DATA LOADING ───
   async loadDashboard() {
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
-      const [[kpi], vendorBalances, clientBalances] = await Promise.all([
+      const [[kpi], vendorBalances, clientBalances, monthly, officeSectors, vendorAlerts] = await Promise.all([
         API.rpc('dashboard_kpis'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
-        API.rpc('dashboard_active_client_balances', { limit_count: 10 })
+        API.rpc('dashboard_active_client_balances', { limit_count: 10 }),
+        API.rpc('dashboard_monthly_revenue_expenses', { months_back: 6 }),
+        API.rpc('dashboard_office_expense_sectors'),
+        API.rpc('dashboard_vendor_alerts', { limit_count: 10 }),
+        API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc&limit=10")
       ]);
       const k = kpi || {};
+      const netPosition = (+k.total_income || 0) - (+k.total_expense || 0);
+      const kpiClick = (screen, html) => `<div class="kpi-card" style="cursor:pointer" onclick="App.go('${screen}')">${html}</div>`;
       document.getElementById('kpis').innerHTML = `
-        <div class="kpi-card"><div class="kpi-icon">👥</div><div class="kpi-label">العملاء</div><div class="kpi-value">${k.client_count || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">📁</div><div class="kpi-label">المشاريع</div><div class="kpi-value">${k.project_count || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">${k.active_project_count || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">${k.employee_count || 0}</div></div>
-        <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(k.total_movement || 0)}</div></div>`;
+        ${kpiClick('clients', '<div class="kpi-icon">👥</div><div class="kpi-label">العملاء</div><div class="kpi-value">' + (k.client_count || 0) + '</div>')}
+        ${kpiClick('clients', '<div class="kpi-icon">📁</div><div class="kpi-label">المشاريع</div><div class="kpi-value">' + (k.project_count || 0) + '</div>')}
+        ${kpiClick('clients', '<div class="kpi-icon">✅</div><div class="kpi-label">النشطة</div><div class="kpi-value" style="color:var(--green)">' + (k.active_project_count || 0) + '</div>')}
+        ${kpiClick('employees', '<div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">' + (k.employee_count || 0) + '</div>')}
+        ${kpiClick('transactions', '<div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">' + this.fmtMoney(k.total_movement || 0) + '</div>')}
+        ${kpiClick('office', '<div class="kpi-icon">🏢</div><div class="kpi-label">صافي المركز</div><div class="kpi-value" style="color:' + (netPosition >= 0 ? 'var(--green)' : 'var(--red)') + '">' + this.fmtMoney(netPosition) + '</div>')}`;
       // ─── Income vs Expenses Totals (Pie Chart) ───
       const totalRows = [
         ['إيرادات', +k.total_income || 0],
         ['مصروفات', +k.total_expense || 0]
       ].filter(r => r[1] > 0);
       document.getElementById('income-expense-total-chart').innerHTML = this._renderPie(totalRows, 160, 'لا توجد إيرادات أو مصروفات');
+      // ─── Monthly Revenue vs Expense Bar Chart ───
+      const monthlyRows = (monthly || []).map(m => [m.month_key, +m.revenue || 0, +m.expense || 0]).reverse();
+      document.getElementById('dash-monthly-chart').innerHTML = monthlyRows.length
+        ? this._renderBar(monthlyRows, 420, 220)
+        : '<p style="color:var(--text3)">لا توجد بيانات شهرية</p>';
+      // ─── Office Expense Sectors Pie Chart ───
+      const sectorRows = (officeSectors || [])
+        .filter(s => (s.amount || 0) > 0)
+        .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+        .slice(0, 8)
+        .map(s => [App.esc(s.sector || '-'), +s.amount || 0]);
+      document.getElementById('dash-office-sectors').innerHTML = sectorRows.length
+        ? this._renderPie(sectorRows, 160, 'لا توجد مصروفات مكتبية')
+        : '<p style="color:var(--text3)">لا توجد مصروفات مكتبية</p>';
       // ─── Top 10 Vendor Outstanding Balances ───
       const vendorRows = (vendorBalances || [])
         .filter(v => (v.balance || 0) > 0)
         .sort((a, b) => (b.balance || 0) - (a.balance || 0))
         .slice(0, 10)
-        .map(v => [App.esc(v.vendor_name || '-'), {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
+        .map(v => [{html: `<a href="#" onclick="Crud.vendorStatement('${v.vendor_id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.vendor_name || '-')}</a>`}, {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
       document.getElementById('dash-vendors').innerHTML = vendorRows.length
-        ? this.table(['المورد', 'المبلغ المستحق'], vendorRows)
+        ? this.table(['المورد', 'المبلغ المستحق'], vendorRows) + '<div style="text-align:left;margin-top:8px"><a href="#" onclick="App.go(\'vendors\');return false;" style="font-size:12px;color:var(--gold)">عرض كل الموردين →</a></div>'
         : '<p style="color:var(--text3)">لا توجد مستحقات للموردين</p>';
       // ─── Top 10 Active Customer Balances ───
       const clientRows = (clientBalances || [])
-        .map(c => [App.esc(c.client_name || '-'), this.fmtMoney(c.deposits || 0), this.fmtMoney(c.expenses || 0), {html: `<span style="color:${(c.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance || 0)}</span>`}]);
+        .map(c => [{html: `<a href="#" onclick="Crud.clientStatement('${c.client_id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(c.client_name || '-')}</a>`}, this.fmtMoney(c.deposits || 0), this.fmtMoney(c.expenses || 0), {html: `<span style="color:${(c.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${this.fmtMoney(c.balance || 0)}</span>`}]);
       document.getElementById('dash-clients').innerHTML = clientRows.length
-        ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientRows)
+        ? this.table(['العميل', 'الإيداعات', 'المصروفات', 'الرصيد'], clientRows) + '<div style="text-align:left;margin-top:8px"><a href="#" onclick="App.go(\'clients\');return false;" style="font-size:12px;color:var(--gold)">عرض كل العملاء →</a></div>'
         : '<p style="color:var(--text3)">لا يوجد عملاء نشطون</p>';
+      // ─── Vendor Alerts ───
+      const alertRows = (vendorAlerts || [])
+        .filter(v => (v.balance || 0) > 0)
+        .slice(0, 10)
+        .map(v => [{html: `<a href="#" onclick="Crud.vendorStatement('${v.vendor_id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(v.vendor_name || '-')}</a>`}, {html: '<span class="badge badge-red">مستحق</span>'}, {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(v.balance || 0)}</span>`}]);
+      document.getElementById('dash-vendor-alerts').innerHTML = alertRows.length
+        ? this.table(['المورد', 'الحالة', 'المبلغ'], alertRows)
+        : '<p style="color:var(--text3)">لا توجد مستحقات متأخرة</p>';
+      // ─── Custody Alerts ───
+      const custodyAlertRows = (custodyAlerts || [])
+        .map(r => {
+          const remaining = (+r.amount || 0) - (+r.returned_amount || 0) - (+r.returned_cash_amount || 0);
+          return [{html: `<a href="#" onclick="Crud.custodyExpenses('${r.id}');return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(r.employees?.name || r.employee_name || '-')}</a>`}, this.fmtMoney(r.amount || 0), {html: `<span style="color:var(--red);font-weight:700">${this.fmtMoney(remaining)}</span>`}, {html: `<span class="badge badge-${r.status === 'active' ? 'green' : 'orange'}">${r.status === 'active' ? 'نشطة' : 'جزئي'}</span>`}];
+        });
+      document.getElementById('dash-custody-alerts').innerHTML = custodyAlertRows.length
+        ? this.table(['الموظف', 'المبلغ', 'المتبقي', 'الحالة'], custodyAlertRows)
+        : '<p style="color:var(--text3)">لا توجد عهد مفتوحة</p>';
       this._perfLog('loadDashboard', t0);
     } catch (e) {
       UI.toast('Dashboard load failed: ' + e.message, 'error');

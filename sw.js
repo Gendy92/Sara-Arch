@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sara-arch-v211';
+const CACHE_NAME = 'sara-arch-v212';
 const STATIC_ASSETS = [
   '/Sara-Arch/',
   '/Sara-Arch/index.html',
