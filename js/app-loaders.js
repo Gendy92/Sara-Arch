@@ -524,23 +524,23 @@ Object.assign(App, {
       const txSearchFilter = App.ilikeOr(['description','employee_name','sector_name','vendor_name'], txSearchTerm);
       const custodySearchTerm = App.searchState.officeCustody || '';
       const custodySearchFilter = App.ilikeOr(['employees.name','employee_name','sector_name','project_name','notes'], custodySearchTerm);
-      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, custodySums] = await Promise.all([
+      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, custodySumsRaw] = await Promise.all([
         API.request('office_balance', 'GET', null, '?select=*'),
         API.request('office_transactions_view', 'GET', null, `?select=*${txSearchFilter}&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
         API.count('office_transactions_view', '?select=count' + txSearchFilter),
         API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${custodySearchFilter}&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
         API.count('custody_records', '?deleted_at=is.null' + custodySearchFilter),
-        API.request('custody_records', 'GET', null, '?select=amount.sum(),returned_amount.sum(),returned_cash_amount.sum()&deleted_at=is.null')
+        API.fetchAll('custody_records', '?select=amount,returned_amount,returned_cash_amount&deleted_at=is.null')
       ]);
       const ob = officeBal[0] || {};
       const totalIncome = ob.income || 0;
       const expense = ob.expense || 0;
       const officeBalance = ob.balance || 0;
 
-      const sumRow = custodySums[0] || {};
-      const totalCustodyAmt = +(sumRow['amount.sum'] || 0);
-      const totalExpensesAmt = +(sumRow['returned_amount.sum'] || 0);
-      const totalReturnedCashAmt = +(sumRow['returned_cash_amount.sum'] || 0);
+      const custodySums = (custodySumsRaw || []);
+      const totalCustodyAmt = custodySums.reduce((s, r) => s + (+r.amount || 0), 0);
+      const totalExpensesAmt = custodySums.reduce((s, r) => s + (+r.returned_amount || 0), 0);
+      const totalReturnedCashAmt = custodySums.reduce((s, r) => s + (+r.returned_cash_amount || 0), 0);
       const custodyRemaining = totalCustodyAmt - totalExpensesAmt - totalReturnedCashAmt;
 
       document.getElementById('office-kpis').innerHTML = `
