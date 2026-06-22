@@ -104,15 +104,15 @@ const UI = {
     });
   },
   initSearchableSelects(container) {
+    const closeDropdown = (d) => {
+      d.classList.remove('open');
+      const wrapper = d.closest('.searchable-select');
+      const inp = wrapper?.querySelector('.searchable-select-input');
+      const sel = wrapper?.querySelector('select');
+      if (inp && sel && !sel.value) inp.placeholder = '-- اختر --';
+    };
     if (!UI._searchableSelectGlobalInit) {
       UI._searchableSelectGlobalInit = true;
-      const closeDropdown = (d) => {
-        d.classList.remove('open');
-        const wrapper = d.closest('.searchable-select');
-        const inp = wrapper?.querySelector('.searchable-select-input');
-        const sel = wrapper?.querySelector('select');
-        if (inp && sel && !sel.value) inp.placeholder = '-- اختر --';
-      };
       document.addEventListener('click', (e) => {
         if (e.target.closest('.searchable-select')) return;
         document.querySelectorAll('.searchable-select-dropdown.open').forEach(closeDropdown);
@@ -303,7 +303,7 @@ const Spreadsheet = {
       const def = defaults[c.key];
       let cascadeAttr = '';
       let disabledAttr = '';
-      if (hasClientProjectCascade && c.key === cascade.clientProject.clientKey) cascadeAttr = ` onchange="Spreadsheet.handleClientProjectCascade(this)"`;
+      if (hasClientProjectCascade && (c.key === cascade.clientProject.clientKey || c.key === cascade.clientProject.projectKey)) cascadeAttr = ` onchange="Spreadsheet.handleClientProjectCascade(this)"`;
       if (hasClientProjectCascade && c.key === cascade.clientProject.projectKey && !def) disabledAttr = ' disabled';
       if (hasSectionItemCascade && c.key === cascade.sectionItem.sectionKey) cascadeAttr = ` onchange="Spreadsheet.handleSectionItemCascade(this)"`;
       if (hasSectionItemCascade && c.key === cascade.sectionItem.itemKey && !def) disabledAttr = ' disabled';
@@ -562,7 +562,7 @@ const Spreadsheet = {
       const clientSel = newRow.querySelector(`select[data-key="${cascade.clientProject.clientKey}"]`);
       const projSel = newRow.querySelector(`select[data-key="${cascade.clientProject.projectKey}"]`);
       if (clientSel) clientSel.onchange = function() { Spreadsheet.handleClientProjectCascade(this); };
-      if (projSel) projSel.disabled = true;
+      if (projSel) { projSel.disabled = true; projSel.onchange = function() { Spreadsheet.handleClientProjectCascade(this); }; }
     }
     if (cascade && cascade.sectionItem) {
       const sectionSel = newRow.querySelector(`select[data-key="${cascade.sectionItem.sectionKey}"]`);
@@ -581,17 +581,43 @@ const Spreadsheet = {
     const cascade = spreadsheet._cascade;
     if (!cascade || !cascade.clientProject) return;
     const { clientKey, projectKey, projects } = cascade.clientProject;
+    const clientSel = row.querySelector(`select[data-key="${clientKey}"]`);
     const projSel = row.querySelector(`select[data-key="${projectKey}"]`);
-    if (!projSel) return;
+    if (!clientSel || !projSel) return;
+
+    // Project changed → auto-select its client and keep the project selected
+    if (el.dataset.key === projectKey) {
+      const projectId = el.value;
+      const project = projects.find(p => String(p.id) === String(projectId));
+      if (project && String(clientSel.value) !== String(project.client_id)) {
+        clientSel.value = project.client_id;
+        clientSel.dispatchEvent(new Event('change', { bubbles: true }));
+        const filtered = projects.filter(p => String(p.client_id) === String(project.client_id));
+        projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('');
+        projSel.value = projectId;
+        projSel.disabled = false;
+      }
+      return;
+    }
+
+    // Client changed → filter projects, preserving the selection if valid
     const clientId = el.value;
+    const previousProject = projSel.value;
     if (!clientId) {
       projSel.innerHTML = '<option value="">-- اختر مشروع --</option>';
       projSel.disabled = true;
+      projSel.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
     const filtered = projects.filter(p => String(p.client_id) === String(clientId));
     projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('');
     projSel.disabled = false;
+    if (previousProject && filtered.some(p => String(p.id) === String(previousProject))) {
+      projSel.value = previousProject;
+    } else {
+      projSel.value = '';
+    }
+    projSel.dispatchEvent(new Event('change', { bubbles: true }));
   },
 
   handleSectionItemCascade(el) {
