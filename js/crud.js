@@ -995,15 +995,19 @@ const Crud = {
   },
 
   async addOfficeExpense() {
-    const [employees, sectors] = await Promise.all([
+    const [employees, sectors, vendors] = await Promise.all([
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc')
     ]);
     const empOpts = employees.map(e => ({ v: e.id, l: e.name }));
     const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
+    const officeVendor = vendors.find(v => v.is_office);
+    const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
     const cols = [
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
+      { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: officeVendor ? officeVendor.id : '' },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'date', label: 'التاريخ', type: 'date' },
       { key: 'description', label: 'الوصف' }
@@ -1012,7 +1016,8 @@ const Crud = {
       const enriched = rows.map(r => {
         const emp = employees.find(e => e.id === r.employee_id);
         const sector = sectors.find(s => s.id === r.sector_id);
-        return { type: 'office_expense', amount: r.amount, employee_id: r.employee_id, employee_name: emp ? emp.name : null, sector_id: r.sector_id, sector_name: sector ? sector.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        const vendor = vendors.find(v => v.id === r.vendor_id);
+        return { type: 'office_expense', amount: r.amount, employee_id: r.employee_id, employee_name: emp ? emp.name : null, sector_id: r.sector_id, sector_name: sector ? sector.name : null, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف مكتبي`);
@@ -1139,22 +1144,25 @@ const Crud = {
       this._setupClientProjectCascade(overlay, projects, tx.client_id, tx.project_id);
       this._setupSectionItemCascade(overlay, workSections, workItems, tx.section_id, tx.item_id);
     } else if (tx.type === 'office_expense') {
-      const [employees, sectors] = await Promise.all([
+      const [employees, sectors, vendors] = await Promise.all([
         API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
-        API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
+        API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+        API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc')
       ]);
       const fields = [
         { name: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...employees.map(e => ({ v: e.id, l: e.name }))] },
         { name: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
+        { name: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
         { name: 'date', label: 'التاريخ', type: 'date' },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      UI.openModal('تعديل مصروف مكتبي', `<form>${UI.form(fields, { ...tx, employee_id: tx.employee_id || '', sector_id: tx.sector_id || '' })}</form>`, async (form) => {
+      UI.openModal('تعديل مصروف مكتبي', `<form>${UI.form(fields, { ...tx, employee_id: tx.employee_id || '', sector_id: tx.sector_id || '', vendor_id: tx.vendor_id || '' })}</form>`, async (form) => {
         const fd = new FormData(form);
         const emp = employees.find(e => e.id === fd.get('employee_id'));
         const sector = sectors.find(s => s.id === fd.get('sector_id'));
-        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'supervision') {

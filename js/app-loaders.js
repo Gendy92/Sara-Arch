@@ -521,13 +521,12 @@ Object.assign(App, {
       const custodyPerPage = 10;
 
       const txSearchTerm = App.searchState.officeTransactions || '';
-      const txSearchFilter = App.ilikeOr(['description','employee_name','sector_name'], txSearchTerm);
+      const txSearchTermLower = txSearchTerm.toLowerCase();
       const custodySearchTerm = App.searchState.officeCustody || '';
       const custodySearchFilter = App.ilikeOr(['employees.name','employee_name','sector_name','project_name','notes'], custodySearchTerm);
-      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, allCustody] = await Promise.all([
+      const [officeBal, allOfficeTxs, custodyRecords, totalCustody, allCustody] = await Promise.all([
         API.request('office_balance', 'GET', null, '?select=*'),
-        API.request('transactions', 'GET', null, `?select=amount,created_at,type,description,sector_name,employee_name&type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null${txSearchFilter}&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
-        API.count('transactions', '?type=in.(owner_deposit,office_expense,withdrawal)&deleted_at=is.null' + txSearchFilter),
+        API.fetchAll('office_transactions_view', '?select=*&order=created_at.desc'),
         API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${custodySearchFilter}&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
         API.count('custody_records', '?deleted_at=is.null' + custodySearchFilter),
         API.fetchAll('custody_records', '?select=amount,returned_amount&deleted_at=is.null')
@@ -546,14 +545,23 @@ Object.assign(App, {
         <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(totalCustodyAmt - totalReturnedAmt)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedAmt)}</div></div>`;
 
+      const filteredOfficeTxs = txSearchTerm
+        ? allOfficeTxs.filter(t => {
+            const term = txSearchTermLower;
+            return [t.description, t.employee_name, t.sector_name, t.vendor_name].some(v => String(v || '').toLowerCase().includes(term));
+          })
+        : allOfficeTxs;
+      const totalOfficeTxs = filteredOfficeTxs.length;
       const totalTxPages = Math.max(1, Math.ceil(totalOfficeTxs / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
       this.pageState.officeTransactions = safeTxPage;
+      const officeTxs = filteredOfficeTxs.slice((safeTxPage - 1) * txPerPage, safeTxPage * txPerPage);
       this._officeData = officeTxs;
-      const txHtml = officeTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], officeTxs.map(t => {
+      const txHtml = officeTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'المورد / الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], officeTxs.map(t => {
         const badgeColor = t.type === 'owner_deposit' ? 'green' : 'red';
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
-        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), t.employee_name || '-', t.sector_name || '-', t.description || '-', {html: actions}];
+        const party = t.vendor_name || t.employee_name || '-';
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), party, t.sector_name || '-', t.description || '-', {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('office-tbl').innerHTML = txHtml + this._paginationHtml('officeTransactions', safeTxPage, txPerPage, totalOfficeTxs);
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...', (term) => {

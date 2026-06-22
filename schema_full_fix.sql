@@ -400,6 +400,17 @@ ALTER TABLE vendors DROP CONSTRAINT IF EXISTS vendors_vendor_type_check;
 ALTER TABLE vendors ADD CONSTRAINT vendors_vendor_type_check CHECK (vendor_type IN ('service','merchandise'));
 ALTER TABLE vendors ADD COLUMN IF NOT EXISTS is_office BOOLEAN DEFAULT false;
 
+-- Ensure only one "office" vendor can exist, and seed it if missing.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_single_office ON vendors(is_office) WHERE is_office IS TRUE;
+
+INSERT INTO vendors (name, vendor_type, sector, is_office, notes)
+VALUES ('مكتب سارة أبو العلا', 'service', 'مكتب', true, 'مورد المكتب الداخلي لجميع الخدمات والمشتريات')
+ON CONFLICT (is_office) WHERE is_office IS TRUE DO UPDATE
+  SET name = EXCLUDED.name,
+      sector = EXCLUDED.sector,
+      notes = EXCLUDED.notes,
+      updated_at = NOW();
+
 -- Attendance status constraint
 ALTER TABLE attendance_records DROP CONSTRAINT IF EXISTS attendance_records_status_check;
 ALTER TABLE attendance_records ADD CONSTRAINT attendance_records_status_check CHECK (status IN ('present','absent','late','half_day','leave'));
@@ -1142,7 +1153,8 @@ SELECT
   t.amount,
   t.description,
   t.employee_name,
-  t.sector_name
+  t.sector_name,
+  t.vendor_name
 FROM transactions t
 WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal')
 UNION ALL
@@ -1153,7 +1165,8 @@ SELECT
   t.paid_amount AS amount,
   ('إيراد مكتب - ' || COALESCE(t.description, ''))::TEXT AS description,
   t.employee_name,
-  t.sector_name
+  t.sector_name,
+  v.name AS vendor_name
 FROM transactions t
 JOIN vendors v ON v.id = t.vendor_id
 WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')
@@ -1165,7 +1178,8 @@ SELECT
   pb.supervision AS amount,
   ('إشراف ' || p.name || ' (' || COALESCE(p.supervision_percentage,0) || '%)')::TEXT AS description,
   '-'::TEXT AS employee_name,
-  '-'::TEXT AS sector_name
+  '-'::TEXT AS sector_name,
+  '-'::TEXT AS vendor_name
 FROM project_balances pb
 JOIN projects p ON p.id = pb.project_id
 WHERE pb.supervision > 0;
