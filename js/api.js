@@ -22,8 +22,34 @@ const API = {
     }
   },
 
+  _safeEncode(value) {
+    try { return encodeURIComponent(decodeURIComponent(value)); }
+    catch (e) { return encodeURIComponent(value); }
+  },
+
+  _sanitizeQuery(query) {
+    if (!query || query.indexOf('?') !== 0) return query;
+    const ops = 'eq|neq|gt|gte|lt|lte|like|ilike|fts|plfts|phfts|wfts|cs|cd|ov|sl|sr|nxr|nxl|adj|match';
+    return '?' + query.slice(1).split('&').map(part => {
+      const idx = part.indexOf('=');
+      if (idx === -1) return part;
+      const key = part.slice(0, idx);
+      let val = part.slice(idx + 1);
+      const m = val.match(new RegExp(`^(${ops})\\.(.+)$|^is\\.(null)$|^not\\.is\\.(null)$|^in\\.\\((.*)\\)$`));
+      if (!m) return part;
+      if (m[1]) return `${key}=${m[1]}.${this._safeEncode(m[2])}`;
+      if (m[3] !== undefined) return `${key}=is.null`;
+      if (m[4] !== undefined) return `${key}=not.is.null`;
+      if (m[5] !== undefined) {
+        const encoded = m[5].split(',').map(v => this._safeEncode(v)).join(',');
+        return `${key}=in.(${encoded})`;
+      }
+      return part;
+    }).join('&');
+  },
+
   async request(table, method = 'GET', body = null, query = '') {
-    const url = `${this.base}/${table}${query}`;
+    const url = `${this.base}/${table}${this._sanitizeQuery(query)}`;
     const opts = { method, headers: this.getHeaders() };
     if (body) opts.body = JSON.stringify(body);
     let res;
@@ -44,9 +70,10 @@ const API = {
   async fetchAll(table, baseQuery = '', pageSize = 1000) {
     let offset = 0;
     let all = [];
-    const sep = baseQuery.includes('?') ? '&' : '?';
+    const safeBase = this._sanitizeQuery(baseQuery);
+    const sep = safeBase.includes('?') ? '&' : '?';
     while (true) {
-      const chunk = await this.request(table, 'GET', null, `${baseQuery}${sep}limit=${pageSize}&offset=${offset}`);
+      const chunk = await this.request(table, 'GET', null, `${safeBase}${sep}limit=${pageSize}&offset=${offset}`);
       if (!Array.isArray(chunk)) throw new Error('Unexpected response while fetching data');
       all = all.concat(chunk);
       if (chunk.length < pageSize) break;
@@ -123,7 +150,7 @@ const API = {
 
   async count(table, query = '') {
     try {
-      const url = `${this.base}/${table}${query}`;
+      const url = `${this.base}/${table}${this._sanitizeQuery(query)}`;
       const res = await fetch(url, {
         method: 'HEAD',
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + ((typeof Auth !== 'undefined' && Auth.token) ? Auth.token : SUPABASE_ANON_KEY), 'Prefer': 'count=exact' }
@@ -137,5 +164,23 @@ const API = {
     } catch (e) {
       return 0;
     }
+  },
+
+  // Query-string helpers that URL-encode values to prevent PostgREST injection.
+  q: {
+    _op(col, op, val) { return `${encodeURIComponent(col)}=${op}.${encodeURIComponent(val)}`; },
+    eq(col, val) { return this._op(col, 'eq', val); },
+    neq(col, val) { return this._op(col, 'neq', val); },
+    gt(col, val) { return this._op(col, 'gt', val); },
+    gte(col, val) { return this._op(col, 'gte', val); },
+    lt(col, val) { return this._op(col, 'lt', val); },
+    lte(col, val) { return this._op(col, 'lte', val); },
+    like(col, val) { return this._op(col, 'like', val); },
+    ilike(col, val) { return this._op(col, 'ilike', val); },
+    isNull(col) { return `${encodeURIComponent(col)}=is.null`; },
+    notNull(col) { return `${encodeURIComponent(col)}=not.is.null`; },
+    in(col, vals) { return `${encodeURIComponent(col)}=in.(${vals.map(v => encodeURIComponent(v)).join(',')})`; },
+    order(col, asc = false) { return `order=${encodeURIComponent(col)}.${asc ? 'asc' : 'desc'}`; },
+    select(cols) { return `select=${encodeURIComponent(cols)}`; }
   }
 };

@@ -262,6 +262,34 @@ const Crud = {
         for (const tk of tasks) { await this.softDelete('project_tasks', tk.id, false); }
       } catch (e) { /* cascade delete is best-effort */ }
     }
+    // Cascade soft-delete for vendors
+    if (cascade && table === 'vendors') {
+      try {
+        const txs = await API.request('transactions', 'GET', null, `?select=id&vendor_id=eq.${id}&deleted_at=is.null`);
+        for (const t of txs) { await this.softDelete('transactions', t.id, false); }
+        const procs = await API.request('procurements', 'GET', null, `?select=id,linked_transaction_id&vendor_id=eq.${id}&deleted_at=is.null`);
+        for (const pr of procs) {
+          if (pr.linked_transaction_id) await this.softDelete('transactions', pr.linked_transaction_id, false);
+          await this.softDelete('procurements', pr.id, false);
+        }
+      } catch (e) { /* cascade delete is best-effort */ }
+    }
+    // Cascade soft-delete for employees
+    if (cascade && table === 'employees') {
+      try {
+        const tables = [
+          { t: 'employee_transactions', col: 'employee_id' },
+          { t: 'employee_salary_history', col: 'employee_id' },
+          { t: 'attendance_records', col: 'employee_id' },
+          { t: 'payroll_records', col: 'employee_id' },
+          { t: 'custody_records', col: 'employee_id' }
+        ];
+        for (const { t, col } of tables) {
+          const rows = await API.request(t, 'GET', null, `?select=id&${col}=eq.${id}&deleted_at=is.null`);
+          for (const r of rows) { await this.softDelete(t, r.id, false); }
+        }
+      } catch (e) { /* cascade delete is best-effort */ }
+    }
     // Cascade soft-delete for clients
     if (cascade && table === 'clients') {
       try {
@@ -471,6 +499,7 @@ const Crud = {
         if (existing.length) { UI.toast('⚠️ اسم المورد موجود مسبقاً', 'error'); return; }
       }
       const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', is_office: fd.get('is_office') === 'true', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
+      if (rows[0].is_office && !data.is_office) { UI.toast('لا يمكن إلغاء تحديد مورد المكتب الرئيسي', 'error'); return; }
       await this.save('vendors', data, id);
       UI.toast('تم التحديث');
       if (App.screen === 'vendor' && App.vendorId) App.loadVendor(App.vendorId);
@@ -478,8 +507,10 @@ const Crud = {
     });
   },
 
-  delVendor(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id); UI.toast('تم الحذف'); App.go('vendors'); });
+  async delVendor(id) {
+    const rows = await API.request('vendors', 'GET', null, `?select=is_office&id=eq.${id}&deleted_at=is.null`);
+    if (rows[0]?.is_office) { UI.toast('لا يمكن حذف مورد المكتب الرئيسي', 'error'); return; }
+    UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id, true); UI.toast('تم الحذف'); App.go('vendors'); });
   },
 
   async _syncProcurementTransaction(procurementId) {
@@ -669,7 +700,7 @@ const Crud = {
   },
 
   delEmp(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id); UI.toast('تم الحذف'); App.loadEmployees(); });
+    UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id, true); UI.toast('تم الحذف'); App.loadEmployees(); });
   },
 
   // ─── EMPLOYEE TRANSACTIONS ───
@@ -1698,7 +1729,7 @@ const Crud = {
   async projectBudget(projectId) {
     const [project, txs] = await Promise.all([
       API.request('projects', 'GET', null, `?select=*&id=eq.${projectId}&deleted_at=is.null`),
-      API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&limit=200`)
+      API.fetchAll('transactions', `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc`)
     ]);
     const p = project[0];
     if (!p) return UI.toast('المشروع غير موجود', 'error');

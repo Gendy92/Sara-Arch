@@ -72,18 +72,28 @@ const UI = {
   _searchableSelectGlobalInit: false,
   _positionSearchableDropdown(dropdown, input) {
     const rect = input.getBoundingClientRect();
-    const minWidth = Math.max(rect.width, 150);
+    const isMobile = window.innerWidth <= 768;
+    const minWidth = Math.max(rect.width, isMobile ? 220 : 150);
+    const maxDropdownHeight = 280;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
     dropdown.style.position = 'fixed';
-    dropdown.style.top = `${rect.bottom + 2}px`;
-    // Let the dropdown expand to fit long option text, but cap it for safety.
     dropdown.style.width = 'auto';
     dropdown.style.minWidth = `${minWidth}px`;
     dropdown.style.maxWidth = `min(600px, calc(100vw - 32px))`;
     // RTL-safe: align dropdown's right edge to trigger's right edge.
     dropdown.style.right = `${window.innerWidth - rect.right}px`;
     dropdown.style.left = 'auto';
-    dropdown.style.maxHeight = '280px';
+    dropdown.style.maxHeight = `${maxDropdownHeight}px`;
     dropdown.style.setProperty('--ss-width', `${minWidth}px`);
+    // Flip to top if not enough space below and more space above.
+    if (spaceBelow < maxDropdownHeight && spaceAbove > spaceBelow) {
+      dropdown.style.top = 'auto';
+      dropdown.style.bottom = `${window.innerHeight - rect.top + 2}px`;
+    } else {
+      dropdown.style.top = `${rect.bottom + 2}px`;
+      dropdown.style.bottom = 'auto';
+    }
   },
   _highlightSearchableOption(wrapper) {
     const select = wrapper.querySelector('select');
@@ -418,14 +428,21 @@ const Spreadsheet = {
     const toolbar = input.closest('[data-toolbar="excel"]');
     const columns = toolbar._columns;
     const spreadsheetDiv = toolbar._spreadsheet;
+    const MAX_SIZE = 2 * 1024 * 1024;
+    const MAX_ROWS = 2000;
+    const ALLOWED_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/octet-stream'];
+
+    if (file.size > MAX_SIZE) { UI.toast('حجم الملف كبير جداً — الحد 2 ميجابايت', 'error'); input.value = ''; return; }
+    if (!ALLOWED_TYPES.includes(file.type)) { UI.toast('نوع الملف غير مدعوم — يُرجى رفع ملف Excel', 'error'); input.value = ''; return; }
 
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-      if (rows.length < 2) { UI.toast('الملف فارغ أو غير صالح', 'error'); return; }
+      if (rows.length < 2) { UI.toast('الملف فارغ أو غير صالح', 'error'); input.value = ''; return; }
       const dataRows = rows.slice(1); // skip header
+      if (dataRows.length > MAX_ROWS) { UI.toast(`عدد الصفوف يتجاوز الحد (${MAX_ROWS})`, 'error'); input.value = ''; return; }
       this.fillData(spreadsheetDiv, columns, dataRows);
       UI.toast(`تم استيراد ${dataRows.length} صفوف`, 'success');
     } catch (e) {
@@ -440,6 +457,7 @@ const Spreadsheet = {
     const spreadsheetDiv = toolbar._spreadsheet;
     const textarea = toolbar.querySelector('.excel-paste');
     const text = textarea.value.trim();
+    const MAX_ROWS = 2000;
     if (!text) { UI.toast('لا يوجد بيانات ملصقة', 'error'); return; }
 
     // Parse TSV (tab-separated) or CSV
@@ -450,6 +468,7 @@ const Spreadsheet = {
     if (lines.length > 1 && lines[0].includes(firstColLabel)) {
       dataLines = lines.slice(1);
     }
+    if (dataLines.length > MAX_ROWS) { UI.toast(`عدد الصفوف يتجاوز الحد (${MAX_ROWS})`, 'error'); return; }
     const rows = dataLines.map(line => {
       // Try tab first, then comma
       if (line.includes('\t')) return line.split('\t');

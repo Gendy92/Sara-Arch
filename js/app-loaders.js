@@ -521,23 +521,25 @@ Object.assign(App, {
       const custodyPerPage = 10;
 
       const txSearchTerm = App.searchState.officeTransactions || '';
-      const txSearchTermLower = txSearchTerm.toLowerCase();
+      const txSearchFilter = App.ilikeOr(['description','employee_name','sector_name','vendor_name'], txSearchTerm);
       const custodySearchTerm = App.searchState.officeCustody || '';
       const custodySearchFilter = App.ilikeOr(['employees.name','employee_name','sector_name','project_name','notes'], custodySearchTerm);
-      const [officeBal, allOfficeTxs, custodyRecords, totalCustody, allCustody] = await Promise.all([
+      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, custodySums] = await Promise.all([
         API.request('office_balance', 'GET', null, '?select=*'),
-        API.fetchAll('office_transactions_view', '?select=*&order=created_at.desc'),
+        API.request('office_transactions_view', 'GET', null, `?select=*${txSearchFilter}&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
+        API.count('office_transactions_view', '?select=count' + txSearchFilter),
         API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${custodySearchFilter}&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
         API.count('custody_records', '?deleted_at=is.null' + custodySearchFilter),
-        API.fetchAll('custody_records', '?select=amount,returned_amount&deleted_at=is.null')
+        API.request('custody_records', 'GET', null, '?select=amount.sum(),returned_amount.sum()&deleted_at=is.null')
       ]);
       const ob = officeBal[0] || {};
       const totalIncome = ob.income || 0;
       const expense = ob.expense || 0;
       const officeBalance = ob.balance || 0;
 
-      const totalCustodyAmt = allCustody.reduce((s, r) => s + (+r.amount || 0), 0);
-      const totalReturnedAmt = allCustody.reduce((s, r) => s + (+r.returned_amount || 0), 0);
+      const sumRow = custodySums[0] || {};
+      const totalCustodyAmt = +(sumRow['amount.sum'] || 0);
+      const totalReturnedAmt = +(sumRow['returned_amount.sum'] || 0);
 
       document.getElementById('office-kpis').innerHTML = `
         <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div></div>
@@ -545,17 +547,9 @@ Object.assign(App, {
         <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(totalCustodyAmt - totalReturnedAmt)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedAmt)}</div></div>`;
 
-      const filteredOfficeTxs = txSearchTerm
-        ? allOfficeTxs.filter(t => {
-            const term = txSearchTermLower;
-            return [t.description, t.employee_name, t.sector_name, t.vendor_name].some(v => String(v || '').toLowerCase().includes(term));
-          })
-        : allOfficeTxs;
-      const totalOfficeTxs = filteredOfficeTxs.length;
-      const totalTxPages = Math.max(1, Math.ceil(totalOfficeTxs / txPerPage));
+      const totalTxPages = Math.max(1, Math.ceil((totalOfficeTxs || 0) / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
       this.pageState.officeTransactions = safeTxPage;
-      const officeTxs = filteredOfficeTxs.slice((safeTxPage - 1) * txPerPage, safeTxPage * txPerPage);
       this._officeData = officeTxs;
       const txHtml = officeTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'المورد / الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], officeTxs.map(t => {
         const badgeColor = t.type === 'owner_deposit' ? 'green' : 'red';
@@ -1076,7 +1070,7 @@ Object.assign(App, {
       document.getElementById('backup-last').innerHTML = last
         ? `آخر نسخة يدوية: <strong>${new Date(last).toLocaleString('ar-EG')}</strong>`
         : 'لم يتم عمل نسخة يدوية بعد';
-      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks'];
+      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks','app_settings'];
       // Check which tables actually exist
       const results = await Promise.all(tables.map(async t => {
         try { await API.request(t, 'GET', null, '?select=id&limit=1'); return { table: t, ok: true }; }
@@ -1090,21 +1084,26 @@ Object.assign(App, {
   },
 
   async downloadLocalBackup() {
-    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks'];
+    const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks','app_settings'];
     const progress = document.getElementById('backup-progress');
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
     const zip = new JSZip();
     const folder = zip.folder('Sara_Backup_' + new Date().toISOString().slice(0,10));
+    let version = 'unknown';
+    try { version = (await (await fetch('version.json')).json()).version; } catch (e) {}
+    const manifest = { version, timestamp: new Date().toISOString(), counts: {}, source: 'browser' };
     let ok = 0, skip = 0, fail = 0;
     const failed = [];
     for (const table of tables) {
       try {
         const data = await API.fetchAll(table, '?select=*');
         folder.file(`${table}.json`, JSON.stringify(data, null, 2));
+        manifest.counts[table] = data.length;
         ok++;
       } catch (e) {
         const msg = (e?.message || '').toLowerCase();
         const isMissing = msg.includes('does not exist') || msg.includes('relation') || msg.includes('pgrst116');
+        manifest.counts[table] = isMissing ? 'missing' : `error: ${e.message}`;
         if (isMissing) {
           skip++;
         } else {
@@ -1114,6 +1113,7 @@ Object.assign(App, {
       }
       progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول${skip ? ` (تخطي ${skip})` : ''}${fail ? ` — فشل ${fail}` : ''}...</p>`;
     }
+    folder.file('manifest.json', JSON.stringify(manifest, null, 2));
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري ضغط الملف...</p>';
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);

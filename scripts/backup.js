@@ -39,15 +39,22 @@ async function backup() {
   const dir = `backups/${new Date().toISOString().slice(0,10)}`;
   fs.mkdirSync(dir, { recursive: true });
 
+  let version = 'unknown';
+  try { version = JSON.parse(fs.readFileSync('version.json', 'utf8')).version; } catch (e) {}
+  const manifest = { version, timestamp: new Date().toISOString(), counts: {}, source: 'github-actions' };
+
   for (const table of tables) {
     try {
       const data = await fetchAll(table);
       fs.writeFileSync(`${dir}/${table}.json`, JSON.stringify(data, null, 2));
+      manifest.counts[table] = data.length;
       console.log(`✅ ${table}: ${data.length} rows`);
     } catch (e) {
+      manifest.counts[table] = `error: ${e.message}`;
       console.error(`❌ ${table}: ${e.message}`);
     }
   }
+  fs.writeFileSync(`${dir}/manifest.json`, JSON.stringify(manifest, null, 2));
   console.log(`\n📁 Backup saved to: ${dir}/`);
 }
 
