@@ -75,15 +75,16 @@ Interpretation:
 
 ### 2.4 Client Balance
 
-A client may have many projects. The client balance is the sum across all client projects:
+A client may have many projects. The client balance is the sum of the net balances of all client projects, with supervision applied consistently everywhere:
 
 ```
-Client Deposits = Σ Project Deposits  (for all client projects)
-Client Expenses = Σ Project Expenses  (for all client projects)
-Client Balance  = Client Deposits − Client Expenses
+Client Deposits    = Σ Project Deposits     (for all client projects)
+Client Expenses    = Σ Project Expenses     (for all client projects)
+Client Supervision = Σ Supervision Fee      (for all client projects)
+Client Balance     = Client Deposits − Client Expenses − Client Supervision
 ```
 
-The same supervision formula is applied consistently in project detail, client detail, client list, and dashboard active-client balances.
+The same supervision formula is applied consistently in project detail, client detail, client list, and dashboard active-client balances. The canonical view `client_balances` enforces this formula.
 
 ---
 
@@ -219,6 +220,17 @@ Net Salary = Base Salary − Total Deductions + Bonuses − Penalties
 
 Workflow status: `draft` → `approved` → `paid`.
 
+### 6.5 Payroll → Office Expense Linkage
+
+Every payroll record maintains a linked `office_expense` transaction via `payroll_records.office_expense_id`.
+
+- Generating payroll creates a draft `office_expense` for the net salary.
+- Editing payroll updates the linked expense amount/description.
+- Paying payroll ensures the linked expense exists and is not soft-deleted.
+- Deleting payroll soft-deletes the linked expense.
+
+This keeps salary costs reflected in the office cash-flow automatically.
+
 ---
 
 ## 7. Custody (Employee Petty Cash)
@@ -293,12 +305,11 @@ Employee ──payroll──► Salary expense
 ## 10. Known Accounting Gaps & Decisions Needed
 
 1. **Supervision treatment**
-   - Currently supervision reduces the project net balance but is not stored as a receivable row.
-   - Decision: should it appear as an auto-generated `project_deposit` or `income` transaction?
+   - Supervision reduces the project net balance and is included consistently in client and project balances via the `project_balances` / `client_balances` views.
+   - It is still not stored as a separate receivable row. Decision: should it appear as an auto-generated `project_deposit` or `income` transaction?
 
-2. **Client-level vs. project-level balance**
-   - Client list does not subtract supervision; project detail does.
-   - Decision: choose one formula and apply everywhere.
+2. **Client-level vs. project-level balance** *(resolved)*
+   - Client list, client detail, project detail, and dashboard now all subtract supervision consistently using the same balance views.
 
 3. **Overpayments**
    - The system allows `Paid Amount > Amount`. Decide whether to warn/block.
@@ -318,6 +329,7 @@ Employee ──payroll──► Salary expense
 |------|---------|
 | Project net balance | `Deposits − Expenses − Supervision` |
 | Client balance (all views) | `Σ(Deposits − Expenses − Supervision)` |
+| Client supervision | `Σ Project Supervision across all client projects` |
 | Supervision fee | `(Expenses − Design Expenses) × Supervision% / 100` |
 | Vendor balance | `(Service Owed + Merchandise Owed) − (Service Paid + Merchandise Paid)` |
 | Office balance | `(Owner Deposits + Supervision Income) − (Office Expenses + Withdrawals)` |
@@ -327,5 +339,15 @@ Employee ──payroll──► Salary expense
 
 ---
 
-**Version:** 1.0  
+## 12. Application Settings
+
+Office-level configuration is persisted server-side in the `app_settings` table (`key`, `value`).
+
+- Settings are loaded at startup and merged with a `localStorage` fallback.
+- Only administrators can modify settings via RLS.
+- Shared keys: `company_name`, `company_address`, `company_phone`, `company_tax`, `default_supervision`, `currency_label`.
+
+---
+
+**Version:** 1.1  
 **Branch:** `dev.2`
