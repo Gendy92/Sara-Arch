@@ -122,13 +122,13 @@ Object.assign(App, {
       const html = clients.map(c => {
         const cProjects = projByClient[c.id] || [];
         const cb = balByClient[c.id] || {};
-        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${c.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${c.id}')">⬅️ مرتجع</button>`;
+        const clientActions = UI.actions(c.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${c.id}')">⬅️ مرتجع</button>`;
         const projRows = cProjects.map(p => {
           const pb = balByProject[p.id] || {};
           const balance = pb.balance || 0;
           const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
           const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
-          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
+          const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
           return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
@@ -186,13 +186,13 @@ Object.assign(App, {
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(totalDep - totalExp - totalSup)}</div></div>
       </div>`;
 
-      const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.clientStatement('${client.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${client.id}')">⬅️ مرتجع</button>`;
+      const clientActions = UI.actions(client.id, 'Crud.editClient', 'Crud.delClient', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${client.id}')">⬅️ مرتجع</button>`;
       const projRows = projects.map(p => {
         const pb = balByProject[p.id] || {};
         const balance = pb.balance || 0;
         const balColor = balance >= 0 ? 'var(--green)' : 'var(--red)';
         const balBadge = `<span style="color:${balColor};font-weight:700;font-size:12px">${this.fmtMoney(balance)}</span>`;
-        const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${p.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${p.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
+        const pActions = UI.actions(p.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${p.id}')">📋 مهام</button>`;
         return [{html: `<a href="#" onclick="App.go('project',{projectId:'${p.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(p.name)}</a>`}, App.esc(p.address || '-'), this.fmtMoney(p.value), this.fmtMoney(pb.expenses || 0), {html: balBadge}, (p.supervision_percentage || 0) + '%', this.fmtMoney(pb.supervision || 0), {html: `<span class="badge badge-${p.status === 'active' ? 'green' : 'gray'}">${App.esc(p.status)}</span>`}, {html: pActions}];
       });
       const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
@@ -243,7 +243,7 @@ Object.assign(App, {
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
       </div>`;
 
-      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.projectBudget('${project.id}')">📊 ميزانية</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${project.client_id}', '${project.id}')">⬅️ مرتجع</button>`;
+      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${project.client_id}', '${project.id}')">⬅️ مرتجع</button>`;
       const info = `<div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div>
