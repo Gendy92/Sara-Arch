@@ -106,12 +106,6 @@ Object.assign(App, {
         ${kpiClick('employees', '<div class="kpi-icon">🧑‍💼</div><div class="kpi-label">الموظفين</div><div class="kpi-value">' + (k.employee_count || 0) + '</div>')}
         ${kpiClick('transactions', '<div class="kpi-icon">💰</div><div class="kpi-label">إجمالي الحركة</div><div class="kpi-value" style="color:var(--gold)">' + this.fmtMoney(k.total_movement || 0) + '</div>')}
         ${kpiClick('office', '<div class="kpi-icon">🏢</div><div class="kpi-label">صافي المركز</div><div class="kpi-value" style="color:' + (netPosition >= 0 ? 'var(--green)' : 'var(--red)') + '">' + this.fmtMoney(netPosition) + '</div>')}`;
-      // ─── Project Income vs Expense (Pie Chart) ───
-      const projectTotalRows = [
-        ['إيرادات مشاريع', +k.project_income || 0],
-        ['مصروفات مشاريع', +k.project_expense || 0]
-      ].filter(r => r[1] > 0);
-      document.getElementById('project-income-expense-total-chart').innerHTML = this._renderPie(projectTotalRows, 160, 'لا توجد إيرادات أو مصروفات للمشاريع');
       // ─── Office Income vs Expense (Pie Chart) ───
       const officeTotalRows = [
         ['إيرادات مكتب', +k.office_income || 0],
@@ -614,9 +608,9 @@ Object.assign(App, {
         API.fetchAll('custody_records', '?select=amount,returned_amount,returned_cash_amount&deleted_at=is.null')
       ]);
       const ob = officeBal[0] || {};
-      const totalIncome = ob.income || 0;
-      const expense = ob.expense || 0;
-      const officeBalance = ob.balance || 0;
+      const cashBalance = ob.cash_balance || 0;
+      const bankBalance = ob.bank_balance || 0;
+      const officeBalance = ob.total_balance || 0;
 
       const custodySums = (custodySumsRaw || []);
       const totalCustodyAmt = custodySums.reduce((s, r) => s + (+r.amount || 0), 0);
@@ -625,20 +619,22 @@ Object.assign(App, {
       const custodyRemaining = totalCustodyAmt - totalExpensesAmt - totalReturnedCashAmt;
 
       document.getElementById('office-kpis').innerHTML = `
-        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">إيرادات المكتب</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(totalIncome)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">مصروفات المكتب</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expense)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(custodyRemaining)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مصروف: ${this.fmtMoney(totalExpensesAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedCashAmt)}</div></div>`;
+        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">رصيد نقدي</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(cashBalance)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">رصيد بنكي</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(bankBalance)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب الإجمالي</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(custodyRemaining)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مصروف: ${this.fmtMoney(totalExpensesAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedCashAmt)}</div></div>`;
 
       const totalTxPages = Math.max(1, Math.ceil((totalOfficeTxs || 0) / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
       this.pageState.officeTransactions = safeTxPage;
       this._officeData = officeTxs;
-      const txHtml = officeTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'المورد / الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], officeTxs.map(t => {
+      const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
+      const txHtml = officeTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الحساب', 'المورد / الموظف', 'التصنيف', 'الوصف', 'الإجراءات'], officeTxs.map(t => {
         const badgeColor = t.type === 'owner_deposit' ? 'green' : 'red';
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
         const party = t.vendor_name || t.employee_name || '-';
-        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), party, t.sector_name || '-', t.description || '-', {html: actions}];
+        const pm = pmLabels[t.payment_method] || (t.payment_method || 'نقدي');
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), {html: `<span class="badge badge-gray" style="font-size:10px">${pm}</span>`}, party, t.sector_name || '-', t.description || '-', {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('office-tbl').innerHTML = txHtml + this._paginationHtml('officeTransactions', safeTxPage, txPerPage, totalOfficeTxs);
       this.attachSearch('office-tbl', '🔍 بحث في معاملات المكتب...', (term) => {

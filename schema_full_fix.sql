@@ -1373,19 +1373,27 @@ LEFT JOIN (
 WHERE v.deleted_at IS NULL
 GROUP BY v.id, v.name;
 
+-- Default legacy office transactions to cash so the cash/bank split is consistent
+UPDATE transactions SET payment_method = 'cash' WHERE payment_method IS NULL AND deleted_at IS NULL AND type IN ('owner_deposit','office_expense','withdrawal','custody_return');
+
 CREATE OR REPLACE VIEW public.office_balance AS
 WITH base AS (
   SELECT
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type = 'owner_deposit'), 0) AS owner_deposits,
+    COALESCE(SUM(CASE WHEN type = 'owner_deposit' AND COALESCE(payment_method,'cash') = 'cash' THEN amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN type IN ('office_expense','withdrawal') AND COALESCE(payment_method,'cash') = 'cash' THEN amount ELSE 0 END), 0) +
+    COALESCE(SUM(CASE WHEN type = 'custody_return' AND COALESCE(payment_method,'cash') = 'cash' THEN amount ELSE 0 END), 0) AS cash_balance,
+    COALESCE(SUM(CASE WHEN type = 'owner_deposit' AND payment_method = 'bank' THEN amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN type IN ('office_expense','withdrawal') AND payment_method = 'bank' THEN amount ELSE 0 END), 0) +
+    COALESCE(SUM(CASE WHEN type = 'custody_return' AND payment_method = 'bank' THEN amount ELSE 0 END), 0) AS bank_balance,
     COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0) AS supervision_income,
-    COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income,
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type IN ('office_expense','withdrawal')), 0) AS office_expenses,
-    COALESCE((SELECT SUM(amount) FROM transactions WHERE deleted_at IS NULL AND type = 'custody_return'), 0) AS custody_returns
+    COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income
 )
 SELECT
-  owner_deposits + supervision_income + office_vendor_income AS income,
-  office_expenses - custody_returns AS expense,
-  owner_deposits + supervision_income + office_vendor_income - (office_expenses - custody_returns) AS balance
+  cash_balance,
+  bank_balance,
+  cash_balance + bank_balance AS liquid_balance,
+  supervision_income + office_vendor_income AS other_income,
+  cash_balance + bank_balance + supervision_income + office_vendor_income AS total_balance
 FROM base;
 
 CREATE OR REPLACE VIEW public.office_transactions_view AS
@@ -1394,6 +1402,7 @@ SELECT
   t.created_at,
   t.type,
   t.amount,
+  t.payment_method,
   t.description,
   t.employee_name,
   t.sector_name,
@@ -1406,6 +1415,7 @@ SELECT
   t.created_at,
   'office_income'::TEXT AS type,
   t.paid_amount AS amount,
+  COALESCE(t.payment_method, 'cash') AS payment_method,
   ('إيراد مكتب - ' || COALESCE(t.description, ''))::TEXT AS description,
   t.employee_name,
   t.sector_name,
@@ -1419,6 +1429,7 @@ SELECT
   p.created_at,
   'supervision'::TEXT AS type,
   pb.supervision AS amount,
+  'cash'::TEXT AS payment_method,
   ('إشراف ' || p.name || ' (' || COALESCE(p.supervision_percentage,0) || '%)')::TEXT AS description,
   '-'::TEXT AS employee_name,
   '-'::TEXT AS sector_name,
@@ -1432,6 +1443,7 @@ SELECT
   t.created_at,
   'custody_return'::TEXT AS type,
   t.amount,
+  COALESCE(t.payment_method, 'cash') AS payment_method,
   ('رد عهدة - ' || COALESCE(t.description, ''))::TEXT AS description,
   t.employee_name,
   t.sector_name,

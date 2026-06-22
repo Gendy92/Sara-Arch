@@ -1100,11 +1100,13 @@ const Crud = {
     const sectorOpts = sectors.map(s => ({ v: s.id, l: s.name }));
     const officeVendor = vendors.find(v => v.is_office);
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
+    const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
       { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: officeVendor ? officeVendor.id : '' },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
@@ -1113,7 +1115,7 @@ const Crud = {
         const emp = employees.find(e => e.id === r.employee_id);
         const sector = sectors.find(s => s.id === r.sector_id);
         const vendor = vendors.find(v => v.id === r.vendor_id);
-        return { type: 'office_expense', amount: r.amount, employee_id: r.employee_id, employee_name: emp ? emp.name : null, sector_id: r.sector_id, sector_name: sector ? sector.name : null, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        return { type: 'office_expense', amount: r.amount, payment_method: r.payment_method || 'cash', employee_id: r.employee_id, employee_name: emp ? emp.name : null, sector_id: r.sector_id, sector_name: sector ? sector.name : null, vendor_id: r.vendor_id || null, vendor_name: vendor ? vendor.name : null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} مصروف مكتبي`);
@@ -1122,13 +1124,15 @@ const Crud = {
   },
 
   addOwnerDeposit() {
+    const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('👤 توريد صاحب المكتب', cols, async (rows) => {
-      const enriched = rows.map(r => ({ type: 'owner_deposit', amount: r.amount, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
+      const enriched = rows.map(r => ({ type: 'owner_deposit', amount: r.amount, payment_method: r.payment_method || 'cash', date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} توريد`);
       App.loadTransactions(); App.loadOffice();
@@ -1136,13 +1140,15 @@ const Crud = {
   },
 
   addOwnerWithdrawal() {
+    const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
     Spreadsheet.open('🏃 سحب صاحب المكتب', cols, async (rows) => {
-      const enriched = rows.map(r => ({ type: 'withdrawal', amount: r.amount, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
+      const enriched = rows.map(r => ({ type: 'withdrawal', amount: r.amount, payment_method: r.payment_method || 'cash', date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null }));
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} سحب`);
       App.loadTransactions();
@@ -1245,11 +1251,13 @@ const Crud = {
         API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
         API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc')
       ]);
+      const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
       const fields = [
         { name: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...employees.map(e => ({ v: e.id, l: e.name }))] },
         { name: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectors.map(s => ({ v: s.id, l: s.name }))] },
         { name: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }))] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: tx.payment_method || 'cash' },
         { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
@@ -1258,7 +1266,7 @@ const Crud = {
         const emp = employees.find(e => e.id === fd.get('employee_id'));
         const sector = sectors.find(s => s.id === fd.get('sector_id'));
         const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
-        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        await this.save('transactions', { type: 'office_expense', amount: +fd.get('amount') || 0, payment_method: fd.get('payment_method') || 'cash', employee_id: fd.get('employee_id'), employee_name: emp ? emp.name : null, sector_id: fd.get('sector_id'), sector_name: sector ? sector.name : null, vendor_id: fd.get('vendor_id') || null, vendor_name: vendor ? vendor.name : null, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else if (tx.type === 'supervision') {
@@ -1276,15 +1284,18 @@ const Crud = {
         UI.toast('تم التحديث'); App.loadTransactions(); App.loadOffice();
       });
     } else {
+      const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
       const fields = [
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
+        { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: tx.payment_method || 'cash' },
         { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const title = tx.type === 'withdrawal' ? 'تعديل سحب صاحب المكتب' : 'تعديل توريد';
+      const titleMap = { withdrawal: 'تعديل سحب صاحب المكتب', owner_deposit: 'تعديل توريد', custody_return: 'تعديل رد عهدة' };
+      const title = titleMap[tx.type] || 'تعديل معاملة';
       UI.openModal(title, `<form>${UI.form(fields, tx)}</form>`, async (form) => {
         const fd = new FormData(form);
-        await this.save('transactions', { amount: +fd.get('amount') || 0, date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
+        await this.save('transactions', { amount: +fd.get('amount') || 0, payment_method: fd.get('payment_method') || 'cash', date: fd.get('date') || new Date().toISOString().slice(0, 10), description: fd.get('description') || null }, id);
         UI.toast('تم التحديث'); App.loadTransactions();
       });
     }
@@ -2155,69 +2166,65 @@ const Crud = {
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
     ]);
-    const fields = [
-      { name: 'custody_type', label: 'نوع العهد *', type: 'select', req: true, opts: [{v:'office',l:'مكتبية'},{v:'project',l:'مشروع'}] },
-      { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
-      { name: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
-      { name: 'project_id', label: 'المشروع', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
-      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
-      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
-      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    const pmOpts = [{v:'',l:'-- اختر --'},{v:'cash',l:'نقدي'},{v:'bank',l:'بنكي'}];
+    const cols = [
+      { key: 'custody_type', label: 'نوع العهد', type: 'select', req: true, opts: [{v:'office',l:'مكتبية'},{v:'project',l:'مشروع'}] },
+      { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
+      { key: 'sector_id', label: 'التصنيف (مكتب)', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
+      { key: 'project_id', label: 'المشروع (مشروع)', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
+      { key: 'amount', label: 'المبلغ', type: 'number', req: true },
+      { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
+      { key: 'date', label: 'التاريخ', type: 'date', req: true },
+      { key: 'notes', label: 'ملاحظات' }
     ];
-    const overlay = UI.openModal('إضافة عهدة نقدية', `<form>${UI.form(fields)}</form>`, async (form) => {
-      const fd = new FormData(form);
-      const emp = employees.find(e => e.id === fd.get('employee_id'));
-      const sector = sectors.find(s => s.id === fd.get('sector_id'));
-      const proj = projects.find(p => p.id === fd.get('project_id'));
-      const amount = +fd.get('amount') || 0;
-      const date = fd.get('date') || new Date().toISOString().slice(0, 10);
-      const custodyResult = await this.save('custody_records', {
-        custody_type: fd.get('custody_type') || 'office',
-        employee_id: fd.get('employee_id') || null,
-        employee_name: emp ? emp.name : null,
-        sector_id: fd.get('custody_type') === 'office' ? (fd.get('sector_id') || null) : null,
-        sector_name: fd.get('custody_type') === 'office' ? (sector ? sector.name : null) : null,
-        client_id: fd.get('custody_type') === 'project' ? (proj ? proj.client_id : null) : null,
-        client_name: fd.get('custody_type') === 'project' ? (proj ? proj.client_name : null) : null,
-        project_id: fd.get('custody_type') === 'project' ? (fd.get('project_id') || null) : null,
-        project_name: fd.get('custody_type') === 'project' ? (proj ? proj.name : null) : null,
-        amount,
-        date,
-        notes: fd.get('notes') || null,
-        status: 'active'
-      });
-      const custodyId = Array.isArray(custodyResult) ? custodyResult[0]?.id : custodyResult?.id;
-      if (custodyId && amount > 0) {
-        const txResult = await this.save('transactions', {
-          type: 'office_expense',
-          amount,
-          paid_amount: amount,
-          date,
-          description: 'عهدة نقدية للموظف ' + (emp ? emp.name : ''),
-          employee_id: fd.get('employee_id') || null,
+    const defaults = { custody_type: 'office', date: new Date().toISOString().slice(0,10) };
+    if (employeeId) defaults.employee_id = employeeId;
+    Spreadsheet.open('💼 إضافة عهدة نقدية', cols, async (rows) => {
+      for (const r of rows) {
+        const emp = employees.find(e => e.id === r.employee_id);
+        const sector = sectors.find(s => s.id === r.sector_id);
+        const proj = projects.find(p => p.id === r.project_id);
+        const amount = +r.amount || 0;
+        const date = r.date || new Date().toISOString().slice(0, 10);
+        if (!r.employee_id) { UI.toast('الموظف مطلوب', 'error'); throw new Error('missing employee'); }
+        const custodyResult = await this.save('custody_records', {
+          custody_type: r.custody_type || 'office',
+          employee_id: r.employee_id || null,
           employee_name: emp ? emp.name : null,
-          sector_name: 'عهدة نقدية'
+          sector_id: r.custody_type === 'office' ? (r.sector_id || null) : null,
+          sector_name: r.custody_type === 'office' ? (sector ? sector.name : null) : null,
+          client_id: r.custody_type === 'project' ? (proj ? proj.client_id : null) : null,
+          client_name: r.custody_type === 'project' ? (proj ? proj.client_name : null) : null,
+          project_id: r.custody_type === 'project' ? (r.project_id || null) : null,
+          project_name: r.custody_type === 'project' ? (proj ? proj.name : null) : null,
+          amount,
+          date,
+          notes: r.notes || null,
+          status: 'active'
         });
-        const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
-        if (txId) {
-          try { await API.request('custody_records', 'PATCH', { advance_transaction_id: txId }, `?id=eq.${custodyId}`); }
-          catch (e) { /* link failure is non-fatal */ }
+        const custodyId = Array.isArray(custodyResult) ? custodyResult[0]?.id : custodyResult?.id;
+        if (custodyId && amount > 0) {
+          const txResult = await this.save('transactions', {
+            type: 'office_expense',
+            amount,
+            paid_amount: amount,
+            payment_method: r.payment_method || 'cash',
+            date,
+            description: 'عهدة نقدية للموظف ' + (emp ? emp.name : ''),
+            employee_id: r.employee_id || null,
+            employee_name: emp ? emp.name : null,
+            sector_name: 'عهدة نقدية'
+          });
+          const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
+          if (txId) {
+            try { await API.request('custody_records', 'PATCH', { advance_transaction_id: txId }, `?id=eq.${custodyId}`); }
+            catch (e) { /* link failure is non-fatal */ }
+          }
         }
       }
-      UI.toast('تم حفظ العهدة');
+      UI.toast(`تم حفظ ${rows.length} عهدة`);
       App.loadOffice();
-    });
-    // Wire conditional fields
-    const form = overlay.querySelector('form');
-    const typeSel = form.querySelector('[name="custody_type"]');
-    const sectorGroup = form.querySelector('[name="sector_id"]').closest('.form-group');
-    const projectGroup = form.querySelector('[name="project_id"]').closest('.form-group');
-    const toggle = () => {
-      if (typeSel.value === 'office') { sectorGroup.style.display = ''; projectGroup.style.display = 'none'; }
-      else { sectorGroup.style.display = 'none'; projectGroup.style.display = ''; }
-    };
-    typeSel.addEventListener('change', toggle);
-    toggle();
+    }, defaults);
   },
 
   async addOfficeCustody() {
@@ -2353,8 +2360,10 @@ const Crud = {
     if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const c = custodyRows[0];
     const available = +c.remaining_balance || 0;
+    const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
+      { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: 'cash' },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
@@ -2364,6 +2373,7 @@ const Crud = {
       if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
       const desc = fd.get('description') || 'مصروف عهدة';
       const date = fd.get('date') || new Date().toISOString().slice(0, 10);
+      const paymentMethod = fd.get('payment_method') || 'cash';
       // Create linked transaction for office/project balance
       let txPayload;
       if (c.custody_type === 'project') {
@@ -2371,6 +2381,7 @@ const Crud = {
           type: 'project_expense',
           amount,
           paid_amount: amount,
+          payment_method: paymentMethod,
           payment_term: 'immediate',
           expense_category: 'construction',
           client_id: c.client_id || null,
@@ -2388,6 +2399,7 @@ const Crud = {
         txPayload = {
           type: 'office_expense',
           amount,
+          payment_method: paymentMethod,
           employee_id: c.employee_id || null,
           employee_name: c.employee_name || null,
           sector_id: c.sector_id || null,
@@ -2419,8 +2431,10 @@ const Crud = {
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${expense.custody_id}&deleted_at=is.null`);
     const c = custodyRows[0] || {};
     const available = (+c.remaining_balance || 0) + (+expense.amount || 0);
+    const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const fields = [
       { name: 'amount', label: `المبلغ * (متاح: ${App.fmtMoney(available)})`, type: 'number', req: true },
+      { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: expense.payment_method || 'cash' },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
@@ -2430,9 +2444,10 @@ const Crud = {
       if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
       const desc = fd.get('description') || expense.description || 'مصروف عهدة';
       const date = fd.get('date') || expense.date;
+      const paymentMethod = fd.get('payment_method') || 'cash';
       // Update linked transaction amount
       if (expense.linked_transaction_id) {
-        await this.save('transactions', { amount, paid_amount: amount, date, description: desc }, expense.linked_transaction_id);
+        await this.save('transactions', { amount, paid_amount: amount, payment_method: paymentMethod, date, description: desc }, expense.linked_transaction_id);
       }
       await this.save('custody_expenses', { amount, date, description: desc }, id);
       await this._updateCustodyAdvance(expense.custody_id);
@@ -2462,8 +2477,10 @@ const Crud = {
     const c = custodyRows[0];
     const remaining = +c.remaining_balance || 0;
     if (remaining <= 0) { UI.toast('لا يوجد رصيد متبقي للسداد', 'error'); return; }
+    const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const fields = [
       { name: 'amount', label: `المبلغ المرتجع * (متاح: ${App.fmtMoney(remaining)})`, type: 'number', req: true, default: remaining },
+      { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: 'cash' },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'description', label: 'البيان', type: 'textarea' }
     ];
@@ -2477,6 +2494,7 @@ const Crud = {
       await this.save('transactions', {
         type: 'custody_return',
         amount,
+        payment_method: fd.get('payment_method') || 'cash',
         date,
         description: desc,
         employee_id: c.employee_id || null,
