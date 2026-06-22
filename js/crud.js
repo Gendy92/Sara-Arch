@@ -2093,7 +2093,7 @@ const Crud = {
       const total = +p.total_price || 0;
       const paid = isNew ? (+p.paid_amount || 0) : total;
       return {
-        i: i+1, date: p.date || '-', item: p.item_name || '-',
+        i: i+1, date: p.date || '-', section: p.section_name || '-', item: p.item_name || '-',
         qty: p.quantity || 1, unitPrice: +p.unit_price || 0,
         total, paid, balance: total - paid,
         project: p.projects?.name || p.project_name || '-'
@@ -2105,13 +2105,13 @@ const Crud = {
     const balColor = netBalance > 0 ? 'var(--red)' : netBalance < 0 ? 'var(--blue)' : 'var(--green)';
     const balLabel = netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية';
 
-    const rows = procData.map(p => [p.i, p.date, App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), {html: balHtml(p.balance)}, App.esc(p.project), {html: UI.actions(procs[p.i-1].id, 'Crud.editProcurement', 'Crud.delProcurement', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete'))}]);
+    const rows = procData.map(p => [p.i, p.date, App.esc(p.section), App.esc(p.item), p.qty, App.fmtMoney(p.unitPrice), App.fmtMoney(p.total), App.fmtMoney(p.paid), {html: balHtml(p.balance)}, App.esc(p.project), {html: UI.actions(procs[p.i-1].id, 'Crud.editProcurement', 'Crud.delProcurement', Auth.can('vendors', 'edit'), Auth.can('vendors', 'delete'))}]);
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المشتريات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalPaid)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد (${balLabel})</div><div class="kpi-value" style="color:${balColor}">${App.fmtMoney(Math.abs(netBalance))}</div></div>
     </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع', ''], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
+    const table = rows.length ? App.table(['#', 'التاريخ', 'القسم', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع', ''], rows) : '<p style="color:var(--text3)">لا توجد مشتريات</p>';
 
     const actionsHtml = `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
       ${Auth.can('vendors', 'add') ? `<button class="btn btn-sm btn-primary" onclick="Crud.addProcurement('${vendorId}')">+ إضافة مشتريات</button>` : ''}
@@ -2131,12 +2131,12 @@ const Crud = {
 
     const sheet = [
       ['مشتريات مورد: ' + data.name],
-      ['#', 'التاريخ', 'الصنف', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'],
-      ...data.procData.map(p => [p.i, p.date, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project]),
-      ['', '', '', '', '', 'الإجمالي', data.total, data.totalPaid, data.netBalance]
+      ['#', 'التاريخ', 'القسم', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'],
+      ...data.procData.map(p => [p.i, p.date, p.section, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project]),
+      ['', '', '', '', '', '', 'الإجمالي', data.total, data.totalPaid, data.netBalance]
     ];
     const ws = XLSX.utils.aoa_to_sheet(sheet);
-    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'المشتريات');
