@@ -1584,27 +1584,8 @@ const Crud = {
     ]);
     const p = project[0];
     const name = p?.name || 'مشروع';
-    const clientId = p?.client_id || null;
-    const clientName = p?.client_name || '-';
     const pb = pbRows[0] || {};
     const supervision = pb.supervision || 0;
-
-    // Client summary header across all client projects (uses client_balances for consistency)
-    let clientSummaryHtml = '';
-    let clientTotals = { dep: 0, exp: 0, sup: 0 };
-    if (clientId) {
-      const cbData = await API.request('client_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`);
-      const cb = cbData[0] || {};
-      clientTotals = { dep: cb.total_deposits || 0, exp: cb.total_expenses || 0, sup: cb.total_supervision || 0 };
-      clientSummaryHtml = `<h4 style="margin:0 0 8px">ملخص العميل: ${App.esc(clientName)} (كل المشاريع)</h4>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإيداعات</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(clientTotals.dep)}</div></div>
-          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(clientTotals.exp)}</div></div>
-          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(clientTotals.sup)}</div></div>
-          <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">رصيد العميل الإجمالي</div><div class="kpi-value">${App.fmtMoney(cb.balance || 0)}</div></div>
-        </div>
-        <hr style="border-color:var(--border);margin:16px 0">`;
-    }
 
     let totalDep = 0, totalExp = 0;
     const rows = [];
@@ -1631,9 +1612,9 @@ const Crud = {
       <button class="btn btn-sm btn-secondary" onclick="Crud._printProjectStatement('${projectId}')">🖨️ طباعة / PDF</button>
     </div>`;
     this._projectStatementData = this._projectStatementData || {};
-    this._projectStatementData[projectId] = { rows, totalDep, totalExp, name, clientName, clientTotals, hasClient: !!clientId };
+    this._projectStatementData[projectId] = { rows, totalDep, totalExp, name };
 
-    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + clientSummaryHtml + summary + table, null);
+    UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
   },
 
   _exportProjectStatement(projectId) {
@@ -1642,15 +1623,6 @@ const Crud = {
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
     const sheet = [['كشف حساب مشروع: ' + data.name], []];
-    if (data.hasClient) {
-      sheet.push(
-        ['ملخص العميل: ' + data.clientName],
-        ['إجمالي إيداعات العميل (كل المشاريع)', data.clientTotals.dep],
-        ['إجمالي مصروفات العميل (كل المشاريع)', data.clientTotals.exp],
-        ['رصيد العميل الإجمالي', data.clientTotals.dep - data.clientTotals.exp],
-        []
-      );
-    }
     sheet.push(
       ['تفاصيل المشروع: ' + data.name],
       ['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'],
