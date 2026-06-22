@@ -63,8 +63,9 @@ const UI = {
     const esc = (s) => App.esc ? App.esc(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
     const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${value == o.v ? 'selected' : ''}>${esc(o.l)}</option>`).join('');
     const dropdownOpts = options.map(o => `<div class="searchable-select-option" data-value="${this._escAttr(o.v)}">${esc(o.l)}</div>`).join('');
+    const isDisabled = selectAttrs.includes('disabled');
     return `<div class="searchable-select">
-      <input type="text" class="searchable-select-input" placeholder="-- اختر --" autocomplete="off">
+      <input type="text" class="searchable-select-input" placeholder="-- اختر --" autocomplete="off" ${isDisabled ? 'disabled' : ''}>
       <select ${selectAttrs} style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;">${optsHtml}</select>
       <div class="searchable-select-dropdown">${dropdownOpts}</div>
     </div>`;
@@ -585,6 +586,7 @@ const Spreadsheet = {
     const { clientKey, projectKey, projects } = cascade.clientProject;
     const clientSel = row.querySelector(`select[data-key="${clientKey}"]`);
     const projSel = row.querySelector(`select[data-key="${projectKey}"]`);
+    const projInput = projSel?.closest('.searchable-select')?.querySelector('.searchable-select-input');
     if (!clientSel || !projSel) return;
 
     // Project changed → auto-select its client and keep the project selected
@@ -608,12 +610,14 @@ const Spreadsheet = {
     if (!clientId) {
       projSel.innerHTML = '<option value="">-- اختر مشروع --</option>';
       projSel.disabled = true;
+      if (projInput) projInput.disabled = true;
       projSel.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
     const filtered = projects.filter(p => String(p.client_id) === String(clientId));
     projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('');
     projSel.disabled = false;
+    if (projInput) projInput.disabled = false;
     if (previousProject && filtered.some(p => String(p.id) === String(previousProject))) {
       projSel.value = previousProject;
     } else {

@@ -180,15 +180,18 @@ const Crud = {
     // Store full options
     const allProjOpts = Array.from(projSel.options).map(o => ({ v: o.value, l: o.textContent }));
 
+    const projInput = projSel.closest('.searchable-select')?.querySelector('.searchable-select-input');
     const filterProjects = (clientId) => {
       if (!clientId) {
         projSel.innerHTML = '<option value="">-- اختر مشروع --</option>';
         projSel.disabled = true;
+        if (projInput) projInput.disabled = true;
         return;
       }
       const filtered = projects.filter(p => String(p.client_id) === String(clientId));
       projSel.innerHTML = '<option value="">-- اختر مشروع --</option>' + filtered.map(p => `<option value="${p.id}">${App.esc(p.name)}</option>`).join('');
       projSel.disabled = false;
+      if (projInput) projInput.disabled = false;
     };
 
     // Initial state
@@ -197,6 +200,7 @@ const Crud = {
       if (currentProjectId) projSel.value = currentProjectId;
     } else {
       projSel.disabled = true;
+      if (projInput) projInput.disabled = true;
     }
 
     clientSel.addEventListener('change', () => {
