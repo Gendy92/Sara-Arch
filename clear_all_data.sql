@@ -7,17 +7,17 @@ BEGIN;
 -- Tasks linked to projects
 DELETE FROM project_tasks;
 
--- Child transaction/expense tables
-DELETE FROM procurements;
-DELETE FROM transactions;
-DELETE FROM custody_expenses;
-DELETE FROM custody_records;
-
--- Employee/payroll tables
+-- Employee/payroll tables (must be before transactions because payroll_records.office_expense_id references transactions.id)
 DELETE FROM payroll_records;
 DELETE FROM attendance_records;
 DELETE FROM employee_transactions;
 DELETE FROM employee_salary_history;
+
+-- Child transaction/expense tables
+DELETE FROM procurements;
+DELETE FROM custody_expenses;
+DELETE FROM custody_records;
+DELETE FROM transactions;
 
 -- Core operational entities
 DELETE FROM projects;
