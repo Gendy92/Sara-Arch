@@ -1,12 +1,42 @@
 # Sara Arch — Changelog
 
-> **Current version:** v175  
-> **Branch:** `dev.2`  
-> **Last updated:** 2026-06-17
+> **Current version:** v238  
+> **Branch:** `dev.2` / `main` (fast-forward synced)  
+> **Last updated:** 2026-06-22
 
 ---
 
-## Version 175 (Current)
+## Version 238 (Current)
+
+### Added
+- Commercial readiness package: `COMMERCIAL_READINESS.md` with pricing, terms, SLA, support workflow, privacy policy, and onboarding checklist.
+
+### Changed
+- **XSS hardening pass** in `app-loaders.js`: payment method and payment term badges are now escaped before rendering in transactions and office tables.
+- **Payroll regeneration** now resets `paid` records back to `draft` so they can be reviewed/edited again, and updates the linked office expense transaction.
+- **Navigation:** removed **📋 البيانات الأساسية** from the main sidebar; it remains accessible inside **⚙️ الإعدادات**.
+- Bumped runtime, service-worker cache, and asset query-string version to `238`.
+
+## Version 237
+
+### Added
+- New **Office Income** (`📈 إيراد مكتبي`) button and `type = 'income'` transaction support.
+- Office vendor seed: **"مكتب سارة أبو العلا"** (`vendors.is_office = true`) for internal income attribution.
+- Confirmation guard when selecting the internal office vendor on project expenses to avoid double-counting costs.
+- Excel-style spreadsheet entry for custody expenses (office and project templates).
+- Custody expense type picker (office vs. project) with auto-opening of the correct sheet.
+- Custody employee shown in expense sheets and custody picker locked until expense type is chosen.
+- Project cascade enforced: **Project** input disabled until **Client** is selected in all forms and spreadsheets.
+
+### Changed
+- Simplified custody entry by removing `custody_type` selector from Add Custody and adding **Office Custody Expense** directly on the Office screen.
+- Removed **التصنيف** column from the Add Cash Custody form.
+- Updated `office_balance`, `office_transactions_view`, dashboard KPIs, and monthly revenue/expense RPCs to include office-vendor income and `income` transactions.
+- Updated searchable dropdown scope and linked Client ↔ Project cascade inside spreadsheets.
+- Sara-vendor warning text clarified to explain design fees / equipment rental should be recorded as office income.
+- Bumped runtime, service-worker cache, and asset query-string version to `237`.
+
+## Version 175
 
 ### Added
 - `admin_create_auth_user` now upserts the `profiles` row atomically inside the same transaction, eliminating orphaned `auth.users` rows.
@@ -186,12 +216,12 @@
 
 ---
 
-## Known Issues at v175
+## Known Issues at v238
 
-- Payroll regeneration does not reset paid status to `draft`.
-- Some documentation (`APP_TABS_GUIDE.md`, `TEST_PLAN.md`) lags behind runtime version.
 - No restore-from-backup feature yet.
-- XSS hardening pass is partially done: report modals in `crud.js` now escape user-entered strings. The main list tables in `app-loaders.js` still need the same pass.
+- Some documentation (`APP_TABS_GUIDE.md`, `TEST_PLAN.md`, `acceptance-results.md`) lags behind runtime version.
+- Employee module is documented as on hold; attendance RLS is currently open per `LOGIC_SPEC.md`.
+- RLS policies are currently open to all authenticated users; true data isolation requires separate Supabase projects per client or a multi-tenancy refactor.
 
 ### Resolved at v175
 - ✅ Orphaned `auth.users` rows on partial user creation (profile upsert moved into atomic RPC).

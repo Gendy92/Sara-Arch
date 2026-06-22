@@ -502,11 +502,14 @@ Object.assign(App, {
           party = App.esc(t.vendor_name || t.employee_name || t.sector_name || '-');
         }
         const clientName = App.esc(t.party_name || '-');
-        const pm = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || '-';
+        const pmRaw = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' }[t.payment_method] || (t.payment_method || '-');
+        const pm = App.esc(pmRaw);
         const termLabels = { immediate: 'فوري', credit: 'اجل', settlement: 'تسديد' };
         let pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : '-';
         if (t.type === 'project_expense') {
-          pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (t.payment_term ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termLabels[t.payment_term] || t.payment_term}</span>` : '-');
+          const termRaw = t.payment_term ? (termLabels[t.payment_term] || t.payment_term) : null;
+          const termEsc = termRaw ? App.esc(termRaw) : null;
+          pt = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pm}</span>` : (termEsc ? `<span class="badge badge-${t.payment_term === 'immediate' ? 'green' : t.payment_term === 'credit' ? 'orange' : 'blue'}" style="font-size:10px">${termEsc}</span>` : '-');
         }
         const paid = t.paid_amount !== undefined && t.paid_amount !== null ? +t.paid_amount : +t.amount;
         const balance = (+t.amount || 0) - paid;
@@ -541,7 +544,7 @@ Object.assign(App, {
         const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
         const sectionLabel = App.esc(t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب'));
         const itemLabel = App.esc(t.item_name || '-');
-        const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${pmLabels[t.payment_method] || t.payment_method}</span>` : '-';
+        const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${App.esc(pmLabels[t.payment_method] || t.payment_method)}</span>` : '-';
         return [idx + 1, App.esc(t.party_name || '-'), App.esc(t.project_name || '-'), App.esc(t.vendor_name || '-'), sectionLabel, itemLabel, this.fmtMoney(t.amount), {html: pmBadge}, this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
@@ -633,7 +636,8 @@ Object.assign(App, {
         const badgeColor = t.type === 'owner_deposit' ? 'green' : 'red';
         const actions = t.id ? UI.actions(t.id, 'Crud.editTx', 'Crud.delTx') : '-';
         const party = t.vendor_name || t.employee_name || '-';
-        const pm = pmLabels[t.payment_method] || (t.payment_method || 'نقدي');
+        const pmRaw = pmLabels[t.payment_method] || (t.payment_method || 'نقدي');
+        const pm = App.esc(pmRaw);
         return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), {html: `<span class="badge badge-gray" style="font-size:10px">${pm}</span>`}, party, t.sector_name || '-', t.description || '-', {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('office-tbl').innerHTML = txHtml + this._paginationHtml('officeTransactions', safeTxPage, txPerPage, totalOfficeTxs);
@@ -722,7 +726,7 @@ Object.assign(App, {
       const html = data.length ? this.table(['التاريخ', 'الموظف', 'النوع', 'المبلغ', 'ملاحظات', 'الإجراءات'], data.map(t => [
         t.date || '-',
         App.esc(t.employees?.name || t.employee_name || '-'),
-        {html: `<span class="badge badge-${typeColors[t.type] || 'gray'}">${typeLabels[t.type] || t.type}</span>`},
+        {html: `<span class="badge badge-${typeColors[t.type] || 'gray'}">${App.esc(typeLabels[t.type] || t.type)}</span>`},
         this.fmtMoney(t.amount),
         App.esc(t.notes || '-'),
         {html: UI.actions(t.id, 'Crud.editEmpTransaction', 'Crud.delEmpTransaction')}
@@ -1035,8 +1039,9 @@ Object.assign(App, {
             } catch (expErr) { /* link failure is non-fatal; expense stays unlinked */ }
           }
           created++;
-        } else if (existing.status === 'draft' || existing.status === 'approved') {
-          await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary, status: existing.status === 'approved' ? 'approved' : 'draft' }, `?id=eq.${existing.id}`);
+        } else if (existing.status === 'draft' || existing.status === 'approved' || existing.status === 'paid') {
+          // Regeneration always returns the record to draft so it can be reviewed/edited again.
+          await API.request('payroll_records', 'PATCH', { base_salary: r.base_salary, days_present: r.days_present, days_absent: r.days_absent, days_late: r.days_late, days_half: r.days_half, days_leave: r.days_leave, deductions: r.deductions, bonuses: r.bonuses, penalties: r.penalties, net_salary: r.net_salary, status: 'draft' }, `?id=eq.${existing.id}`);
           if (existing.office_expense_id) {
             try {
               await API.request('transactions', 'PATCH', { amount: +r.net_salary || 0, description: `راتب ${r.employee_name} - ${r.month}/${r.year}`, employee_name: r.employee_name || null, date: `${r.year}-${String(r.month).padStart(2, '0')}-01` }, `?id=eq.${existing.office_expense_id}`);

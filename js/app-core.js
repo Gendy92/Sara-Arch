@@ -219,7 +219,6 @@ const App = {
       ${navItem('office', '🏢', 'المكتب')}
       ${navItem('employees', '🧑‍💼', 'الموظفين')}
       ${navItem('tasks', '📋', 'المهام')}
-      ${navItem('master', '📋', 'البيانات الأساسية')}
 
 
       ${isAdmin ? navItem('settings', '⚙️', 'الإعدادات') : ''}

@@ -10,6 +10,7 @@ backups/
 .DS_Store
 Thumbs.db
 node_modules/
+.venv-manual/
 *.docx
 
 # Allow generated specification workbooks
