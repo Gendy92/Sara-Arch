@@ -691,18 +691,9 @@ Object.assign(App, {
         API.request('employees', 'GET', null, `?select=*&is_active=eq.true&deleted_at=is.null${searchFilter}&order=created_at.desc&limit=${limit}&offset=${offset}`),
         API.count('employees', '?is_active=eq.true&deleted_at=is.null' + searchFilter)
       ]);
-      const empIds = data.map(e => e.id);
-      let custodyData = [];
-      if (empIds.length) {
-        custodyData = await API.request('custody_records', 'GET', null, `?select=employee_id,amount,returned_amount,returned_cash_amount&employee_id=in.(${empIds.join(',')})&deleted_at=is.null`);
-      }
-      const custodyByEmp = {};
-      custodyData.forEach(c => { custodyByEmp[c.employee_id] = (custodyByEmp[c.employee_id] || 0) + Math.max(0, (+c.amount || 0) - (+c.returned_amount || 0) - (+c.returned_cash_amount || 0)); });
-      const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'العهدة النشطة', 'الإجراءات'], data.map(e => {
-        const cAmt = custodyByEmp[e.id] || 0;
-        const custodyBadge = cAmt > 0 ? `<span class="badge badge-green">${this.fmtMoney(cAmt)}</span>` : '-';
-        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.employeeCustody('${e.id}')">العهدة</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeTransactions('${e.id}')">المعاملات</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeSalaryHistory('${e.id}')">الرواتب</button>`;
-        return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), {html: custodyBadge}, {html: actions}];
+      const html = data.length ? this.table(['الاسم', 'الوظيفة', 'الراتب', 'الإجراءات'], data.map(e => {
+        const actions = UI.actions(e.id, 'Crud.editEmp', 'Crud.delEmp', Auth.can('employees', 'edit'), Auth.can('employees', 'delete')) + ` <button class="btn btn-sm btn-secondary" onclick="Crud.employeeAttendance('${e.id}')">الحضور</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeTransactions('${e.id}')">المعاملات</button> <button class="btn btn-sm btn-secondary" onclick="Crud.employeeSalaryHistory('${e.id}')">الرواتب</button>`;
+        return [App.esc(e.name), App.esc(e.job_title || '-'), this.fmtMoney(e.salary), {html: actions}];
       })) : `<p style="color:var(--text3);padding:16px">لا يوجد موظفين</p><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة أول موظف</button>`;
       document.getElementById('emp-tbl').innerHTML = html + (data.length ? this._paginationHtml('employees', page, limit, total) : '');
       this.attachSearch('emp-tbl', '🔍 بحث في الموظفين...', (term) => {

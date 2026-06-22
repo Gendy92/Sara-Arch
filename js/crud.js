@@ -2148,42 +2148,7 @@ const Crud = {
     App.printReport(`مشتريات-مورد-${data.name}`);
   },
 
-  // ─── EMPLOYEE CUSTODY & ATTENDANCE ───
-  async employeeCustody(employeeId) {
-    const [emp, records] = await Promise.all([
-      API.request('employees', 'GET', null, `?select=name&id=eq.${employeeId}`),
-      API.request('custody_records', 'GET', null, `?select=*,projects(name)&employee_id=eq.${employeeId}&deleted_at=is.null&order=date.desc`)
-    ]);
-    const name = emp[0]?.name || 'موظف';
-    const statusBadge = (s) => {
-      const colors = { active: 'green', settled: 'blue', partial: 'orange' };
-      const labels = { active: 'نشطة', settled: 'مقفلة', partial: 'جزئي' };
-      return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || App.esc(s)}</span>`;
-    };
-    const typeBadge = (t) => {
-      const color = t === 'project' ? 'blue' : 'gold';
-      const label = t === 'project' ? 'مشروع' : 'مكتب';
-      return `<span class="badge badge-${color}">${label}</span>`;
-    };
-    let total = 0, settled = 0;
-    const rows = records.map((r, i) => {
-      const amt = +r.amount || 0;
-      const ret = (+r.returned_amount || 0) + (+r.returned_cash_amount || 0);
-      total += amt;
-      settled += ret;
-      const bal = amt - ret;
-      return [i+1, r.date || '-', {html: typeBadge(r.custody_type)}, App.fmtMoney(amt), App.fmtMoney(ret), {html: `<span style="color:${bal > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${App.fmtMoney(bal)}</span>`}, {html: statusBadge(r.status)}, App.esc(r.sector_name || '-'), App.esc(r.projects?.name || r.project_name || '-'), App.esc(r.notes || '-'), {html: UI.actions(r.id, 'Crud.editCustody', 'Crud.delCustody') + ` <button class="btn btn-sm btn-secondary" onclick="Crud.custodyExpenses('${r.id}')">مصروفات</button>`}];
-    });
-    const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">إجمالي العهد</div><div class="kpi-value">${App.fmtMoney(total)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المسوّى</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(settled)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(total - settled)}</div></div>
-    </div>`;
-    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المبلغ', 'المرتجع', 'الرصيد', 'الحالة', 'التصنيف', 'المشروع', 'ملاحظات', ''], rows) : '<p style="color:var(--text3)">لا توجد عهد</p>';
-    const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustody('${employeeId}')">➕ إضافة عهدة</button></div>`;
-    UI.openModal(`💼 عهد موظف: ${App.esc(name)}`, addBtn + summary + table, null);
-  },
-
+  // ─── CUSTODY ───
   async addCustody(employeeId) {
     const [projects, sectors, employees] = await Promise.all([
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
@@ -2241,7 +2206,6 @@ const Crud = {
       }
       UI.toast('تم حفظ العهدة');
       App.loadOffice();
-      if (employeeId) this.employeeCustody(employeeId);
     });
     // Wire conditional fields
     const form = overlay.querySelector('form');
@@ -2302,7 +2266,6 @@ const Crud = {
       await this._updateCustodyAdvance(id);
       UI.toast('تم التحديث');
       App.loadOffice();
-      if (rows[0].employee_id) this.employeeCustody(rows[0].employee_id);
     });
     const form = overlay.querySelector('form');
     const typeSel = form.querySelector('[name="custody_type"]');
@@ -2331,7 +2294,6 @@ const Crud = {
       await this.softDelete('custody_records', id);
       UI.toast('تم الحذف');
       App.loadOffice();
-      if (custody.employee_id) this.employeeCustody(custody.employee_id);
     });
   },
 
