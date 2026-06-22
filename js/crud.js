@@ -998,7 +998,6 @@ const Crud = {
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
     const sectionOpts = workSections.map(s => ({ v: s.id, l: s.name }));
     const cols = [
-      { key: 'employee_name', label: 'الموظف', attr: 'disabled' },
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
@@ -1035,6 +1034,14 @@ const Crud = {
       UI.toast(`تم حفظ ${rows.length} مصروف`);
       App.loadTransactions(); App.loadOffice();
     }, {}, { clientProject: { clientKey: 'client_id', projectKey: 'project_id', projects }, sectionItem: { sectionKey: 'section_id', itemKey: 'item_id', items: workItems } });
+    const spreadsheetDiv = document.querySelector('.modal-overlay .spreadsheet');
+    if (spreadsheetDiv) {
+      spreadsheetDiv.addEventListener('change', (e) => {
+        if (e.target.dataset.key === 'vendor_id' && this._isOfficeVendor(e.target.value, vendors)) {
+          UI.toast('⚠️ المورد المختار هو مكتب سارة. سيتم عرض تنبيه تأكيد قبل الحفظ.', 'error');
+        }
+      });
+    }
   },
 
   async addClientReturn(clientId, projectId) {
