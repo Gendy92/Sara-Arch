@@ -1377,6 +1377,7 @@ GROUP BY v.id, v.name;
 UPDATE transactions SET payment_method = 'cash' WHERE payment_method IS NULL AND deleted_at IS NULL AND type IN ('owner_deposit','office_expense','withdrawal','custody_return');
 
 DROP VIEW IF EXISTS public.office_balance;
+DROP VIEW IF EXISTS public.office_transactions_view;
 CREATE OR REPLACE VIEW public.office_balance AS
 WITH base AS (
   SELECT
