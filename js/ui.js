@@ -44,9 +44,9 @@ const UI = {
     if (overlay) { overlay.remove(); document.body.style.overflow = ''; document.body.classList.remove('modal-open'); }
   },
 
-  confirm(msg, onYes, onNo) {
+  confirm(msg, onYes, onNo, yesText = 'نعم، متأكد', noText = 'إلغاء') {
     const safeMsg = (typeof App !== 'undefined' && App.esc) ? App.esc(msg) : String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    this.openModal('تأكيد', `<p style="margin-bottom:20px;color:var(--text2)">${safeMsg}</p><div style="display:flex;gap:8px"><button class="btn btn-red" id="confirm-yes">نعم، متأكد</button><button class="btn btn-secondary" id="confirm-no">إلغاء</button></div>`);
+    this.openModal('تأكيد', `<p style="margin-bottom:20px;color:var(--text2);white-space:pre-line">${safeMsg}</p><div style="display:flex;gap:8px"><button class="btn btn-red" id="confirm-yes">${App.esc(yesText)}</button><button class="btn btn-secondary" id="confirm-no">${App.esc(noText)}</button></div>`);
     document.getElementById('confirm-yes').addEventListener('click', () => { UI.closeModal(); onYes(); });
     if (onNo) document.getElementById('confirm-no').addEventListener('click', () => { UI.closeModal(); onNo(); });
   },
@@ -317,13 +317,14 @@ const Spreadsheet = {
             opts = c.opts.filter(o => !o.v || (projData.find(p => String(p.id) === String(o.v) && String(p.client_id) === String(clientId))));
           }
         }
-        const attrs = `data-key="${c.key}"${cascadeAttr}${disabledAttr}`;
+        const attrs = `data-key="${c.key}"${cascadeAttr}${disabledAttr} ${c.attr || ''}`;
         return `<td>${UI.searchableSelectHTML(attrs, opts, def)}</td>`;
       }
       const inputType = c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text';
       const valAttr = def !== undefined ? `value="${escAttr(def)}"` : '';
       const minAttr = c.type === 'number' ? ' min="0"' : '';
-      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${esc(UI.shortPlaceholder(c.label))}" ${valAttr}${minAttr} /></td>`;
+      const extraAttr = c.attr || '';
+      return `<td><input type="${inputType}" data-key="${c.key}" placeholder="${esc(UI.shortPlaceholder(c.label))}" ${valAttr}${minAttr} ${extraAttr} /></td>`;
     }).join('');
 
     return `<div class="spreadsheet">

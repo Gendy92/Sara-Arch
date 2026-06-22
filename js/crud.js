@@ -64,7 +64,7 @@ const Crud = {
 
   _confirmOfficeVendor(vendorId, vendors, onYes) {
     if (this._isOfficeVendor(vendorId, vendors)) {
-      UI.confirm('⚠️ المورد المختار هو مكتب سارة. هذا قد يسبب تكرارًا في كشف حساب المكتب إذا كان يشمل دفعات لباطن. استخدمه فقط إذا كانت الخدمة من المكتب نفسه بدون أي مورد باطن.', onYes);
+      UI.confirm('⚠️ تنبيه: هذا المورد هو المكتب الداخلي\n\nاختيار سارة كمورد قد يؤدي إلى ازدواجية في التكلفة، حيث أن مصاريف المكتب مسجلة بالفعل في النظام.\n\nتأكد أن هذا المصروف ليس تكلفة إشراف أو تصميم أو إيجار معدات — هذه تُسجل كإيرادات مكتب وليس كمصروف مشروع.\n\nهل تريد المتابعة؟', onYes, null, 'متابعة', 'إلغاء');
     } else {
       onYes();
     }
@@ -74,9 +74,11 @@ const Crud = {
     return new Promise((resolve, reject) => {
       if (!this._isOfficeVendor(vendorId, vendors)) return resolve();
       UI.confirm(
-        '⚠️ المورد المختار هو مكتب سارة. هذا قد يسبب تكرارًا في كشف حساب المكتب إذا كان يشمل دفعات لباطن. استخدمه فقط إذا كانت الخدمة من المكتب نفسه بدون أي مورد باطن.',
+        '⚠️ تنبيه: هذا المورد هو المكتب الداخلي\n\nاختيار سارة كمورد قد يؤدي إلى ازدواجية في التكلفة، حيث أن مصاريف المكتب مسجلة بالفعل في النظام.\n\nتأكد أن هذا المصروف ليس تكلفة إشراف أو تصميم أو إيجار معدات — هذه تُسجل كإيرادات مكتب وليس كمصروف مشروع.\n\nهل تريد المتابعة؟',
         () => resolve(),
-        () => reject(new Error('cancelled'))
+        () => reject(new Error('cancelled')),
+        'متابعة',
+        'إلغاء'
       );
     });
   },
@@ -996,6 +998,7 @@ const Crud = {
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
     const sectionOpts = workSections.map(s => ({ v: s.id, l: s.name }));
     const cols = [
+      { key: 'employee_name', label: 'الموظف', attr: 'disabled' },
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'project_id', label: 'المشروع', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مشروع --' }, ...projectOpts] },
       { key: 'vendor_id', label: 'المورد', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
@@ -1130,7 +1133,7 @@ const Crud = {
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
-      { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
+      { key: 'employee_id', label: 'الموظف', type: 'select', opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts], attr: 'disabled' },
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
       { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -2287,18 +2290,10 @@ const Crud = {
       if (expenseType === 'project') await this._openProjectCustodyExpenseSheet(c);
       else await this._openOfficeCustodyExpenseSheet(c);
     };
-    const overlay = UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+    UI.openModal('🔨 مصروف عهدة - اختيار العهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
       const fd = new FormData(form);
       await openSheet(fd.get('custody_id'), fd.get('expense_type'));
     });
-    const form = overlay.querySelector('form');
-    const custodySel = form.querySelector('[name="custody_id"]');
-    const typeSel = form.querySelector('[name="expense_type"]');
-    const autoOpen = () => {
-      if (custodySel.value && typeSel.value) openSheet(custodySel.value, typeSel.value);
-    };
-    custodySel.addEventListener('change', autoOpen);
-    typeSel.addEventListener('change', autoOpen);
   },
 
   async _openOfficeCustodyExpenseSheet(c) {
@@ -2384,7 +2379,7 @@ const Crud = {
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'البيان' }
     ];
-    const defaults = { date: new Date().toISOString().slice(0, 10) };
+    const defaults = { date: new Date().toISOString().slice(0, 10), employee_name: c.employee_name || '-' };
     if (c.client_id) defaults.client_id = c.client_id;
     if (c.project_id) defaults.project_id = c.project_id;
     Spreadsheet.open('🔨 مصروف عهدة - مشروع', cols, async (rows) => {
