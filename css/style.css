@@ -206,6 +206,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 
 /* ─── PRINT / PDF ─── */
 @media print{
+  body.modal-open > *:not(.modal-overlay):not(script):not(style):not(link),
+  body.printing-report > *:not(.modal-overlay):not(script):not(style):not(link){display:none!important}
   .sidebar,.hamburger,.page-header button,.btn,.table-actions,.modal-close{display:none!important}
   .main-content{margin-right:0;padding:20px}
   body{background:#fff;color:#000}
@@ -216,11 +218,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .kpi-value{color:#000!important}
   .data-table th,.data-table td{border-bottom:1px solid #ccc;color:#000}
   .data-table th{background:#e8e8e8!important}
-  .modal-overlay{position:static;background:none;backdrop-filter:none;padding:0}
-  .modal{box-shadow:none;border:1px solid #ccc;max-width:100%;background:#fff}
+  .modal-overlay{position:static;background:none;backdrop-filter:none;padding:0;display:block!important}
+  .modal{display:block!important;box-shadow:none;border:1px solid #ccc;max-width:100%;max-height:none;background:#fff;overflow:visible!important}
   .modal-header{border-bottom:1px solid #ccc}
+  .modal-body{overflow:visible!important;max-height:none!important}
   .print-logo{display:block !important;text-align:center;margin-bottom:20px}
   .print-logo img{max-height:50px}
+  .stmt-summary{page-break-after:always}
+  .stmt-chapter{page-break-after:always}
+  .stmt-chapter:last-child{page-break-after:auto}
 }
 
 /* ─── SIDEBAR BACKDROP ─── */

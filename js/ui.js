@@ -16,6 +16,7 @@ const UI = {
     const safeTitle = App.esc ? App.esc(title) : String(title).replace(/&/g,'&amp;').replace(/</g,'&lt;');
     overlay.innerHTML = `<div class="modal"><div class="modal-header"><h3>${safeTitle}</h3><button class="modal-close" onclick="UI.closeModal()">&times;</button></div><div class="modal-body">${content}</div></div>`;
     document.body.appendChild(overlay);
+    document.body.classList.add('modal-open');
     overlay.addEventListener('click', (e) => { if (e.target === overlay) UI.closeModal(); });
     if (onSubmit) {
       const form = overlay.querySelector('form');
@@ -40,7 +41,7 @@ const UI = {
 
   closeModal() {
     const overlay = document.querySelector('.modal-overlay');
-    if (overlay) { overlay.remove(); document.body.style.overflow = ''; }
+    if (overlay) { overlay.remove(); document.body.style.overflow = ''; document.body.classList.remove('modal-open'); }
   },
 
   confirm(msg, onYes) {

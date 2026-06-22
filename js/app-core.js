@@ -104,8 +104,9 @@ const App = {
     const date = new Date().toISOString().slice(0, 10);
     const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
     document.title = `${safe(title)}-${date}`;
+    document.body.classList.add('printing-report');
     window.print();
-    setTimeout(() => { document.title = origTitle; }, 1000);
+    setTimeout(() => { document.title = origTitle; document.body.classList.remove('printing-report'); }, 1000);
   },
 
   bindNav() {
