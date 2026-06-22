@@ -110,9 +110,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .content-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px}
 
 /* ─── TABLES ─── */
-.table-responsive{overflow-x:auto}
-.data-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;word-break:break-word}
-.data-table th,.data-table td{padding:12px 14px;text-align:right;border-bottom:1px solid var(--border);white-space:normal}
+.table-responsive{overflow-x:auto;-webkit-overflow-scrolling:touch;display:block}
+.data-table{width:100%;min-width:max-content;border-collapse:separate;border-spacing:0;font-size:13px}
+.data-table th,.data-table td{padding:12px 14px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
 .data-table th{color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px;text-transform:uppercase;background:var(--bg2)}
 .data-table th:first-child{border-radius:0 var(--radius-sm) var(--radius-sm) 0}
 .data-table th:last-child{border-radius:var(--radius-sm) 0 0 var(--radius-sm)}
@@ -177,6 +177,13 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .hamburger{display:none;position:fixed;top:16px;right:16px;z-index:200;width:44px;height:44px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;box-shadow:var(--shadow-sm)}
 .hamburger span{display:block;width:20px;height:2px;background:var(--gold);border-radius:2px;transition:.25s}
 .hamburger:active{transform:scale(0.95)}
+
+/* ─── CLIENT CARD ─── */
+.client-card-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.client-card-info{min-width:0;flex:1}
+.client-card-actions{display:flex;gap:6px;flex-wrap:wrap}
+.client-meta{font-size:12px;color:var(--text2);line-height:1.6;word-break:break-word}
+.client-summary{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.6;word-break:break-word}
 
 /* ─── CHARTS ─── */
 .chart-container{display:flex;align-items:flex-end;gap:8px;height:180px;padding:16px 8px 0;border-top:1px solid var(--border);margin-top:12px}
@@ -249,7 +256,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .content-grid{grid-template-columns:1fr}
   .card{padding:20px;margin-bottom:16px;min-width:0}
   .page-header h1{font-size:20px}
-  .data-table th,.data-table td{padding:10px 12px;white-space:normal;word-break:break-word}
+  .data-table th,.data-table td{padding:10px 12px;white-space:nowrap;font-size:12px}
   .table-actions{flex-wrap:wrap;gap:4px}
   .table-actions .btn-sm{padding:6px 10px;font-size:12px;min-height:36px}
   .kpi-card{min-width:80px !important}
@@ -258,6 +265,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .cpt-num{font-size:11px}
   .table-actions .btn-sm{padding:4px 8px;font-size:11px}
   .table-responsive{-webkit-overflow-scrolling:touch;overflow-x:auto;overflow-y:hidden}
+  .client-card-header{flex-direction:column;align-items:stretch;gap:12px}
+  .client-card-actions{justify-content:flex-start}
+  .client-meta,.client-summary{font-size:11px}
   .btn{min-height:44px}
   .btn-sm{min-height:36px}
   .nav-item{min-height:44px}
@@ -269,7 +279,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .main-content{padding:16px;padding-top:68px}
   .page-header h1{font-size:17px}
   .page-header{gap:10px;margin-bottom:20px}
-  .data-table th,.data-table td{padding:8px 10px;font-size:12px;white-space:normal;word-break:break-word}
+  .data-table th,.data-table td{padding:8px 10px;font-size:11px;white-space:nowrap}
   .data-table th{font-size:10px}
   .table-actions .btn-sm{padding:3px 6px;font-size:10px}
   .modal-body{padding:16px}
@@ -281,6 +291,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   .page-header button,.page-header .btn{font-size:12px;padding:8px 14px}
   .page-header{flex-direction:column;align-items:stretch}
   .page-header > div{display:flex;flex-wrap:wrap;gap:8px}
+  .client-card-header{gap:10px}
+  .client-card-actions .btn-sm{padding:4px 8px;font-size:10px}
   .auth-card{padding:32px 20px}
   .auth-logo img{width:100px}
   .sidebar-logo img{width:80px}

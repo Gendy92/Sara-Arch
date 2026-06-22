@@ -216,14 +216,14 @@ Object.assign(App, {
         });
         const projTable = cProjects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
         const clientBalColor = (cb.balance || 0) >= 0 ? 'var(--green)' : 'var(--red)';
-        return `<div class="card" style="margin-bottom:16px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-            <div>
+        return `<div class="card client-card" style="margin-bottom:16px">
+          <div class="client-card-header">
+            <div class="client-card-info">
               <h3 style="margin-bottom:4px"><a href="#" onclick="App.go('client',{clientId:'${c.id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(c.name)}</a></h3>
-              <div style="font-size:12px;color:var(--text2)">${App.esc(c.phone || '-')} · ${App.esc(c.email || '-')} · ${App.esc(c.address || '-')}</div>
-              <div style="font-size:12px;color:var(--text2);margin-top:4px">إيداعات: ${this.fmtMoney(cb.total_deposits || 0)} · مصروفات: ${this.fmtMoney(cb.total_expenses || 0)} · إشراف: ${this.fmtMoney(cb.total_supervision || 0)} · رصيد: <span style="color:${clientBalColor};font-weight:700">${this.fmtMoney(cb.balance || 0)}</span></div>
+              <div class="client-meta">${App.esc(c.phone || '-')} · ${App.esc(c.email || '-')} · ${App.esc(c.address || '-')}</div>
+              <div class="client-summary">إيداعات: ${this.fmtMoney(cb.total_deposits || 0)} · مصروفات: ${this.fmtMoney(cb.total_expenses || 0)} · إشراف: ${this.fmtMoney(cb.total_supervision || 0)} · رصيد: <span style="color:${clientBalColor};font-weight:700">${this.fmtMoney(cb.balance || 0)}</span></div>
             </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
+            <div class="client-card-actions">${clientActions}</div>
           </div>
           <div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud.addProject('${c.id}')">+ إضافة مشروع</button></div>
           ${projTable}
@@ -280,13 +280,13 @@ Object.assign(App, {
       });
       const projTable = projects.length ? this.table(['المشروع', 'العنوان', 'القيمة', 'مصروفات', 'الرصيد', 'إشراف %', 'إشراف', 'الحالة', 'الإجراءات'], projRows) : '<p style="color:var(--text3);padding:8px 0">لا توجد مشاريع لهذا العميل</p>';
 
-      const html = `<div class="card" style="margin-bottom:16px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-          <div>
+      const html = `<div class="card client-card" style="margin-bottom:16px">
+        <div class="client-card-header">
+          <div class="client-card-info">
             <h3 style="margin-bottom:4px">${App.esc(client.name)}</h3>
-            <div style="font-size:12px;color:var(--text2)">${App.esc(client.phone || '-')} · ${App.esc(client.email || '-')} · ${App.esc(client.address || '-')}</div>
+            <div class="client-meta">${App.esc(client.phone || '-')} · ${App.esc(client.email || '-')} · ${App.esc(client.address || '-')}</div>
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${clientActions}</div>
+          <div class="client-card-actions">${clientActions}</div>
         </div>
         <div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud.addProject('${client.id}')">+ إضافة مشروع</button></div>
         ${projTable}
