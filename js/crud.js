@@ -2161,14 +2161,10 @@ const Crud = {
 
   // ─── CUSTODY ───
   async addCustody(employeeId) {
-    const [sectors, employees] = await Promise.all([
-      API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-      API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
-    ]);
+    const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
     const pmOpts = [{v:'',l:'-- اختر --'},{v:'cash',l:'نقدي'},{v:'bank',l:'بنكي'}];
     const cols = [
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
-      { key: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ', type: 'date', req: true },
@@ -2179,7 +2175,6 @@ const Crud = {
     Spreadsheet.open('💼 إضافة عهدة نقدية', cols, async (rows) => {
       for (const r of rows) {
         const emp = employees.find(e => e.id === r.employee_id);
-        const sector = sectors.find(s => s.id === r.sector_id);
         const amount = +r.amount || 0;
         const date = r.date || new Date().toISOString().slice(0, 10);
         if (!r.employee_id) { UI.toast('الموظف مطلوب', 'error'); throw new Error('missing employee'); }
@@ -2187,8 +2182,6 @@ const Crud = {
           custody_type: 'office',
           employee_id: r.employee_id || null,
           employee_name: emp ? emp.name : null,
-          sector_id: r.sector_id || null,
-          sector_name: sector ? sector.name : null,
           amount,
           date,
           notes: r.notes || null,
