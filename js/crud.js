@@ -2161,42 +2161,34 @@ const Crud = {
 
   // ─── CUSTODY ───
   async addCustody(employeeId) {
-    const [projects, sectors, employees] = await Promise.all([
-      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
+    const [sectors, employees] = await Promise.all([
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc')
     ]);
     const pmOpts = [{v:'',l:'-- اختر --'},{v:'cash',l:'نقدي'},{v:'bank',l:'بنكي'}];
     const cols = [
-      { key: 'custody_type', label: 'نوع العهد', type: 'select', req: true, opts: [{v:'office',l:'مكتبية'},{v:'project',l:'مشروع'}] },
       { key: 'employee_id', label: 'الموظف', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))] },
-      { key: 'sector_id', label: 'التصنيف (مكتب)', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
-      { key: 'project_id', label: 'المشروع (مشروع)', type: 'select', opts: [{v:'',l:'-- اختر مشروع --'}, ...projects.map(p => ({v:p.id,l:p.name}))] },
+      { key: 'sector_id', label: 'التصنيف', type: 'select', opts: [{v:'',l:'-- اختر تصنيف --'}, ...sectors.map(s => ({v:s.id,l:s.name}))] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
       { key: 'payment_method', label: 'الحساب', type: 'select', req: true, opts: pmOpts, default: 'cash' },
       { key: 'date', label: 'التاريخ', type: 'date', req: true },
       { key: 'notes', label: 'ملاحظات' }
     ];
-    const defaults = { custody_type: 'office', date: new Date().toISOString().slice(0,10) };
+    const defaults = { date: new Date().toISOString().slice(0,10) };
     if (employeeId) defaults.employee_id = employeeId;
     Spreadsheet.open('💼 إضافة عهدة نقدية', cols, async (rows) => {
       for (const r of rows) {
         const emp = employees.find(e => e.id === r.employee_id);
         const sector = sectors.find(s => s.id === r.sector_id);
-        const proj = projects.find(p => p.id === r.project_id);
         const amount = +r.amount || 0;
         const date = r.date || new Date().toISOString().slice(0, 10);
         if (!r.employee_id) { UI.toast('الموظف مطلوب', 'error'); throw new Error('missing employee'); }
         const custodyResult = await this.save('custody_records', {
-          custody_type: r.custody_type || 'office',
+          custody_type: 'office',
           employee_id: r.employee_id || null,
           employee_name: emp ? emp.name : null,
-          sector_id: r.custody_type === 'office' ? (r.sector_id || null) : null,
-          sector_name: r.custody_type === 'office' ? (sector ? sector.name : null) : null,
-          client_id: r.custody_type === 'project' ? (proj ? proj.client_id : null) : null,
-          client_name: r.custody_type === 'project' ? (proj ? proj.client_name : null) : null,
-          project_id: r.custody_type === 'project' ? (r.project_id || null) : null,
-          project_name: r.custody_type === 'project' ? (proj ? proj.name : null) : null,
+          sector_id: r.sector_id || null,
+          sector_name: sector ? sector.name : null,
           amount,
           date,
           notes: r.notes || null,
@@ -2229,6 +2221,56 @@ const Crud = {
 
   async addOfficeCustody() {
     await this.addCustody('');
+  },
+
+  async addOfficeCustodyExpense() {
+    const custodies = await API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc");
+    if (!custodies.length) { UI.toast('لا توجد عهد مفتوحة لإضافة مصروف', 'error'); return; }
+    const custodyOpts = custodies.map(c => ({ v: c.id, l: `${c.employees?.name || c.employee_name || '-'} — ${App.fmtMoney(c.amount)} (متبقي: ${App.fmtMoney(c.remaining_balance || 0)})` }));
+    const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
+    const fields = [
+      { name: 'custody_id', label: 'العهدة *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عهدة --' }, ...custodyOpts] },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'payment_method', label: 'الحساب', type: 'select', opts: pmOpts, default: 'cash' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { name: 'description', label: 'البيان', type: 'textarea' }
+    ];
+    UI.openModal('🔨 مصروف عهدة', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const custodyId = fd.get('custody_id');
+      const amount = +fd.get('amount') || 0;
+      if (!custodyId) { UI.toast('يجب اختيار العهدة', 'error'); return; }
+      const c = custodies.find(x => x.id === custodyId);
+      if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
+      const available = +c.remaining_balance || 0;
+      if (amount > available) { UI.toast('المبلغ يتجاوز الرصيد المتاح للعهدة', 'error'); return; }
+      const date = fd.get('date') || new Date().toISOString().slice(0, 10);
+      const desc = fd.get('description') || 'مصروف عهدة';
+      const paymentMethod = fd.get('payment_method') || 'cash';
+      const txResult = await this.save('transactions', {
+        type: 'office_expense',
+        amount,
+        paid_amount: amount,
+        payment_method: paymentMethod,
+        employee_id: c.employee_id || null,
+        employee_name: c.employee_name || null,
+        sector_id: c.sector_id || null,
+        sector_name: c.sector_name || null,
+        date,
+        description: desc
+      });
+      const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
+      await this.save('custody_expenses', {
+        custody_id: custodyId,
+        linked_transaction_id: txId || null,
+        amount,
+        date,
+        description: desc
+      });
+      await this._updateCustodyAdvance(custodyId);
+      UI.toast('تم حفظ مصروف العهدة');
+      App.loadOffice();
+    });
   },
 
   async editCustody(id) {
