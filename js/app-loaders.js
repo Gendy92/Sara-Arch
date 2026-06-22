@@ -88,7 +88,7 @@ Object.assign(App, {
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
-      const [[kpi], vendorBalances, clientBalances, monthly, officeSectors, vendorAlerts] = await Promise.all([
+      const [[kpi], vendorBalances, clientBalances, monthly, officeSectors, vendorAlerts, custodyAlerts] = await Promise.all([
         API.rpc('dashboard_kpis'),
         API.rpc('dashboard_top_vendors', { limit_count: 10 }),
         API.rpc('dashboard_active_client_balances', { limit_count: 10 }),
