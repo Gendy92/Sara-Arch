@@ -145,6 +145,19 @@ const API = {
     return res.json();
   },
 
+  async authRefreshToken(refresh_token) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ refresh_token })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(this._parseError(text, res.status) || 'Session expired');
+    }
+    return res.json();
+  },
+
   async authGetUser(token) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'Accept-Charset': 'utf-8' }

@@ -6,6 +6,61 @@ const Auth = {
   // to the tab and cleared when the tab closes. This reduces (but does not
   // eliminate) XSS exposure; full protection requires httpOnly cookies.
   token: sessionStorage.getItem('sara_token') || null,
+  refreshToken: sessionStorage.getItem('sara_refresh_token') || null,
+  expiresAt: parseInt(sessionStorage.getItem('sara_token_expires_at') || '0', 10) || null,
+  _refreshTimer: null,
+
+  _storeSession(data) {
+    this.token = data.access_token;
+    this.refreshToken = data.refresh_token;
+    const expiresIn = data.expires_in || 3600;
+    this.expiresAt = Date.now() + expiresIn * 1000;
+    sessionStorage.setItem('sara_token', this.token);
+    sessionStorage.setItem('sara_refresh_token', this.refreshToken);
+    sessionStorage.setItem('sara_token_expires_at', String(this.expiresAt));
+  },
+
+  _clearSession() {
+    this.token = null;
+    this.refreshToken = null;
+    this.expiresAt = null;
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
+    sessionStorage.removeItem('sara_token');
+    sessionStorage.removeItem('sara_refresh_token');
+    sessionStorage.removeItem('sara_token_expires_at');
+  },
+
+  async _doRefresh() {
+    if (!this.refreshToken) { this.logout(); return false; }
+    try {
+      const data = await API.authRefreshToken(this.refreshToken);
+      this._storeSession(data);
+      if (data.user) this.user = data.user;
+      this._scheduleRefresh();
+      return true;
+    } catch (e) {
+      console.error('[Auth] token refresh failed', e);
+      this.logout();
+      if (typeof UI !== 'undefined') UI.toast('انتهت الجلسة — يرجى تسجيل الدخول مرة أخرى', 'error');
+      if (typeof App !== 'undefined') App.renderLogin();
+      return false;
+    }
+  },
+
+  _scheduleRefresh() {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    if (!this.expiresAt) return;
+    const ms = Math.max(1000, this.expiresAt - Date.now() - 60000);
+    this._refreshTimer = setTimeout(() => this._doRefresh(), ms);
+  },
+
+  _handleVisibility() {
+    if (document.hidden) return;
+    // When user returns after the tab was in background, refresh if token is expired/near expiry.
+    if (this.token && this.expiresAt && Date.now() >= this.expiresAt - 60000) {
+      this._doRefresh();
+    }
+  },
 
   _hashUsername(username) {
     // Deterministic 32-bit hash for non-ASCII usernames (e.g. Arabic names).
@@ -54,24 +109,35 @@ const Auth = {
       localStorage.removeItem('sara_token');
     }
     if (this.token) {
-      const user = await API.authGetUser(this.token);
-      if (user) {
-        this.user = user;
-        // Load profile from profiles table (Arabic names stored reliably here)
-        try {
-          const profiles = await API.request('profiles', 'GET', null, `?id=eq.${user.id}`);
-          const profile = profiles[0];
-          this.user.displayName = this.safeName(profile?.name, this.safeName(user.user_metadata?.name, this.fromEmail(user.email)));
-          this.user.role = profile?.role || user.user_metadata?.role || 'user';
-        } catch (e) {
-          this.user.displayName = this.safeName(user.user_metadata?.name, this.fromEmail(user.email));
-          this.user.role = user.user_metadata?.role || 'user';
-        }
-        await this._loadDefaultTenant();
-        await this.loadPermissions();
+      // Refresh proactively if the token is expired or about to expire.
+      if (this.refreshToken && this.expiresAt && Date.now() >= this.expiresAt - 60000) {
+        const ok = await this._doRefresh();
+        if (!ok) return;
       } else {
-        this.logout();
+        const user = await API.authGetUser(this.token);
+        if (user) {
+          this.user = user;
+        } else {
+          this.logout();
+          return;
+        }
       }
+      // Load profile from profiles table (Arabic names stored reliably here)
+      try {
+        const profiles = await API.request('profiles', 'GET', null, `?id=eq.${this.user.id}`);
+        const profile = profiles[0];
+        this.user.displayName = this.safeName(profile?.name, this.safeName(this.user.user_metadata?.name, this.fromEmail(this.user.email)));
+        this.user.role = profile?.role || this.user.user_metadata?.role || 'user';
+      } catch (e) {
+        this.user.displayName = this.safeName(this.user.user_metadata?.name, this.fromEmail(this.user.email));
+        this.user.role = this.user.user_metadata?.role || 'user';
+      }
+      await this._loadDefaultTenant();
+      await this.loadPermissions();
+      this._scheduleRefresh();
+      document.removeEventListener('visibilitychange', this._visHandler);
+      this._visHandler = () => this._handleVisibility();
+      document.addEventListener('visibilitychange', this._visHandler);
     }
   },
 
@@ -117,7 +183,7 @@ const Auth = {
       }
       if (!data) throw e;
     }
-    this.token = data.access_token;
+    this._storeSession(data);
     this.user = data.user;
     // Try to load profile for correct Arabic name
     try {
@@ -129,10 +195,13 @@ const Auth = {
       this.user.displayName = this.safeName(data.user?.user_metadata?.name, username);
       this.user.role = data.user?.user_metadata?.role || 'user';
     }
-    sessionStorage.setItem('sara_token', this.token);
     localStorage.removeItem('sara_token');
     await this._loadDefaultTenant();
     await this.loadPermissions();
+    this._scheduleRefresh();
+    document.removeEventListener('visibilitychange', this._visHandler);
+    this._visHandler = () => this._handleVisibility();
+    document.addEventListener('visibilitychange', this._visHandler);
     return data;
   },
 
@@ -155,8 +224,7 @@ const Auth = {
 
   logout() {
     this.user = null;
-    this.token = null;
-    sessionStorage.removeItem('sara_token');
+    this._clearSession();
     localStorage.removeItem('sara_token');
     localStorage.removeItem('sara_tenant_id');
   },
