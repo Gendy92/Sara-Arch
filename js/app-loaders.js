@@ -462,8 +462,6 @@ Object.assign(App, {
     try {
       const txPage = this.pageState.transactions || 1;
       const txPerPage = 10;
-      const expPage = this.pageState.txExpenses || 1;
-      const expPerPage = 10;
 
       // KPIs from project_balances view
       const projectBalances = await API.request('project_balances', 'GET', null, '?select=deposits,expenses,supervision,balance');
@@ -531,45 +529,10 @@ Object.assign(App, {
       });
       const txSearchInput = document.getElementById('tx-tbl-search');
       if (txSearchInput) txSearchInput.value = App.searchState.transactions || '';
-
-      // Expenses-only tab with page-based pagination
-      const pmLabels = { cash: 'نقدي', bank: 'بنكي', transfer: 'تحويل' };
-      const expSearchTerm = App.searchState.txExpenses || '';
-      const expSearchFilter = App.ilikeOr(['description','project_name','vendor_name','party_name'], expSearchTerm);
-      const [projectExpenses, totalExpCount] = await Promise.all([
-        API.request('transactions', 'GET', null, `?select=*&type=eq.project_expense&deleted_at=is.null${expSearchFilter}&order=date.desc&offset=${(expPage - 1) * expPerPage}&limit=${expPerPage}`),
-        API.count('transactions', '?type=eq.project_expense&deleted_at=is.null' + expSearchFilter)
-      ]);
-      const expenseRows = [...projectExpenses].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-      const expHtml = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
-        const isNew = t.payment_term !== undefined && t.payment_term !== null;
-        const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
-        const bal = (+t.amount || 0) - paid;
-        const balColor = bal > 0 ? 'var(--red)' : bal < 0 ? 'var(--green)' : 'var(--text3)';
-        const balLabel = bal > 0 ? 'متبقي' : bal < 0 ? 'زيادة' : 'تسوية';
-        const sectionLabel = App.esc(t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب'));
-        const itemLabel = App.esc(t.item_name || '-');
-        const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${App.esc(pmLabels[t.payment_method] || t.payment_method)}</span>` : '-';
-        const amountCell = {html: `<div style="line-height:1.4"><div>${this.fmtMoney(t.amount)}</div><div style="font-size:10px;color:var(--text3)">مدفوع: ${this.fmtMoney(paid)}</div><div style="font-size:10px;color:${balColor}">${balLabel}: ${this.fmtMoney(Math.abs(bal))}</div></div>`};
-        return [idx + 1, App.esc(t.party_name || '-'), App.esc(t.project_name || '-'), App.esc(t.vendor_name || '-'), sectionLabel, itemLabel, amountCell, {html: pmBadge}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
-      })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
-      document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
-      this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...', (term) => {
-        App.searchState.txExpenses = term;
-        App.pageState.txExpenses = 1;
-        App.loadTransactions();
-      });
-      const expSearchInput = document.getElementById('tx-expenses-tbl-search');
-      if (expSearchInput) expSearchInput.value = App.searchState.txExpenses || '';
     } catch (e) {
       UI.toast('Transactions load failed: ' + e.message, 'error');
       App.loadErrorHtml('tx-tbl', 'تعذر تحميل المعاملات', 'App.loadTransactions()', e);
-      document.getElementById('tx-expenses-tbl').innerHTML = '';
     }
-  },
-
-  async loadTxExpenses() {
-    await this.loadTransactions();
   },
 
   exportOfficeExcel() {

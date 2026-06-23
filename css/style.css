@@ -381,8 +381,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 .cpt-project:hover { background: var(--bg3); }
 
 /* ─── TRANSACTIONS TABLE FIT (PWA narrow windows) ─── */
-#tx-tbl .data-table td,
-#tx-expenses-tbl .data-table td {
+#tx-tbl .data-table td {
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -390,9 +389,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 
 @media(max-width:1300px) {
   #tx-tbl .data-table th,
-  #tx-tbl .data-table td,
-  #tx-expenses-tbl .data-table th,
-  #tx-expenses-tbl .data-table td {
+  #tx-tbl .data-table td {
     padding: 6px 8px;
     font-size: 11px;
   }
@@ -403,24 +400,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   #tx-tbl .data-table td:nth-child(8) {
     display: none;
   }
-  /* Expenses-only: hide Client (2) and Date (9) */
-  #tx-expenses-tbl .data-table th:nth-child(2),
-  #tx-expenses-tbl .data-table td:nth-child(2),
-  #tx-expenses-tbl .data-table th:nth-child(9),
-  #tx-expenses-tbl .data-table td:nth-child(9) {
-    display: none;
-  }
 }
 
 @media(max-width:1000px) {
   /* Main transactions: also hide Project (7) */
   #tx-tbl .data-table th:nth-child(7),
   #tx-tbl .data-table td:nth-child(7) {
-    display: none;
-  }
-  /* Expenses-only: also hide Project (3) */
-  #tx-expenses-tbl .data-table th:nth-child(3),
-  #tx-expenses-tbl .data-table td:nth-child(3) {
     display: none;
   }
 }
