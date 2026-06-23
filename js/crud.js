@@ -540,7 +540,6 @@ const Crud = {
     const fields = [
       { name: 'name', label: 'اسم المورد', req: true },
       { name: 'vendor_type', label: 'النوع', type: 'select', opts: [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }] },
-      { name: 'is_office', label: 'مكتب سارة أبو العلا؟', type: 'select', opts: [{ v: false, l: 'لا' }, { v: true, l: 'نعم' }] },
       { name: 'sector', label: 'التخصص', type: 'select', opts: [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }] },
       { name: 'contact_person', label: 'الشخص المسؤول' },
       { name: 'phone', label: 'الهاتف' },
@@ -555,8 +554,7 @@ const Crud = {
         const existing = await API.request('vendors', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&deleted_at=is.null`);
         if (existing.length) { UI.toast('⚠️ اسم المورد موجود مسبقاً', 'error'); return; }
       }
-      const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', is_office: fd.get('is_office') === 'true', sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
-      if (rows[0].is_office && !data.is_office) { UI.toast('لا يمكن إلغاء تحديد مورد المكتب الرئيسي', 'error'); return; }
+      const data = { name: fd.get('name'), vendor_type: fd.get('vendor_type') || 'service', is_office: rows[0].is_office, sector: fd.get('sector') || null, contact_person: fd.get('contact_person') || null, phone: fd.get('phone') || null, email: fd.get('email') || null, address: fd.get('address') || null, notes: fd.get('notes') || null };
       await this.save('vendors', data, id);
       UI.toast('تم التحديث');
       if (App.screen === 'vendor' && App.vendorId) App.loadVendor(App.vendorId);
