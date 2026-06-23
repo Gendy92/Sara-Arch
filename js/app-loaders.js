@@ -85,6 +85,7 @@ Object.assign(App, {
 
   // ─── DATA LOADING ───
   async loadDashboard() {
+    if (!document.getElementById('kpis')) return;
     const t0 = performance.now();
     try {
       // Server-side aggregation: small, fast RPCs instead of hauling entire tables.
@@ -459,6 +460,7 @@ Object.assign(App, {
   },
 
     async loadTransactions() {
+    if (!document.getElementById('tx-kpis')) return;
     try {
       const txPage = this.pageState.transactions || 1;
       const txPerPage = 10;
@@ -561,6 +563,7 @@ Object.assign(App, {
   },
 
   async loadOffice() {
+    if (!document.getElementById('office-kpis')) return;
     try {
       const txPage = this.pageState.officeTransactions || 1;
       const txPerPage = 10;
