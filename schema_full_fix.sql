@@ -1082,9 +1082,9 @@ DROP FUNCTION IF EXISTS public.dashboard_monthly_revenue_expenses(integer);
 CREATE OR REPLACE FUNCTION dashboard_monthly_revenue_expenses(months_back INT DEFAULT 6)
 RETURNS TABLE(month_key TEXT, project_revenue NUMERIC, project_expense NUMERIC, office_revenue NUMERIC, office_expense NUMERIC) AS $$
 DECLARE
-  start_date DATE;
+  filter_start_date DATE;
 BEGIN
-  start_date := (date_trunc('month', CURRENT_DATE) - ((months_back - 1) || ' months')::INTERVAL)::DATE;
+  filter_start_date := (date_trunc('month', CURRENT_DATE) - ((months_back - 1) || ' months')::INTERVAL)::DATE;
   RETURN QUERY
   WITH months AS (
     SELECT generate_series(0, months_back - 1) AS i
@@ -1096,7 +1096,7 @@ BEGIN
   project_dep AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type = 'project_deposit' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'project_deposit' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   supervision AS (
@@ -1105,50 +1105,50 @@ BEGIN
     FROM projects p
     JOIN transactions t ON t.project_id = p.id
     LEFT JOIN project_section_supervision pss ON pss.project_id = p.id AND pss.section_id = t.section_id
-    WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement') AND t.expense_category != 'design' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND p.deleted_at IS NULL AND t.type IN ('project_expense','vendor_settlement') AND t.expense_category != 'design' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   project_exp AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type = 'project_expense' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'project_expense' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   vendor_settlement AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type = 'vendor_settlement' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'vendor_settlement' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   owner_dep AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   office_vendor_income AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
     FROM transactions t
     JOIN vendors v ON v.id = t.vendor_id
-    WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement') AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement') AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   office_income AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type = 'income' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'income' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   office_exp AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal') AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type IN ('office_expense','withdrawal') AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   custody_ret AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
     FROM transactions t
-    WHERE t.deleted_at IS NULL AND t.type = 'custody_return' AND t.date >= start_date
+    WHERE t.deleted_at IS NULL AND t.type = 'custody_return' AND t.date >= filter_start_date
     GROUP BY to_char(t.date, 'YYYY-MM')
   )
   SELECT m.mk::TEXT,

@@ -1,10 +1,19 @@
 # Sara Arch — Changelog
 
-> **Current version:** v244  
+> **Current version:** v245  
 > **Branch:** `dev.2` / `main` (fast-forward synced)  
 > **Last updated:** 2026-06-22
 
 ---
+
+## Version 245 (Current)
+
+### Fixed
+- Fixed ambiguous `start_date` column reference in `dashboard_monthly_revenue_expenses` that broke the dashboard after v242.
+- New hotfix migration: `migration_v245_fix_dashboard.sql`.
+
+### Changed
+- Bumped runtime, service-worker cache, and asset query-string version to `245`.
 
 ## Version 244 (Current)
 
