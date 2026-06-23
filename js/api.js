@@ -153,6 +153,19 @@ const API = {
     return res.json();
   },
 
+  async authResetPassword(email) {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || data.msg || 'فشل إرسال رابط استعادة كلمة المرور');
+    }
+    return data;
+  },
+
   // Admin endpoints historically required a service_role key.
   // Service-role keys are no longer stored or used in the browser.
   async authListUsers() {

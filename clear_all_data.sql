@@ -20,6 +20,7 @@ DELETE FROM custody_records;
 DELETE FROM transactions;
 
 -- Core operational entities
+DELETE FROM project_section_supervision;
 DELETE FROM projects;
 DELETE FROM clients;
 DELETE FROM vendors;

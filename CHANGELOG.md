@@ -1,12 +1,63 @@
 # Sara Arch — Changelog
 
-> **Current version:** v241  
+> **Current version:** v245  
 > **Branch:** `dev.2` / `main` (fast-forward synced)  
 > **Last updated:** 2026-06-22
 
 ---
 
-## Version 241 (Current)
+## Version 245 (Current)
+
+### Fixed
+- Fixed ambiguous `start_date` column reference in `dashboard_monthly_revenue_expenses` that broke the dashboard after v242.
+- New hotfix migration: `migration_v245_fix_dashboard.sql`.
+
+### Changed
+- Bumped runtime, service-worker cache, and asset query-string version to `245`.
+
+## Version 244 (Current)
+
+### Changed
+- Removed the **Employees** item from the main sidebar.
+- Moved employee management into **Settings** as a new admin-only card.
+- Removed salary and attendance UI from the Employees screen:
+  - Removed salary column from the employee list.
+  - Removed salary, attendance, and salary-history action buttons.
+  - Removed fingerprint upload and monthly payroll cards.
+- Removed the employee-count KPI card from the Dashboard.
+- Removed salary field from the add/edit employee forms.
+- Bumped runtime, service-worker cache, and asset query-string version to `244`.
+
+## Version 243 (Current)
+
+### Added
+- **Real email support for users** (Option A):
+  - Added `profiles.email` column and unique constraint.
+  - Admin user creation form now includes an optional **Email** field.
+  - Login screen accepts either username or email address.
+  - Added **Forgot password?** flow that sends a Supabase reset link to the user's real email.
+  - New admin RPCs: `admin_update_auth_email` to update a user's auth + profile email.
+  - New migration: `migration_v243_email_support.sql`.
+
+### Changed
+- Bumped runtime, service-worker cache, and asset query-string version to `243`.
+
+## Version 242 (Current)
+
+### Added
+- **Per-project, per-section supervision percentages**:
+  - New `project_section_supervision` table links each project to each work section with its own supervision rate.
+  - Project edit form shows a table of all work sections with a percentage input for each.
+  - New projects are pre-filled with default rates from `App.settings.default_supervision`.
+  - New migration: `migration_v242_per_section_supervision.sql`.
+
+### Changed
+- `project_balances` view, `dashboard_monthly_revenue_expenses`, and `dashboard_active_client_balances` now compute supervision per expense using the section-specific rate (falling back to the project-level percentage when needed).
+- Removed the single `Supervision %` column from client/project lists; the supervision amount is now shown instead.
+- Project expenses now require selecting a work section.
+- Bumped runtime, service-worker cache, and asset query-string version to `242`.
+
+## Version 241
 
 ### Fixed
 - **🔨 مصروف عهدة - مشروع**: The Client ↔ Project cascade was not active because the cascade config was accidentally passed as the `excelMode` argument. Fixed so the project dropdown is disabled until a client is selected and only shows projects for the chosen client.

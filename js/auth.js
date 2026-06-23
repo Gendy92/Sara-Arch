@@ -90,9 +90,15 @@ const Auth = {
     }
   },
 
+  resolveEmail(input) {
+    const raw = (input || '').toString().trim();
+    if (raw.includes('@')) return raw.toLowerCase();
+    return this.toEmail(raw);
+  },
+
   async login(username, password) {
     let data;
-    const primaryEmail = this.toEmail(username);
+    const primaryEmail = this.resolveEmail(username);
     try {
       data = await API.authSignIn(primaryEmail, password);
     } catch (e) {
@@ -130,8 +136,14 @@ const Auth = {
     return data;
   },
 
+  async forgotPassword(input) {
+    const email = this.resolveEmail(input);
+    if (!email) throw new Error('أدخل اسم المستخدم أو البريد الإلكتروني');
+    await API.authResetPassword(email);
+  },
+
   async register(username, password, name) {
-    const data = await API.authSignUp(this.toEmail(username), password, { name, username });
+    const data = await API.authSignUp(this.resolveEmail(username), password, { name, username });
     // Insert into profiles table for reliable name/role storage
     try {
       if (data.user?.id) {
