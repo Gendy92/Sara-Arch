@@ -661,6 +661,7 @@ const Spreadsheet = {
       const row = {}; let hasData = false;
       tr.querySelectorAll('input, select').forEach(el => {
         const key = el.dataset.key;
+        if (!key) return;
         let val = el.value.trim();
         if (val) {
           hasData = true;
