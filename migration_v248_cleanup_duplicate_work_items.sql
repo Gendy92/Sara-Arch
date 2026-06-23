@@ -1,36 +1,13 @@
 -- ============================================
--- Cleanup Duplicate Master Data
--- Keeps ONE record per duplicate group (oldest created_at, or smallest UUID as tiebreaker)
+-- v248: Cleanup Duplicate Work Items (بنود الأعمال)
+-- Keeps ONE record per (tenant + section + normalized name).
+-- Remaps transactions.item_id to the canonical item before soft-deleting duplicates.
+-- Run this in the Supabase SQL Editor.
 -- ============================================
 
--- 1) SECTORS (التصنيفات)
-UPDATE sectors
-SET deleted_at = NOW()
-WHERE deleted_at IS NULL
-  AND id NOT IN (
-    SELECT id FROM (
-      SELECT DISTINCT ON (LOWER(TRIM(name))) id
-      FROM sectors
-      WHERE deleted_at IS NULL
-      ORDER BY LOWER(TRIM(name)), created_at ASC NULLS FIRST, id::text ASC
-    ) sub
-  );
+BEGIN;
 
--- 2) WORK_SECTIONS (أقسام المشاريع)
-UPDATE work_sections
-SET deleted_at = NOW()
-WHERE deleted_at IS NULL
-  AND id NOT IN (
-    SELECT id FROM (
-      SELECT DISTINCT ON (LOWER(TRIM(name))) id
-      FROM work_sections
-      WHERE deleted_at IS NULL
-      ORDER BY LOWER(TRIM(name)), created_at ASC NULLS FIRST, id::text ASC
-    ) sub
-  );
-
--- 3) WORK_ITEMS (بنود الأعمال) — by tenant + name + section_id
--- 3a) Remap transactions that point to duplicates to the canonical item
+-- 1) Build canonical map: oldest created_at wins, smallest UUID as tiebreaker.
 WITH canonical AS (
   SELECT DISTINCT ON (COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::UUID), LOWER(TRIM(name)), section_id)
     id AS canonical_id,
@@ -51,12 +28,13 @@ duplicates AS (
   WHERE wi.deleted_at IS NULL
     AND wi.id <> c.canonical_id
 )
+-- 2) Remap transactions that point to duplicate work_items.
 UPDATE transactions t
 SET item_id = d.canonical_id
 FROM duplicates d
 WHERE t.item_id = d.duplicate_id;
 
--- 3b) Soft-delete duplicates
+-- 3) Soft-delete duplicate work_items.
 UPDATE work_items
 SET deleted_at = NOW()
 WHERE deleted_at IS NULL
@@ -69,15 +47,13 @@ WHERE deleted_at IS NULL
     ) sub
   );
 
--- 4) ITEMS (الأصناف)
-UPDATE items
-SET deleted_at = NOW()
-WHERE deleted_at IS NULL
-  AND id NOT IN (
-    SELECT id FROM (
-      SELECT DISTINCT ON (LOWER(TRIM(name))) id
-      FROM items
-      WHERE deleted_at IS NULL
-      ORDER BY LOWER(TRIM(name)), created_at ASC NULLS FIRST, id::text ASC
-    ) sub
-  );
+COMMIT;
+
+-- 4) Prevent future active duplicates at the database level.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_work_items_unique_active
+ON work_items (
+  COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::UUID),
+  LOWER(TRIM(name)),
+  section_id
+)
+WHERE deleted_at IS NULL;
