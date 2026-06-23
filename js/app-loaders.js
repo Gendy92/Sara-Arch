@@ -492,7 +492,7 @@ Object.assign(App, {
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
       this.pageState.transactions = safeTxPage;
 
-      const txHtml = pagedTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'المدفوع', 'الباقي', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], pagedTxs.map(t => {
+      const txHtml = pagedTxs.length ? this.table(['التاريخ', 'النوع', 'المبلغ', 'الوصف', 'الجهة', 'العميل', 'المشروع', 'طريقة الدفع', 'الإجراءات'], pagedTxs.map(t => {
         const badgeColor = t.type === 'project_deposit' ? 'green' : 'red';
         let party;
         if (t.type === 'project_expense') {
@@ -520,7 +520,8 @@ Object.assign(App, {
         const balColor = balance > 0 ? 'var(--red)' : balance < 0 ? 'var(--green)' : 'var(--text3)';
         const balLabel = balance > 0 ? 'متبقي' : balance < 0 ? 'زيادة' : 'تسوية';
         const actions = t.type === 'supervision' && !t.id ? '-' : UI.actions(t.id, 'Crud.editTx', 'Crud.delTx');
-        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, this.fmtMoney(t.amount), this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(balance))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, App.esc(t.description || '-'), {html: party}, clientName, App.esc(t.project_name || '-'), {html: pt}, {html: actions}];
+        const amountCell = {html: `<div style="line-height:1.4"><div>${this.fmtMoney(t.amount)}</div><div style="font-size:10px;color:var(--text3)">مدفوع: ${this.fmtMoney(paid)}</div><div style="font-size:10px;color:${balColor}">${balLabel}: ${this.fmtMoney(Math.abs(balance))}</div></div>`};
+        return [this.fmtDate(t.created_at), {html: `<span class="badge badge-${badgeColor}">${this.fmtTxType(t.type)}</span>`}, amountCell, App.esc(t.description || '-'), {html: party}, clientName, App.esc(t.project_name || '-'), {html: pt}, {html: actions}];
       })) : '<p style="color:var(--text3)">لا توجد معاملات</p>';
       document.getElementById('tx-tbl').innerHTML = txHtml + this._paginationHtml('transactions', safeTxPage, txPerPage, totalTxCount);
       this.attachSearch('tx-tbl', '🔍 بحث في معاملات المشاريع...', (term) => {
@@ -540,7 +541,7 @@ Object.assign(App, {
         API.count('transactions', '?type=eq.project_expense&deleted_at=is.null' + expSearchFilter)
       ]);
       const expenseRows = [...projectExpenses].sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-      const expHtml = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'المدفوع', 'الباقي', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
+      const expHtml = expenseRows.length ? this.table(['#', 'العميل', 'المشروع', 'المورد', 'القسم', 'البند', 'المبلغ', 'طريقة الدفع', 'التاريخ', 'الإجراءات'], expenseRows.map((t, idx) => {
         const isNew = t.payment_term !== undefined && t.payment_term !== null;
         const paid = isNew ? (+t.paid_amount || 0) : (+t.amount || 0);
         const bal = (+t.amount || 0) - paid;
@@ -549,7 +550,8 @@ Object.assign(App, {
         const sectionLabel = App.esc(t.section_name || (t.expense_category === 'design' ? 'تصميم' : 'تشطيب'));
         const itemLabel = App.esc(t.item_name || '-');
         const pmBadge = t.payment_method ? `<span class="badge badge-gray" style="font-size:10px">${App.esc(pmLabels[t.payment_method] || t.payment_method)}</span>` : '-';
-        return [idx + 1, App.esc(t.party_name || '-'), App.esc(t.project_name || '-'), App.esc(t.vendor_name || '-'), sectionLabel, itemLabel, this.fmtMoney(t.amount), {html: pmBadge}, this.fmtMoney(paid), {html: `<span style="color:${balColor};font-weight:600;font-size:12px">${this.fmtMoney(Math.abs(bal))}</span> <span style="font-size:10px;color:var(--text3)">${balLabel}</span>`}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
+        const amountCell = {html: `<div style="line-height:1.4"><div>${this.fmtMoney(t.amount)}</div><div style="font-size:10px;color:var(--text3)">مدفوع: ${this.fmtMoney(paid)}</div><div style="font-size:10px;color:${balColor}">${balLabel}: ${this.fmtMoney(Math.abs(bal))}</div></div>`};
+        return [idx + 1, App.esc(t.party_name || '-'), App.esc(t.project_name || '-'), App.esc(t.vendor_name || '-'), sectionLabel, itemLabel, amountCell, {html: pmBadge}, this.fmtDate(t.date || t.created_at), {html: UI.actions(t.id, 'Crud.editTx', 'Crud.delTx')}];
       })) : '<p style="color:var(--text3)">لا توجد مصروفات</p>';
       document.getElementById('tx-expenses-tbl').innerHTML = expHtml + this._paginationHtml('txExpenses', expPage, expPerPage, totalExpCount);
       this.attachSearch('tx-expenses-tbl', '🔍 بحث في المصروفات...', (term) => {
