@@ -169,7 +169,11 @@ const API = {
   async authResetPassword(email) {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
       method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json; charset=utf-8' },
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json; charset=utf-8'
+      },
       body: JSON.stringify({ email })
     });
     const data = await res.json().catch(() => ({}));

@@ -206,8 +206,14 @@ const Auth = {
   },
 
   async forgotPassword(input) {
-    const email = this.resolveEmail(input);
-    if (!email) throw new Error('أدخل اسم المستخدم أو البريد الإلكتروني');
+    const raw = (input || '').toString().trim();
+    if (!raw) throw new Error('أدخل اسم المستخدم أو البريد الإلكتروني');
+    // If the user typed a plain username, the mapped email is synthetic and will never
+    // reach a real inbox. In that case direct them to the admin instead.
+    if (!raw.includes('@')) {
+      throw new Error('حسابات اسم المستخدم لا تستقبل بريدًا. يرجى التواصل مع المدير لإعادة تعيين كلمة المرور.');
+    }
+    const email = raw.toLowerCase();
     await API.authResetPassword(email);
   },
 

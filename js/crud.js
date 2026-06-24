@@ -1530,6 +1530,19 @@ const Crud = {
     });
   },
 
+  async resetUserPassword(id) {
+    const profiles = await API.request('profiles', 'GET', null, `?id=eq.${id}`);
+    const profile = profiles[0];
+    if (!profile) { UI.toast('ملف المستخدم غير موجود', 'error'); return; }
+    UI.openModal('إعادة تعيين كلمة المرور', `<form><div class="form-group"><label>كلمة مرور جديدة *</label><input type="password" name="password" required minlength="6" dir="ltr" /></div><div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إلغاء</button><button type="submit" class="btn btn-primary">حفظ</button></div></form>`, async (form) => {
+      const password = form.querySelector('[name="password"]').value;
+      if (!password || password.length < 6) { UI.toast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
+      const res = await API.rpc('admin_reset_password', { p_user_id: id, p_password: password });
+      if (!res?.success) { UI.toast(res?.error || 'فشل إعادة التعيين', 'error'); return; }
+      UI.toast(`تم إعادة تعيين كلمة المرور لـ ${App.esc(profile.name || profile.username)}`);
+    });
+  },
+
   // ─── MASTER DATA: SECTORS & ITEMS ───
   addSector() {
     const cols = [
