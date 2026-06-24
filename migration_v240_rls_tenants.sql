@@ -188,6 +188,7 @@ BEGIN
   FOREACH tbl IN ARRAY tables
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS "authenticated_all" ON %I', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "tenant_scope" ON %I', tbl);
     EXECUTE format(
       'CREATE POLICY "tenant_scope" ON %I FOR ALL TO authenticated USING (tenant_id = get_current_tenant_id()) WITH CHECK (tenant_id = get_current_tenant_id())',
       tbl
@@ -197,23 +198,27 @@ END $$;
 
 -- user_permissions is cross-tenant; keep scoped to user row
 DROP POLICY IF EXISTS "authenticated_all" ON user_permissions;
+DROP POLICY IF EXISTS "user_permissions_own" ON user_permissions;
 CREATE POLICY "user_permissions_own" ON user_permissions FOR ALL TO authenticated
   USING (user_id = auth.uid() OR is_app_admin())
   WITH CHECK (user_id = auth.uid() OR is_app_admin());
 
 -- profiles: users see/edit own; admin sees all
 DROP POLICY IF EXISTS "authenticated_all" ON profiles;
+DROP POLICY IF EXISTS "profiles_own" ON profiles;
 CREATE POLICY "profiles_own" ON profiles FOR ALL TO authenticated
   USING (id = auth.uid() OR is_app_admin())
   WITH CHECK (id = auth.uid() OR is_app_admin());
 
 -- tenants: admin only
 DROP POLICY IF EXISTS "authenticated_all" ON tenants;
+DROP POLICY IF EXISTS "tenants_admin" ON tenants;
 CREATE POLICY "tenants_admin" ON tenants FOR ALL TO authenticated
   USING (is_app_admin()) WITH CHECK (is_app_admin());
 
 -- user_tenants: users see own memberships; admin manages all
 DROP POLICY IF EXISTS "authenticated_all" ON user_tenants;
+DROP POLICY IF EXISTS "user_tenants_own" ON user_tenants;
 CREATE POLICY "user_tenants_own" ON user_tenants FOR ALL TO authenticated
   USING (user_id = auth.uid() OR is_app_admin())
   WITH CHECK (user_id = auth.uid() OR is_app_admin());
@@ -224,31 +229,41 @@ CREATE POLICY "user_tenants_own" ON user_tenants FOR ALL TO authenticated
 
 -- Non-admins can read employee data but cannot modify it.
 DROP POLICY IF EXISTS "tenant_scope" ON employees;
+DROP POLICY IF EXISTS "employees_read" ON employees;
 CREATE POLICY "employees_read" ON employees FOR SELECT TO authenticated USING (tenant_id = get_current_tenant_id());
+DROP POLICY IF EXISTS "employees_admin_write" ON employees;
 CREATE POLICY "employees_admin_write" ON employees FOR ALL TO authenticated
   USING (is_app_admin() AND tenant_id = get_current_tenant_id())
   WITH CHECK (is_app_admin());
 
 DROP POLICY IF EXISTS "tenant_scope" ON attendance_records;
+DROP POLICY IF EXISTS "attendance_read" ON attendance_records;
 CREATE POLICY "attendance_read" ON attendance_records FOR SELECT TO authenticated USING (tenant_id = get_current_tenant_id());
+DROP POLICY IF EXISTS "attendance_admin_write" ON attendance_records;
 CREATE POLICY "attendance_admin_write" ON attendance_records FOR ALL TO authenticated
   USING (is_app_admin() AND tenant_id = get_current_tenant_id())
   WITH CHECK (is_app_admin());
 
 DROP POLICY IF EXISTS "tenant_scope" ON payroll_records;
+DROP POLICY IF EXISTS "payroll_read" ON payroll_records;
 CREATE POLICY "payroll_read" ON payroll_records FOR SELECT TO authenticated USING (tenant_id = get_current_tenant_id());
+DROP POLICY IF EXISTS "payroll_admin_write" ON payroll_records;
 CREATE POLICY "payroll_admin_write" ON payroll_records FOR ALL TO authenticated
   USING (is_app_admin() AND tenant_id = get_current_tenant_id())
   WITH CHECK (is_app_admin());
 
 DROP POLICY IF EXISTS "tenant_scope" ON employee_transactions;
+DROP POLICY IF EXISTS "emp_tx_read" ON employee_transactions;
 CREATE POLICY "emp_tx_read" ON employee_transactions FOR SELECT TO authenticated USING (tenant_id = get_current_tenant_id());
+DROP POLICY IF EXISTS "emp_tx_admin_write" ON employee_transactions;
 CREATE POLICY "emp_tx_admin_write" ON employee_transactions FOR ALL TO authenticated
   USING (is_app_admin() AND tenant_id = get_current_tenant_id())
   WITH CHECK (is_app_admin());
 
 DROP POLICY IF EXISTS "tenant_scope" ON employee_salary_history;
+DROP POLICY IF EXISTS "salary_history_read" ON employee_salary_history;
 CREATE POLICY "salary_history_read" ON employee_salary_history FOR SELECT TO authenticated USING (tenant_id = get_current_tenant_id());
+DROP POLICY IF EXISTS "salary_history_admin_write" ON employee_salary_history;
 CREATE POLICY "salary_history_admin_write" ON employee_salary_history FOR ALL TO authenticated
   USING (is_app_admin() AND tenant_id = get_current_tenant_id())
   WITH CHECK (is_app_admin());
