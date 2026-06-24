@@ -670,7 +670,7 @@ const Spreadsheet = {
         row[key] = val;
       });
       if (hasData) {
-        const missing = requiredKeys.filter(k => !row[k]);
+        const missing = requiredKeys.filter(k => row[k] === null || row[k] === undefined || row[k] === '');
         if (missing.length > 0) {
           const missingLabels = columns.filter(c => missing.includes(c.key)).map(c => c.label.replace(/\*/g,'').trim());
           throw new Error('الحقول المطلوبة: ' + missingLabels.join(', '));

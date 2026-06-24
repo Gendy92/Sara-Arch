@@ -417,8 +417,9 @@ const Crud = {
     const defaultRate = +(App.settings && App.settings.default_supervision) || 0;
     const sectionRateCols = workSections.map(s => ({
       key: `section_rate_${s.id}`,
-      label: `نسبة إشراف ${s.name}`,
-      type: 'number'
+      label: `نسبة إشراف ${s.name} *`,
+      type: 'number',
+      req: true
     }));
     const cols = [
       { key: 'name', label: 'اسم المشروع *', req: true },
@@ -511,7 +512,7 @@ const Crud = {
     const formEl = overlay.querySelector('form');
     const actions = formEl.querySelector('.modal-actions');
     const ratesHtml = `<div class="modal-section"><div class="modal-section-title">نسب الإشراف حسب القسم</div><div class="form-grid">` +
-      workSections.map(s => `<div class="form-group"><label>${App.esc(s.name)}</label><input type="number" name="section_rate_${s.id}" value="${rateMap[s.id] ?? 0}" min="0" step="any" /></div>`).join('') +
+      workSections.map(s => `<div class="form-group"><label>${App.esc(s.name)} <span style="color:#e53935">*</span></label><input type="number" name="section_rate_${s.id}" value="${rateMap[s.id] ?? 0}" min="0" step="any" required /></div>`).join('') +
       `</div></div>`;
     if (actions) actions.insertAdjacentHTML('beforebegin', ratesHtml);
   },
