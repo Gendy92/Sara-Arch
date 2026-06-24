@@ -574,18 +574,21 @@ Object.assign(App, {
       const txSearchFilter = App.ilikeOr(['description','employee_name','sector_name','vendor_name'], txSearchTerm);
       const custodySearchTerm = App.searchState.officeCustody || '';
       const custodySearchFilter = App.ilikeOr(['employees.name','employee_name','sector_name','project_name','notes'], custodySearchTerm);
-      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, custodySumsRaw] = await Promise.all([
+      const [officeBal, officeTxs, totalOfficeTxs, custodyRecords, totalCustody, custodySumsRaw, officeExpenseRows] = await Promise.all([
         API.request('office_balance', 'GET', null, '?select=*'),
         API.request('office_transactions_view', 'GET', null, `?select=*${txSearchFilter}&order=created_at.desc&limit=${txPerPage}&offset=${(txPage - 1) * txPerPage}`),
         API.count('office_transactions_view', '?select=count' + txSearchFilter),
         API.request('custody_records', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${custodySearchFilter}&order=date.desc&limit=${custodyPerPage}&offset=${(custodyPage - 1) * custodyPerPage}`),
         API.count('custody_records', '?deleted_at=is.null' + custodySearchFilter),
-        API.fetchAll('custody_records', '?select=amount,returned_amount,returned_cash_amount&deleted_at=is.null')
+        API.fetchAll('custody_records', '?select=amount,returned_amount,returned_cash_amount&deleted_at=is.null'),
+        API.fetchAll('transactions', '?select=amount&type=eq.office_expense&deleted_at=is.null')
       ]);
       const ob = officeBal[0] || {};
       const cashBalance = ob.cash_balance || 0;
       const bankBalance = ob.bank_balance || 0;
+      const liquidBalance = ob.liquid_balance || cashBalance + bankBalance;
       const officeBalance = ob.total_balance || 0;
+      const totalOfficeExpense = officeExpenseRows.reduce((s, r) => s + (+r.amount || 0), 0);
 
       const custodySums = (custodySumsRaw || []);
       const totalCustodyAmt = custodySums.reduce((s, r) => s + (+r.amount || 0), 0);
@@ -594,10 +597,10 @@ Object.assign(App, {
       const custodyRemaining = totalCustodyAmt - totalExpensesAmt - totalReturnedCashAmt;
 
       document.getElementById('office-kpis').innerHTML = `
-        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">رصيد نقدي</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(cashBalance)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">رصيد بنكي</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(bankBalance)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--green)"><div class="kpi-label">رصيد نقدي + بنكي</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(liquidBalance)}</div></div>
         <div class="kpi-card" style="border-top:4px solid var(--gold)"><div class="kpi-label">رصيد المكتب الإجمالي</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(officeBalance)}</div></div>
-        <div class="kpi-card" style="border-top:4px solid var(--red)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(custodyRemaining)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مصروف: ${this.fmtMoney(totalExpensesAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedCashAmt)}</div></div>`;
+        <div class="kpi-card" style="border-top:4px solid var(--red);cursor:pointer" onclick="Crud.addOfficeExpense()" title="إضافة مصروف مكتبي"><div class="kpi-label">➕ مصروف مكتبي</div><div class="kpi-value" style="color:var(--red);font-size:22px">${this.fmtMoney(totalOfficeExpense)}</div></div>
+        <div class="kpi-card" style="border-top:4px solid var(--blue)"><div class="kpi-label">العهد النقدية</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(custodyRemaining)}</div><div style="font-size:12px;color:var(--text3);margin-top:6px">إجمالي: ${this.fmtMoney(totalCustodyAmt)} &nbsp;|&nbsp; مصروف: ${this.fmtMoney(totalExpensesAmt)} &nbsp;|&nbsp; مرتجع: ${this.fmtMoney(totalReturnedCashAmt)}</div></div>`;
 
       const totalTxPages = Math.max(1, Math.ceil((totalOfficeTxs || 0) / txPerPage));
       const safeTxPage = Math.min(Math.max(1, txPage), totalTxPages);
