@@ -17,8 +17,11 @@ const Crud = {
 
   _isMissingColumnErr(e) {
     const msg = e?.message || '';
-    // Only treat genuine PostgREST/schema errors as missing-column failures.
-    return msg.includes('PGRST204') || msg.includes('42703');
+    // Treat genuine PostgREST/schema errors as missing-column failures.
+    return msg.includes('PGRST204') || msg.includes('42703') ||
+      /Could not find the '[^']+' column of '[^']+' in the schema cache/.test(msg) ||
+      /column "[^"]+" of relation/.test(msg) ||
+      /column "[^"]+" does not exist/.test(msg);
   },
 
   async _checkDuplicate(table, nameField, nameValue, extraFilter = '') {
