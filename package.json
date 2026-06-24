@@ -1,0 +1,18 @@
+{
+  "name": "sara-arch",
+  "version": "262.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "lint": "eslint js/ tests/",
+    "lint:fix": "eslint js/ tests/ --fix"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "globals": "^15.0.0",
+    "jsdom": "^24.0.0",
+    "vitest": "^1.6.0"
+  }
+}

@@ -827,8 +827,8 @@ Object.assign(App, {
           } else {
             const s = String(rawDate).trim();
             if (/^\d{4}-\d{2}-\d{2}$/.test(s)) dateStr = s;
-            else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(s)) {
-              const [d, m, y] = s.split(/[\/\-]/);
+            else if (/^\d{1,2}[/-]\d{1,2}[/-]\d{4}$/.test(s)) {
+              const [d, m, y] = s.split(/[/-]/);
               dateStr = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
             }
           }
@@ -1140,7 +1140,7 @@ Object.assign(App, {
     const zip = new JSZip();
     const folder = zip.folder('Sara_Backup_' + new Date().toISOString().slice(0,10));
     let version = 'unknown';
-    try { version = (await (await fetch('version.json')).json()).version; } catch (e) {}
+    try { version = (await (await fetch('version.json')).json()).version; } catch (e) { /* ignore */ }
     const manifest = { version, timestamp: new Date().toISOString(), counts: {}, source: 'browser' };
     let ok = 0, skip = 0, fail = 0;
     const failed = [];

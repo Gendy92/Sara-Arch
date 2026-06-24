@@ -1801,6 +1801,47 @@ CREATE POLICY app_settings_write ON public.app_settings
 GRANT SELECT ON public.app_settings TO anon, authenticated;
 GRANT INSERT, UPDATE, DELETE ON public.app_settings TO authenticated;
 
+-- ─── Front-end error tracking ───
+CREATE TABLE IF NOT EXISTS public.app_errors (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  message TEXT,
+  stack TEXT,
+  url TEXT,
+  user_id UUID,
+  tenant_id UUID,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.app_errors ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS app_errors_select_admin ON public.app_errors;
+CREATE POLICY app_errors_select_admin
+  ON public.app_errors
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() IN (SELECT id FROM auth.users WHERE raw_user_meta_data->>'role' = 'admin'));
+
+CREATE OR REPLACE FUNCTION public.log_app_error(payload JSONB)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  INSERT INTO public.app_errors (message, stack, url, user_id, tenant_id, user_agent)
+  VALUES (
+    payload->>'message',
+    payload->>'stack',
+    payload->>'url',
+    NULLIF(payload->>'user_id', '')::UUID,
+    NULLIF(payload->>'tenant_id', '')::UUID,
+    payload->>'user_agent'
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.log_app_error(JSONB) TO anon, authenticated;
+
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
 

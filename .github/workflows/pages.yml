@@ -28,11 +28,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inject Supabase anon key
+      - name: Inject Supabase config
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
         run: |
-          printf "window.SARA_LOCAL_CONFIG = {\n  SUPABASE_ANON_KEY: '%s'\n};\n" "$SUPABASE_ANON_KEY" > js/config.local.js
+          {
+            echo "window.SARA_LOCAL_CONFIG = {"
+            echo "  SUPABASE_URL: '${SUPABASE_URL:-https://tvjkctttcijymqvaetsv.supabase.co}',"
+            echo "  SUPABASE_ANON_KEY: '${SUPABASE_ANON_KEY}'"
+            if [ -n "$STAGING_SUPABASE_URL" ] && [ -n "$STAGING_SUPABASE_ANON_KEY" ]; then
+              echo "  ,STAGING_SUPABASE_URL: '${STAGING_SUPABASE_URL}',"
+              echo "  STAGING_SUPABASE_ANON_KEY: '${STAGING_SUPABASE_ANON_KEY}'"
+            fi
+            echo "};"
+          } > js/config.local.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

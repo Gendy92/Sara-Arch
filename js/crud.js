@@ -337,7 +337,7 @@ const Crud = {
     }
     // Fetch old data BEFORE soft-delete so audit captures pre-delete state
     let oldData = null;
-    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null'); oldData = existing[0] || null; } catch (e) {}
+    try { const existing = await API.request(table, 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null'); oldData = existing[0] || null; } catch (e) { /* ignore fetch errors */ }
     let payload = { deleted_at: new Date().toISOString(), updated_by: userId };
     try {
       await API.request(table, 'PATCH', payload, '?id=eq.' + id);
@@ -2804,6 +2804,7 @@ const Crud = {
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*,employees(name)&id=eq.${custodyId}&deleted_at=is.null`);
     if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const c = custodyRows[0];
+    const returnedCash = +c.returned_cash_amount || 0;
     const remaining = +c.remaining_balance || 0;
     if (remaining <= 0) { UI.toast('لا يوجد رصيد متبقي للسداد', 'error'); return; }
     const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];

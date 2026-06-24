@@ -1,3 +1,4 @@
+/* exported SUPABASE_URL, SUPABASE_ANON_KEY, SARA_EMAIL_DOMAIN, PERF_LOG, SUPABASE_SERVICE_KEY, SARA_MODE */
 // Supabase Config
 // IMPORTANT: Do not commit the service-role key to source control.
 // The project URL is public and safe to hardcode.
@@ -7,16 +8,39 @@
 //   window.SARA_LOCAL_CONFIG = {
 //     SUPABASE_ANON_KEY: 'your-anon-key'
 //   };
+//
+// To point the app at a staging Supabase project, use ?mode=staging in the URL
+// or host it on a domain containing "staging" and provide STAGING_* keys:
+//
+//   window.SARA_LOCAL_CONFIG = {
+//     SUPABASE_URL: 'https://prod.supabase.co',
+//     SUPABASE_ANON_KEY: 'prod-anon-key',
+//     STAGING_SUPABASE_URL: 'https://staging.supabase.co',
+//     STAGING_SUPABASE_ANON_KEY: 'staging-anon-key'
+//   };
 
 const localCfg = (typeof window !== 'undefined' && window.SARA_LOCAL_CONFIG) ? window.SARA_LOCAL_CONFIG : {};
 
+function detectMode() {
+  if (typeof location === 'undefined') return 'production';
+  const params = new URL(location.href).searchParams;
+  if (params.get('mode') === 'staging') return 'staging';
+  if (location.hostname.includes('staging')) return 'staging';
+  return 'production';
+}
+
+const SARA_MODE = localCfg.SARA_MODE || detectMode();
+const isStaging = SARA_MODE === 'staging';
+const urlKey = isStaging ? 'STAGING_SUPABASE_URL' : 'SUPABASE_URL';
+const keyKey = isStaging ? 'STAGING_SUPABASE_ANON_KEY' : 'SUPABASE_ANON_KEY';
+
 // Public project URL — safe to commit, but can be overridden by config.local.js.
-const SUPABASE_URL = localCfg.SUPABASE_URL || 'https://tvjkctttcijymqvaetsv.supabase.co';
+const SUPABASE_URL = localCfg[urlKey] || 'https://tvjkctttcijymqvaetsv.supabase.co';
 
 // Anon key is provided by config.local.js so it can be rotated without editing source.
 // The fallback below is intentionally a placeholder; the real key must come from
 // js/config.local.js (local dev) or from the SUPABASE_ANON_KEY GitHub secret (Pages deploy).
-const SUPABASE_ANON_KEY = localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
+const SUPABASE_ANON_KEY = localCfg[keyKey] || localCfg.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY';
 
 // Email domain used when mapping usernames to syntactically-valid auth emails.
 // Can be overridden via config.local.js if the Pages domain ever changes.

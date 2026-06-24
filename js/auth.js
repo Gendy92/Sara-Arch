@@ -271,3 +271,7 @@ const Auth = {
     return !!p[action];
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.Auth = Auth;
+}

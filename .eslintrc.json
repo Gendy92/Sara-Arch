@@ -1,0 +1,55 @@
+{
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "globals": {
+    "App": "readonly",
+    "Auth": "readonly",
+    "API": "readonly",
+    "UI": "readonly",
+    "Crud": "readonly",
+    "Spreadsheet": "readonly",
+    "Utils": "readonly",
+    "ErrorReporter": "readonly",
+    "SUPABASE_URL": "readonly",
+    "SUPABASE_ANON_KEY": "readonly",
+    "SARA_EMAIL_DOMAIN": "readonly",
+    "PERF_LOG": "readonly",
+    "XLSX": "readonly",
+    "Chart": "readonly",
+    "JSZip": "readonly",
+    "localStorage": "readonly",
+    "sessionStorage": "readonly",
+    "location": "readonly",
+    "navigator": "readonly",
+    "document": "readonly",
+    "window": "readonly",
+    "console": "readonly",
+    "fetch": "readonly",
+    "Promise": "readonly",
+    "Set": "readonly",
+    "Map": "readonly"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js"],
+      "parserOptions": {
+        "sourceType": "module"
+      }
+    }
+  ],
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-undef": "error",
+    "eqeqeq": ["warn", "always"],
+    "no-var": "warn",
+    "prefer-const": "warn"
+  }
+}

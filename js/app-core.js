@@ -11,9 +11,7 @@ const App = {
   settings: { currency_label: 'ج.م', default_supervision: 10, company_name: 'سارة أبو العلا' },
   PAGE_SIZE: 50,
 
-  esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-  },
+  esc(s) { return Utils.esc(s); },
 
   setDateRange(fromId, toId, preset) {
     const today = new Date();
@@ -25,7 +23,7 @@ const App = {
       case 'today': from = to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
       case 'this_month': from = `${y}-${String(m+1).padStart(2,'0')}-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
       case 'last_month': from = `${y}-${String(m).padStart(2,'0')}-01`; to = `${y}-${String(m).padStart(2,'0')}-${new Date(y,m,0).getDate()}`; break;
-      case 'this_quarter': const qm = Math.floor(m / 3) * 3; from = `${y}-${String(qm+1).padStart(2,'0')}-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
+      case 'this_quarter': { const qm = Math.floor(m / 3) * 3; from = `${y}-${String(qm+1).padStart(2,'0')}-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break; }
       case 'this_year': from = `${y}-01-01`; to = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; break;
     }
     if (from) document.getElementById(fromId).value = from;
@@ -240,7 +238,6 @@ const App = {
 
 
     return '';
-    return '';
   },
 
   renderLogin() {
@@ -311,16 +308,12 @@ const App = {
   table(headers, rows) {
     const cell = (c) => {
       if (c && typeof c === 'object' && c.html !== undefined) return String(c.html);
-      return App.esc(c == null ? '' : String(c));
+      return App.esc(c === null || c === undefined ? '' : String(c));
     };
     return `<div class="table-responsive"><table class="data-table"><thead><tr>${headers.map(h => `<th>${this.esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${cell(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   },
 
-  ilikeOr(fields, term) {
-    if (!term) return '';
-    const t = encodeURIComponent(`*${term}*`);
-    return `&or=(${fields.map(f => `${f}.ilike.${t}`).join(',')})`;
-  },
+  ilikeOr(fields, term) { return Utils.ilikeOr(fields, term); },
 
   attachSearch(containerId, placeholder = '🔍 بحث...', onSearch) {
     const container = document.getElementById(containerId);
@@ -407,7 +400,7 @@ const App = {
     }
   },
 
-  fmtMoney(n) { return (+n || 0).toLocaleString('ar-EG') + ' ' + (this.settings?.currency_label || 'ج.م'); },
-  fmtDate(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : '-'; },
-  fmtTxType(type) { const map = { project_deposit: 'عربون مشروع', project_expense: 'مصروف مشروع', office_expense: 'مصروف مكتبي', owner_deposit: 'توريد صاحب المكتب', owner_withdrawal: 'سحب صاحب المكتب', supervision: 'إشراف مشروع', design: 'تصميم مشروع', income: 'إيراد', expense: 'مصروف', deposit: 'عربون', withdrawal: 'سحب', client_return: 'مرتجع عميل', vendor_settlement: 'تسديد متأخرات مورد', office_income: 'إيراد مكتب', transfer: 'تحويل داخلي' }; return map[type] || type; },
+  fmtMoney(n) { return Utils.fmtMoney(n, this.settings?.currency_label); },
+  fmtDate(d) { return Utils.fmtDate(d); },
+  fmtTxType(type) { return Utils.fmtTxType(type); },
 };

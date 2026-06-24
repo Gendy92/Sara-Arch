@@ -75,7 +75,7 @@ const API = {
     let all = [];
     const safeBase = this._sanitizeQuery(baseQuery);
     const sep = safeBase.includes('?') ? '&' : '?';
-    while (true) {
+    while (true) { // eslint-disable-line no-constant-condition
       const chunk = await this.request(table, 'GET', null, `${safeBase}${sep}limit=${pageSize}&offset=${offset}`);
       if (!Array.isArray(chunk)) throw new Error('Unexpected response while fetching data');
       all = all.concat(chunk);

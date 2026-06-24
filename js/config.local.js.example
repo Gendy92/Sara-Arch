@@ -1,7 +1,11 @@
 // Copy this file to js/config.local.js and fill in your real Supabase credentials.
 // js/config.local.js is gitignored and will override the placeholders in config.js.
+// Add STAGING_* keys if you want to test against a separate staging database
+// using ?mode=staging in the URL or a staging subdomain.
 
 window.SARA_LOCAL_CONFIG = {
   SUPABASE_URL: 'https://your-project.supabase.co',
-  SUPABASE_ANON_KEY: 'your-anon-key'
+  SUPABASE_ANON_KEY: 'your-anon-key',
+  // STAGING_SUPABASE_URL: 'https://your-staging-project.supabase.co',
+  // STAGING_SUPABASE_ANON_KEY: 'your-staging-anon-key'
 };
