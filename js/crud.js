@@ -420,8 +420,8 @@ const Crud = {
       { key: 'address', label: 'العنوان' },
       { key: 'value', label: 'القيمة', type: 'number' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
-      { key: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
-      { key: 'end_date', label: 'تاريخ الانتهاء *', type: 'date', req: true },
+      { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
       { key: 'notes', label: 'ملاحظات' }
     ];
     const defaults = clientId ? { client_id: clientId, status: 'active' } : { status: 'active' };
@@ -465,8 +465,8 @@ const Crud = {
       { name: 'address', label: 'العنوان' },
       { name: 'value', label: 'القيمة', type: 'number' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
-      { name: 'start_date', label: 'تاريخ البدء *', type: 'date', req: true },
-      { name: 'end_date', label: 'تاريخ الانتهاء *', type: 'date', req: true },
+      { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
+      { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
     ];
     const values = { ...project, client_id: project.client_id || '' };
