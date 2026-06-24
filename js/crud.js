@@ -411,9 +411,15 @@ const Crud = {
   async addProject(clientId) {
     const [clients, workSections] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
-      API.request('work_sections', 'GET', null, '?select=id&deleted_at=is.null')
+      API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
     ]);
     const clientOpts = clients.map(c => ({ v: c.id, l: c.name }));
+    const defaultRate = +(App.settings && App.settings.default_supervision) || 0;
+    const sectionRateCols = workSections.map(s => ({
+      key: `section_rate_${s.id}`,
+      label: `نسبة إشراف ${s.name}`,
+      type: 'number'
+    }));
     const cols = [
       { key: 'name', label: 'اسم المشروع *', req: true },
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
@@ -422,26 +428,33 @@ const Crud = {
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
       { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
-      { key: 'notes', label: 'ملاحظات' }
+      { key: 'notes', label: 'ملاحظات' },
+      ...sectionRateCols
     ];
     const defaults = clientId ? { client_id: clientId, status: 'active' } : { status: 'active' };
+    workSections.forEach(s => { defaults[`section_rate_${s.id}`] = defaultRate; });
     Spreadsheet.open('إضافة مشاريع', cols, async (rows) => {
       const existing = await API.request('projects', 'GET', null, '?select=name,client_id&deleted_at=is.null');
       const dupes = rows.filter(r => existing.some(p => String(p.name || '').trim().toLowerCase() === String(r.name || '').trim().toLowerCase() && String(p.client_id) === String(r.client_id)));
       if (dupes.length) { UI.toast(`⚠️ ${dupes.length} مشاريع موجودة مسبقاً لنفس العميل`, 'error'); return; }
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
-        return { ...r, client_id: r.client_id || null, client_name: client ? client.name : null };
+        const clean = { ...r, client_id: r.client_id || null, client_name: client ? client.name : null };
+        workSections.forEach(s => delete clean[`section_rate_${s.id}`]);
+        return clean;
       });
       const saved = await this.bulkSave('projects', enriched);
-      // Pre-fill default supervision rates for each new project
-      const defaultRate = +(App.settings && App.settings.default_supervision) || 0;
       const newProjects = Array.isArray(saved) ? saved : [];
       const rateRows = [];
-      for (const proj of newProjects) {
-        if (!proj || !proj.id) continue;
-        for (const s of workSections) rateRows.push({ project_id: proj.id, section_id: s.id, percentage: defaultRate });
-      }
+      rows.forEach((r, idx) => {
+        const proj = newProjects[idx];
+        if (!proj || !proj.id) return;
+        for (const s of workSections) {
+          const key = `section_rate_${s.id}`;
+          const pct = (r[key] !== undefined && r[key] !== null && r[key] !== '') ? +r[key] : defaultRate;
+          rateRows.push({ project_id: proj.id, section_id: s.id, percentage: pct });
+        }
+      });
       if (rateRows.length) await API.upsert('project_section_supervision', rateRows, 'project_id,section_id');
       UI.toast(`تم حفظ ${rows.length} مشروع`);
       if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
