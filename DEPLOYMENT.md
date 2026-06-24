@@ -34,7 +34,7 @@
    git push origin main
    ```
 7. GitHub Actions will deploy `main` to Pages automatically.
-8. If the change includes a database migration, run the migration file in Supabase SQL Editor and update `MIGRATIONS.md`.
+8. Database migrations are applied automatically by the Pages deploy workflow **after** the one-time `migration_v264_migration_runner.sql` has been run manually.
 9. Users must perform a **Hard Refresh** (`Ctrl + Shift + R` / `Ctrl + F5`) to get the latest PWA version.
 
 ## Required GitHub secrets

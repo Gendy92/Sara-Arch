@@ -1842,6 +1842,28 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.log_app_error(JSONB) TO anon, authenticated;
 
+-- ─── Automated migration tracking ───
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION public.apply_migration(p_version TEXT, p_sql TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = p_version) THEN
+    RETURN;
+  END IF;
+  EXECUTE p_sql;
+  INSERT INTO public.schema_migrations (version) VALUES (p_version);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.apply_migration(TEXT, TEXT) TO service_role;
+
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
 

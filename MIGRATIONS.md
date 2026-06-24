@@ -1,16 +1,18 @@
 # Database Migrations Log
 
-All schema changes must be applied manually in the Supabase SQL Editor in the order listed below.
 The canonical full schema is in `schema_full_fix.sql`. New migrations should be appended to this file
 and also saved as `migration_v<NNN>_<description>.sql`.
 
-## How to run a migration
+## Automated migrations (after v264)
 
-1. Open the Supabase dashboard for the target project (production or staging).
-2. Go to **SQL Editor** → **New query**.
-3. Paste the contents of the migration file.
-4. Run the query.
-5. Record the date and any notes in the table below.
+Once `migration_v264_migration_runner.sql` has been applied manually one time, the GitHub Actions
+Pages deploy workflow will automatically apply any pending `migration_*.sql` files after deploying
+the front-end. No manual Supabase steps are needed for routine migrations.
+
+## Manual one-time setup
+
+Run `migration_v264_migration_runner.sql` in Supabase SQL Editor to create the `schema_migrations`
+table and `apply_migration()` RPC.
 
 ## Migration history
 
@@ -27,11 +29,12 @@ and also saved as `migration_v<NNN>_<description>.sql`.
 | v248 | `migration_v248_cleanup_duplicate_work_items.sql` | Cleanup duplicate work items | Applied | - | |
 | v256 | `migration_v256_add_custody_expenses_created_by.sql` | Add created_by/updated_by to custody_expenses | Applied | - | |
 | v257 | `migration_v257_office_transfer.sql` | Office cash↔bank transfers | Applied | - | |
-| v263 | `migration_v263_app_errors.sql` | Front-end error tracking table + RPC | **Pending** | - | Run after deploying v263 front-end |
+| v263 | `migration_v263_app_errors.sql` | Front-end error tracking table + RPC | **Auto** | - | Will be applied by CI after v264 runner is active |
+| v264 | `migration_v264_migration_runner.sql` | Automated migration tracking + runner | **Pending (run once manually)** | - | Enables CI auto-migration |
 
 ## Adding a new migration
 
 1. Create `migration_v<NNN>_<short_desc>.sql`.
 2. Add the same SQL block to `schema_full_fix.sql` in the appropriate section.
 3. Update this log and mark the status as **Pending**.
-4. After running it in Supabase, update the status to **Applied** and record the date.
+4. The next `main` deploy will apply it automatically and the status will be updated by the CI log.

@@ -7,9 +7,11 @@
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "lint": "eslint js/ tests/",
-    "lint:fix": "eslint js/ tests/ --fix"
+    "lint:fix": "eslint js/ tests/ --fix",
+    "migrate": "node scripts/run-migrations.js"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.43.0",
     "eslint": "^8.57.0",
     "globals": "^15.0.0",
     "jsdom": "^24.0.0",

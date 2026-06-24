@@ -28,6 +28,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint and test
+        run: npm run lint && npm test
+
       - name: Inject Supabase config
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -50,7 +62,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Clean files not meant for deployment
-        run: rm -f .env && rm -rf backups/ node_modules/
+        run: rm -f .env && rm -rf backups/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -60,3 +72,9 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Apply pending database migrations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run migrate
