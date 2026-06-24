@@ -15,7 +15,7 @@ Run `migration_v264_migration_runner.sql` in Supabase SQL Editor to create the `
 table and `apply_migration()` RPC.
 
 Alternatively, run **`migration_v267_unified_recent_changes.sql`** once to apply all recent changes
-(v263–v268) in a single file and bootstrap the migration tracker at the same time.
+(v263–v269) in a single file and bootstrap the migration tracker at the same time.
 
 ## Migration history
 
@@ -36,8 +36,9 @@ Alternatively, run **`migration_v267_unified_recent_changes.sql`** once to apply
 | v264 | `migration_v264_migration_runner.sql` | Automated migration tracking + runner | **Pending (run once manually)** | - | Enables CI auto-migration |
 | v265 | `migration_v265_auto_backup_logs.sql` | Backup log table with device + user details | **Auto** | - | Applied by CI after v264 runner |
 | v266 | `migration_v266_admin_password_reset.sql` | Admin direct password reset RPC | **Auto** | - | Applied by CI after v264 runner |
-| v267 | `migration_v267_unified_recent_changes.sql` | Unified migration for v263–v268 | **Manual (run once)** | - | Single file to bootstrap everything |
+| v267 | `migration_v267_unified_recent_changes.sql` | Unified migration for v263–v269 | **Manual (run once)** | - | Single file to bootstrap everything |
 | v268 | `migration_v268_fix_profile_self_insert_rls.sql` | Prevent self-signup as admin | **Auto** | - | Applied by CI after v264 runner |
+| v269 | `migration_v269_create_app_settings.sql` | Create missing app_settings table | **Auto** | - | Applied by CI after v264 runner |
 
 ## Adding a new migration
 

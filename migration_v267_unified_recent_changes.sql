@@ -1,6 +1,29 @@
 -- v267: Unified migration for all recent stability and feature changes.
--- Run this once in Supabase SQL Editor to apply everything from v263 to v266.
+-- Run this once in Supabase SQL Editor to apply everything from v263 to v269.
 -- All statements are idempotent, so running it again is safe.
+
+-- ─────────────────────────────────────────────────────────────
+-- v269: Application settings table
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS app_settings_select ON public.app_settings;
+CREATE POLICY app_settings_select ON public.app_settings FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS app_settings_write ON public.app_settings;
+CREATE POLICY app_settings_write ON public.app_settings
+  FOR ALL
+  USING (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin'))
+  WITH CHECK (auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin'));
+
+GRANT SELECT ON public.app_settings TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.app_settings TO authenticated;
 
 -- ─────────────────────────────────────────────────────────────
 -- v263: Front-end error tracking
@@ -162,7 +185,7 @@ CREATE POLICY "profiles_self_insert"
 -- Mark these versions as applied so the CI runner skips them
 -- ─────────────────────────────────────────────────────────────
 INSERT INTO public.schema_migrations (version)
-VALUES ('263'), ('264'), ('265'), ('266'), ('268')
+VALUES ('263'), ('264'), ('265'), ('266'), ('268'), ('269')
 ON CONFLICT (version) DO NOTHING;
 
 -- Refresh PostgREST cache
