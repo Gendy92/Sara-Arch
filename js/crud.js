@@ -1184,7 +1184,7 @@ const Crud = {
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name + (v.is_office ? ' (مكتب)' : '') }));
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
-      { key: 'employee_id', label: 'الموظف', type: 'select', opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts], attr: 'disabled' },
+      { key: 'employee_id', label: 'الموظف', type: 'select', opts: [{ v: '', l: '-- اختر موظف --' }, ...empOpts] },
       { key: 'sector_id', label: 'التصنيف', type: 'select', req: true, opts: [{ v: '', l: '-- اختر تصنيف --' }, ...sectorOpts] },
       { key: 'vendor_id', label: 'المورد (اختياري)', type: 'select', opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
