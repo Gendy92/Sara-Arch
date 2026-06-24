@@ -30,7 +30,8 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key, {
-  auth: { persistSession: false, autoRefreshToken: false }
+  auth: { persistSession: false, autoRefreshToken: false },
+  realtime: { enabled: false }
 });
 
 function extractVersion(filename) {

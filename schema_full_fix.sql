@@ -1331,7 +1331,7 @@ REVOKE EXECUTE ON FUNCTION public.dashboard_vendor_alerts(int) FROM anon;
 -- │ STEP 10b: Balance Views                                 │
 -- └─────────────────────────────────────────────────────────┘
 
-CREATE OR REPLACE VIEW public.project_balances AS
+CREATE OR REPLACE VIEW public.project_balances WITH (security_invoker = true) AS
 SELECT
   p.id AS project_id,
   p.name AS project_name,
@@ -1370,7 +1370,7 @@ LEFT JOIN (
 ) sv ON sv.project_id = p.id
 WHERE p.deleted_at IS NULL;
 
-CREATE OR REPLACE VIEW public.client_balances AS
+CREATE OR REPLACE VIEW public.client_balances WITH (security_invoker = true) AS
 SELECT
   c.id AS client_id,
   c.name AS client_name,
@@ -1383,7 +1383,7 @@ LEFT JOIN project_balances pb ON pb.client_id = c.id
 WHERE c.deleted_at IS NULL
 GROUP BY c.id, c.name;
 
-CREATE OR REPLACE VIEW public.vendor_balances AS
+CREATE OR REPLACE VIEW public.vendor_balances WITH (security_invoker = true) AS
 SELECT
   v.id AS vendor_id,
   v.name AS vendor_name,
@@ -1424,7 +1424,7 @@ UPDATE transactions SET payment_method = 'cash' WHERE payment_method IS NULL AND
 
 DROP VIEW IF EXISTS public.office_balance;
 DROP VIEW IF EXISTS public.office_transactions_view;
-CREATE OR REPLACE VIEW public.office_balance AS
+CREATE OR REPLACE VIEW public.office_balance WITH (security_invoker = true) AS
 WITH base AS (
   SELECT
     COALESCE(SUM(CASE WHEN t.type IN ('owner_deposit','income') AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) -
@@ -1450,7 +1450,7 @@ SELECT
   cash_balance + bank_balance + supervision_income + office_vendor_income AS total_balance
 FROM base;
 
-CREATE OR REPLACE VIEW public.office_transactions_view AS
+CREATE OR REPLACE VIEW public.office_transactions_view WITH (security_invoker = true) AS
 SELECT
   t.id,
   t.created_at,
@@ -1524,7 +1524,7 @@ GRANT SELECT ON public.vendor_balances TO authenticated;
 GRANT SELECT ON public.office_balance TO authenticated;
 GRANT SELECT ON public.office_transactions_view TO authenticated;
 
-CREATE OR REPLACE VIEW public.project_transactions_view AS
+CREATE OR REPLACE VIEW public.project_transactions_view WITH (security_invoker = true) AS
 SELECT
   t.id,
   t.created_at,
@@ -1874,6 +1874,7 @@ CREATE TABLE IF NOT EXISTS public.schema_migrations (
   version TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.apply_migration(p_version TEXT, p_sql TEXT)
 RETURNS VOID
