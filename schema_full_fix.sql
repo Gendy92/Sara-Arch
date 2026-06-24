@@ -400,7 +400,7 @@ WHERE expense_category IS NULL
 
 -- Transactions type constraint
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
-ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision','client_return','vendor_settlement','custody_return'));
+ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('project_deposit','project_expense','office_expense','owner_deposit','income','expense','deposit','withdrawal','supervision','client_return','vendor_settlement','custody_return','transfer'));
 
 -- Transactions expense_category constraint
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_expense_category_check;
@@ -657,6 +657,7 @@ ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE employee_salary_history ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_to TEXT;
 ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS office_expense_id UUID REFERENCES transactions(id);
 
 -- Trigger function to auto-set created_by on insert
@@ -1428,14 +1429,18 @@ WITH base AS (
   SELECT
     COALESCE(SUM(CASE WHEN t.type IN ('owner_deposit','income') AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) -
     COALESCE(SUM(CASE WHEN t.type IN ('office_expense','withdrawal') AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) +
-    COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) AS cash_balance,
+    COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN t.type = 'transfer' AND COALESCE(t.payment_method,'cash') = 'cash' THEN t.amount ELSE 0 END), 0) +
+    COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.transfer_to = 'cash' THEN t.amount ELSE 0 END), 0) AS cash_balance,
     COALESCE(SUM(CASE WHEN t.type IN ('owner_deposit','income') AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) -
     COALESCE(SUM(CASE WHEN t.type IN ('office_expense','withdrawal') AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) +
-    COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) AS bank_balance,
+    COALESCE(SUM(CASE WHEN t.type = 'custody_return' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) -
+    COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) +
+    COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.transfer_to = 'bank' THEN t.amount ELSE 0 END), 0) AS bank_balance,
     COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0) AS supervision_income,
     COALESCE((SELECT SUM(t2.paid_amount) FROM transactions t2 JOIN vendors v ON v.id = t2.vendor_id WHERE t2.deleted_at IS NULL AND v.is_office IS TRUE AND t2.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income
   FROM transactions t
-  WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','custody_return','income')
+  WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','custody_return','income','transfer')
 )
 SELECT
   cash_balance,
@@ -1498,7 +1503,20 @@ SELECT
   t.sector_name,
   NULL::TEXT AS vendor_name
 FROM transactions t
-WHERE t.deleted_at IS NULL AND t.type = 'custody_return';
+WHERE t.deleted_at IS NULL AND t.type = 'custody_return'
+UNION ALL
+SELECT
+  t.id,
+  t.created_at,
+  'transfer'::TEXT AS type,
+  t.amount,
+  COALESCE(t.payment_method, 'cash') AS payment_method,
+  ('تحويل من ' || CASE WHEN t.payment_method = 'bank' THEN 'بنكي' ELSE 'نقدي' END || ' إلى ' || CASE WHEN t.transfer_to = 'bank' THEN 'بنكي' ELSE 'نقدي' END || COALESCE(' - ' || t.description, ''))::TEXT AS description,
+  NULL::TEXT AS employee_name,
+  NULL::TEXT AS sector_name,
+  NULL::TEXT AS vendor_name
+FROM transactions t
+WHERE t.deleted_at IS NULL AND t.type = 'transfer';
 
 GRANT SELECT ON public.project_balances TO authenticated;
 GRANT SELECT ON public.client_balances TO authenticated;

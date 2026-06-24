@@ -1245,6 +1245,34 @@ const Crud = {
     });
   },
 
+  addOfficeTransfer() {
+    const accountOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
+    const fields = [
+      { name: 'from_account', label: 'من الحساب *', type: 'select', req: true, opts: accountOpts, default: 'cash' },
+      { name: 'to_account', label: 'إلى الحساب *', type: 'select', req: true, opts: accountOpts, default: 'bank' },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { name: 'description', label: 'البيان' }
+    ];
+    UI.openModal('🔄 تحويل بين الحسابات', `<form>${UI.form(fields, { date: new Date().toISOString().slice(0, 10) })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const from = fd.get('from_account');
+      const to = fd.get('to_account');
+      if (from === to) { UI.toast('يجب اختيار حسابين مختلفين', 'error'); return; }
+      await this.save('transactions', {
+        type: 'transfer',
+        payment_method: from,
+        transfer_to: to,
+        amount: +fd.get('amount') || 0,
+        paid_amount: +fd.get('amount') || 0,
+        date: fd.get('date'),
+        description: fd.get('description') || null
+      });
+      UI.toast('تم التحويل');
+      App.loadOffice();
+    });
+  },
+
   async addProjectSupervision() {
     const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
