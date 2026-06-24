@@ -1133,17 +1133,16 @@ Object.assign(App, {
     } catch (e) { document.getElementById('backup-status').innerHTML = '<p style="color:var(--red)">خطأ في التحميل</p>'; }
   },
 
-  async downloadLocalBackup() {
+  async _backupToZip(options = {}) {
     const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks','app_settings'];
-    const progress = document.getElementById('backup-progress');
-    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
     const zip = new JSZip();
     const folder = zip.folder('Sara_Backup_' + new Date().toISOString().slice(0,10));
     let version = 'unknown';
     try { version = (await (await fetch('version.json')).json()).version; } catch (e) { /* ignore */ }
-    const manifest = { version, timestamp: new Date().toISOString(), counts: {}, source: 'browser' };
+    const manifest = { version, timestamp: new Date().toISOString(), counts: {}, source: 'browser', auto: !!options.auto };
     let ok = 0, skip = 0, fail = 0;
     const failed = [];
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
     for (const table of tables) {
       try {
         const data = await API.fetchAll(table, '?select=*');
@@ -1161,24 +1160,46 @@ Object.assign(App, {
           failed.push(table);
         }
       }
-      progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول${skip ? ` (تخطي ${skip})` : ''}${fail ? ` — فشل ${fail}` : ''}...</p>`;
+      onProgress({ ok, skip, fail });
     }
     folder.file('manifest.json', JSON.stringify(manifest, null, 2));
-    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري ضغط الملف...</p>';
     const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Sara_Backup_${new Date().toISOString().slice(0,10)}_${Date.now()}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    localStorage.setItem('sara_last_backup', new Date().toISOString());
-    const skipMsg = skip > 0 ? ` (تم تخطي ${skip} جدول غير منشأ)` : '';
-    const failMsg = fail > 0 ? ` <span style="color:var(--red)">(${fail} جدول فشل: ${failed.join(', ')})</span>` : '';
-    progress.innerHTML = `<p style="color:${fail ? 'var(--red)' : 'var(--green)'}">${fail ? '⚠️' : '✅'} تم التحميل — ${ok} جدول${skipMsg}${failMsg}</p>`;
-    this.loadBackup();
+    return { blob, manifest, ok, skip, fail, failed };
+  },
+
+  async downloadLocalBackup() {
+    const progress = document.getElementById('backup-progress');
+    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
+    try {
+      const { blob, manifest, ok, skip, fail, failed } = await this._backupToZip({
+        onProgress: ({ ok, skip, fail }) => {
+          progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول${skip ? ` (تخطي ${skip})` : ''}${fail ? ` — فشل ${fail}` : ''}...</p>`;
+        }
+      });
+      progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري ضغط الملف...</p>';
+      const fileName = `Sara_Backup_${new Date().toISOString().slice(0,10)}_${Date.now()}.zip`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      localStorage.setItem('sara_last_backup', new Date().toISOString());
+      if (typeof BackupManager !== 'undefined') {
+        await BackupManager.logBackup({ manifest, status: fail ? 'partial' : 'success', fileName });
+      }
+      const skipMsg = skip > 0 ? ` (تم تخطي ${skip} جدول غير منشأ)` : '';
+      const failMsg = fail > 0 ? ` <span style="color:var(--red)">(${fail} جدول فشل: ${failed.join(', ')})</span>` : '';
+      progress.innerHTML = `<p style="color:${fail ? 'var(--red)' : 'var(--green)'}">${fail ? '⚠️' : '✅'} تم التحميل — ${ok} جدول${skipMsg}${failMsg}</p>`;
+      this.loadBackup();
+    } catch (e) {
+      progress.innerHTML = `<p style="color:var(--red)">⚠️ فشل النسخ الاحتياطي: ${App.esc(e.message)}</p>`;
+      if (typeof BackupManager !== 'undefined') {
+        await BackupManager.logBackup({ status: 'error', error: e.message });
+      }
+    }
   },
 
   // ─── RESTORE FROM BACKUP ───

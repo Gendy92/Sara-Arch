@@ -31,6 +31,7 @@ table and `apply_migration()` RPC.
 | v257 | `migration_v257_office_transfer.sql` | Office cash↔bank transfers | Applied | - | |
 | v263 | `migration_v263_app_errors.sql` | Front-end error tracking table + RPC | **Auto** | - | Will be applied by CI after v264 runner is active |
 | v264 | `migration_v264_migration_runner.sql` | Automated migration tracking + runner | **Pending (run once manually)** | - | Enables CI auto-migration |
+| v265 | `migration_v265_auto_backup_logs.sql` | Backup log table with device + user details | **Auto** | - | Applied by CI after v264 runner |
 
 ## Adding a new migration
 

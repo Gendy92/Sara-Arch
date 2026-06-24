@@ -57,6 +57,7 @@ const App = {
       this.bindNav();
       if (Auth.isLoggedIn()) {
         this.startIdleTimer();
+        if (typeof BackupManager !== 'undefined') BackupManager.init();
         const { screen, opts } = this._routeFromHash();
         await this.go(screen, opts);
       } else {
