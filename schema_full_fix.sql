@@ -972,7 +972,7 @@ END $$;
 -- Special RLS for profiles: allow self-insert so registration works without a service key.
 -- The auth.users trigger or application inserts a row with id = auth.uid().
 DROP POLICY IF EXISTS "profiles_self_insert" ON profiles;
-CREATE POLICY "profiles_self_insert" ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid());
+CREATE POLICY "profiles_self_insert" ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid() AND role = 'user');
 
 DROP POLICY IF EXISTS "auth_restricted_profiles" ON profiles;
 CREATE POLICY "auth_restricted_profiles" ON profiles FOR SELECT TO authenticated USING (is_app_admin(auth.uid()) OR id = auth.uid());

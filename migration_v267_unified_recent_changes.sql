@@ -149,10 +149,20 @@ REVOKE EXECUTE ON FUNCTION public.admin_reset_password(UUID, TEXT) FROM anon;
 GRANT EXECUTE ON FUNCTION public.admin_reset_password(UUID, TEXT) TO authenticated;
 
 -- ─────────────────────────────────────────────────────────────
+-- v268: Harden profiles self-signup RLS
+-- ─────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "profiles_self_insert" ON public.profiles;
+CREATE POLICY "profiles_self_insert"
+  ON public.profiles
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (id = auth.uid() AND role = 'user');
+
+-- ─────────────────────────────────────────────────────────────
 -- Mark these versions as applied so the CI runner skips them
 -- ─────────────────────────────────────────────────────────────
 INSERT INTO public.schema_migrations (version)
-VALUES ('263'), ('264'), ('265'), ('266')
+VALUES ('263'), ('264'), ('265'), ('266'), ('268')
 ON CONFLICT (version) DO NOTHING;
 
 -- Refresh PostgREST cache
