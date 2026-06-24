@@ -14,6 +14,9 @@ the front-end. No manual Supabase steps are needed for routine migrations.
 Run `migration_v264_migration_runner.sql` in Supabase SQL Editor to create the `schema_migrations`
 table and `apply_migration()` RPC.
 
+Alternatively, run **`migration_v267_unified_recent_changes.sql`** once to apply all recent changes
+(v263–v266) in a single file and bootstrap the migration tracker at the same time.
+
 ## Migration history
 
 | Version | File | Description | Status | Run date | Notes |
@@ -33,6 +36,7 @@ table and `apply_migration()` RPC.
 | v264 | `migration_v264_migration_runner.sql` | Automated migration tracking + runner | **Pending (run once manually)** | - | Enables CI auto-migration |
 | v265 | `migration_v265_auto_backup_logs.sql` | Backup log table with device + user details | **Auto** | - | Applied by CI after v264 runner |
 | v266 | `migration_v266_admin_password_reset.sql` | Admin direct password reset RPC | **Auto** | - | Applied by CI after v264 runner |
+| v267 | `migration_v267_unified_recent_changes.sql` | Unified migration for v263–v266 | **Manual (run once)** | - | Single file to bootstrap everything |
 
 ## Adding a new migration
 
