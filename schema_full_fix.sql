@@ -892,6 +892,8 @@ ALTER TABLE work_items ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE work_items ADD COLUMN IF NOT EXISTS updated_by UUID;
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE custody_records ADD COLUMN IF NOT EXISTS updated_by UUID;
+ALTER TABLE custody_expenses ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE custody_expenses ADD COLUMN IF NOT EXISTS updated_by UUID;
 ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS created_by UUID;
 ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS updated_by UUID;
 

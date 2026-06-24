@@ -21,7 +21,8 @@ const Crud = {
     return msg.includes('PGRST204') || msg.includes('42703') ||
       /Could not find the '[^']+' column of '[^']+' in the schema cache/.test(msg) ||
       /column "[^"]+" of relation/.test(msg) ||
-      /column "[^"]+" does not exist/.test(msg);
+      /column "[^"]+" does not exist/.test(msg) ||
+      /record "new" has no field "[^"]+"/.test(msg);
   },
 
   async _checkDuplicate(table, nameField, nameValue, extraFilter = '') {
