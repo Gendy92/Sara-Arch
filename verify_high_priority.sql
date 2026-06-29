@@ -1,4 +1,4 @@
--- Combined high-priority verification script for Sara-Arch v273.
+-- Combined high-priority verification script for Sara-Arch.
 -- Run this in the Supabase SQL Editor as a single transaction.
 -- Expected: all NOTICEs say "OK" and the tenant-isolation tests pass.
 
@@ -70,7 +70,7 @@ DECLARE
   v_tenant_a_id UUID;
   v_tenant_b_id UUID;
 BEGIN
-  -- Clean up any leftover rows from ALL previous test runs (by name, so orphans are caught too)
+  -- Clean up any leftover rows from ALL previous test runs
   DELETE FROM public.transactions
   WHERE project_id IN (SELECT id FROM public.projects WHERE name LIKE 'Test Project _');
   DELETE FROM public.projects WHERE name LIKE 'Test Project _';
@@ -92,9 +92,13 @@ BEGIN
     (v_user_a, v_tenant_a, 'user', true),
     (v_user_b, v_tenant_b, 'user', true);
 
-  -- Disable auto-tenant triggers so our explicit tenant_id values stick
+  -- Disable auto-tenant triggers so our explicit tenant_id values stick,
+  -- and clear any session-level header that might leak from a previous query.
   ALTER TABLE public.clients DISABLE TRIGGER clients_tenant;
   ALTER TABLE public.projects DISABLE TRIGGER projects_tenant;
+  RESET request.headers;
+  RESET request.jwt.claim.sub;
+  RESET request.jwt.claims;
 
   INSERT INTO public.clients (id, name, tenant_id) VALUES
     (v_client_a, 'Test Client A', v_tenant_a),
@@ -112,12 +116,12 @@ BEGIN
   SELECT tenant_id INTO v_tenant_a_id FROM public.projects WHERE id = v_project_a;
   SELECT tenant_id INTO v_tenant_b_id FROM public.projects WHERE id = v_project_b;
 
-  SET LOCAL ROLE authenticated;
-
   -- Test 1: user_a + tenant_a
+  RESET ROLE;
   EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_a::text);
   EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_a::text, 'role', 'authenticated')::text);
   EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_a::text)::text);
+  SET LOCAL ROLE authenticated;
   SELECT COUNT(*), array_agg(project_id), array_agg(project_name)
     INTO v_count, v_ids, v_names FROM public.project_balances;
   IF v_count <> 1 THEN
@@ -127,26 +131,30 @@ BEGIN
   RAISE NOTICE 'OK: user_a in tenant_a sees 1 project balance (id=% name=%)', v_ids, v_names;
 
   -- Test 2: user_a + tenant_b
+  RESET ROLE;
   EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_a::text);
   EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_a::text, 'role', 'authenticated')::text);
   EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
+  SET LOCAL ROLE authenticated;
   SELECT COUNT(*), array_agg(project_id), array_agg(project_name)
     INTO v_count, v_ids, v_names FROM public.project_balances;
   IF v_count <> 0 THEN
-    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_b expected 0, got %. auth.uid=% tenant=% ids=% names=%',
-      v_count, auth.uid(), get_current_tenant_id(), v_ids, v_names;
+    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_b expected 0, got %. auth.uid=% tenant=% ids=% names=% cleanup_count=% project_a_tenant=% project_b_tenant=%',
+      v_count, auth.uid(), get_current_tenant_id(), v_ids, v_names, v_cleanup_count, v_tenant_a_id, v_tenant_b_id;
   END IF;
   RAISE NOTICE 'OK: user_a in tenant_b sees 0 project balances';
 
   -- Test 3: user_b + tenant_b
+  RESET ROLE;
   EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_b::text);
   EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_b::text, 'role', 'authenticated')::text);
   EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
+  SET LOCAL ROLE authenticated;
   SELECT COUNT(*), array_agg(project_id), array_agg(project_name)
     INTO v_count, v_ids, v_names FROM public.project_balances;
   IF v_count <> 1 THEN
-    RAISE EXCEPTION 'Tenant isolation FAIL: user_b/tenant_b expected 1, got %. auth.uid=% tenant=% ids=% names=%',
-      v_count, auth.uid(), get_current_tenant_id(), v_ids, v_names;
+    RAISE EXCEPTION 'Tenant isolation FAIL: user_b/tenant_b expected 1, got %. auth.uid=% tenant=% ids=% names=% cleanup_count=% project_a_tenant=% project_b_tenant=%',
+      v_count, auth.uid(), get_current_tenant_id(), v_ids, v_names, v_cleanup_count, v_tenant_a_id, v_tenant_b_id;
   END IF;
   RAISE NOTICE 'OK: user_b in tenant_b sees 1 project balance (id=% name=%)', v_ids, v_names;
 END $$;
