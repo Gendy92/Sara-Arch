@@ -66,13 +66,21 @@ DECLARE
   v_count INT;
   v_ids UUID[];
 BEGIN
-  -- Clean up any leftover rows from previous aborted test runs
-  DELETE FROM public.transactions WHERE project_id IN (v_project_a, v_project_b);
-  DELETE FROM public.projects WHERE id IN (v_project_a, v_project_b);
-  DELETE FROM public.clients WHERE id IN (v_client_a, v_client_b);
-  DELETE FROM public.user_tenants WHERE user_id IN (v_user_a, v_user_b);
-  DELETE FROM public.profiles WHERE id IN (v_user_a, v_user_b);
-  DELETE FROM public.tenants WHERE id IN (v_tenant_a, v_tenant_b);
+  -- Clean up any leftover rows from ALL previous test runs
+  DELETE FROM public.transactions
+  WHERE project_id IN (
+    SELECT id FROM public.projects
+    WHERE name LIKE 'Test Project _'
+      AND client_id IN (SELECT id FROM public.clients WHERE name LIKE 'Test Client _')
+  );
+  DELETE FROM public.projects
+  WHERE name LIKE 'Test Project _'
+    AND client_id IN (SELECT id FROM public.clients WHERE name LIKE 'Test Client _');
+  DELETE FROM public.clients WHERE name LIKE 'Test Client _';
+  DELETE FROM public.user_tenants
+  WHERE user_id IN (SELECT id FROM public.profiles WHERE username LIKE 'test_user_');
+  DELETE FROM public.profiles WHERE username LIKE 'test_user_';
+  DELETE FROM public.tenants WHERE slug LIKE 'test-tenant-%';
 
   INSERT INTO public.tenants (id, name, slug) VALUES
     (v_tenant_a, 'Test Tenant A', 'test-tenant-a'),
