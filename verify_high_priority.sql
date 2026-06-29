@@ -89,19 +89,20 @@ BEGIN
     (v_user_a, v_tenant_a, 'user', true),
     (v_user_b, v_tenant_b, 'user', true);
 
-  -- Set tenant context for tenant_a inserts (covers triggers that auto-set tenant_id)
-  EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_a::text)::text);
-  INSERT INTO public.clients (id, name, tenant_id) VALUES
-    (v_client_a, 'Test Client A', v_tenant_a);
-  INSERT INTO public.projects (id, name, client_id, status, tenant_id) VALUES
-    (v_project_a, 'Test Project A', v_client_a, 'active', v_tenant_a);
+  -- Disable auto-tenant triggers so our explicit tenant_id values stick
+  ALTER TABLE public.clients DISABLE TRIGGER clients_tenant;
+  ALTER TABLE public.projects DISABLE TRIGGER projects_tenant;
 
-  -- Set tenant context for tenant_b inserts
-  EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
   INSERT INTO public.clients (id, name, tenant_id) VALUES
+    (v_client_a, 'Test Client A', v_tenant_a),
     (v_client_b, 'Test Client B', v_tenant_b);
   INSERT INTO public.projects (id, name, client_id, status, tenant_id) VALUES
+    (v_project_a, 'Test Project A', v_client_a, 'active', v_tenant_a),
     (v_project_b, 'Test Project B', v_client_b, 'active', v_tenant_b);
+
+  -- Re-enable triggers before the actual isolation tests
+  ALTER TABLE public.clients ENABLE TRIGGER clients_tenant;
+  ALTER TABLE public.projects ENABLE TRIGGER projects_tenant;
 
   SET LOCAL ROLE authenticated;
 
