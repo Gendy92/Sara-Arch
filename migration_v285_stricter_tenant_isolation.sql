@@ -4,8 +4,6 @@
 -- the current user is actually a member of the requested tenant.
 -- Admins bypass the check.
 
-BEGIN;
-
 DROP POLICY IF EXISTS tenant_scope ON public.clients;
 DROP POLICY IF EXISTS tenant_scope ON public.vendors;
 DROP POLICY IF EXISTS tenant_scope ON public.transactions;
@@ -90,5 +88,3 @@ CREATE POLICY transactions_tenant_isolation ON public.transactions
       )
     )
   );
-
-COMMIT;
