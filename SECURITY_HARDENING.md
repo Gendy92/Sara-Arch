@@ -1,6 +1,6 @@
 # Sara-Arch Security Hardening Action Plan
 
-> Last updated: 2026-06-29 (v271 deployed)
+> Last updated: 2026-06-29 (v273 deployed)
 
 ## 1. Current Findings
 
@@ -49,7 +49,7 @@ After CI deploys v270 and migrations run:
 - [ ] Open Supabase **Security Advisor** and confirm the 6 view warnings and the `schema_migrations` warning are gone.
 - [ ] Log in as a **non-admin user** and verify project/vendor/client/office balances still show only the current tenant's data.
 - [ ] Log in as an **admin** and verify the same screens still work.
-- [ ] Open browser DevTools → Network and confirm `version.json` returns `270`, assets load with `?v=270`, and the service worker registers as `sw.js?v=270`.
+- [ ] Open browser DevTools → Network and confirm `version.json` returns `273`, assets load with `?v=273`, and the service worker registers as `sw.js?v=273`.
 - [ ] Confirm the GitHub Actions `deploy` workflow reaches the "All migrations applied" step.
 
 ## 4. Short-Term Hardening (v271)
