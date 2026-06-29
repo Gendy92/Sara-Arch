@@ -64,6 +64,7 @@ DECLARE
   v_project_a UUID := gen_random_uuid();
   v_project_b UUID := gen_random_uuid();
   v_count INT;
+  v_ids UUID[];
 BEGIN
   -- Clean up any leftover rows from previous aborted test runs
   DELETE FROM public.transactions WHERE project_id IN (v_project_a, v_project_b);
@@ -99,21 +100,21 @@ BEGIN
   EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_a::text);
   EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_a::text, 'role', 'authenticated')::text);
   EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_a::text)::text);
-  SELECT COUNT(*) INTO v_count FROM public.project_balances;
-  RAISE NOTICE 'DEBUG user_a/tenant_a: auth.uid=%  tenant=%  count=%', auth.uid(), get_current_tenant_id(), v_count;
+  SELECT COUNT(*), array_agg(project_id) INTO v_count, v_ids FROM public.project_balances;
   IF v_count <> 1 THEN
-    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_a expected 1 project balance, got %', v_count;
+    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_a expected 1, got %. auth.uid=% tenant=% ids=%',
+      v_count, auth.uid(), get_current_tenant_id(), v_ids;
   END IF;
-  RAISE NOTICE 'OK: user_a in tenant_a sees 1 project balance';
+  RAISE NOTICE 'OK: user_a in tenant_a sees 1 project balance (id=%)', v_ids;
 
   -- Test 2: user_a + tenant_b
   EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_a::text);
   EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_a::text, 'role', 'authenticated')::text);
   EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
-  SELECT COUNT(*) INTO v_count FROM public.project_balances;
-  RAISE NOTICE 'DEBUG user_a/tenant_b: auth.uid=%  tenant=%  count=%', auth.uid(), get_current_tenant_id(), v_count;
+  SELECT COUNT(*), array_agg(project_id) INTO v_count, v_ids FROM public.project_balances;
   IF v_count <> 0 THEN
-    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_b expected 0 project balances, got %', v_count;
+    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_b expected 0, got %. auth.uid=% tenant=% ids=%',
+      v_count, auth.uid(), get_current_tenant_id(), v_ids;
   END IF;
   RAISE NOTICE 'OK: user_a in tenant_b sees 0 project balances';
 
@@ -121,12 +122,12 @@ BEGIN
   EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_b::text);
   EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_b::text, 'role', 'authenticated')::text);
   EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
-  SELECT COUNT(*) INTO v_count FROM public.project_balances;
-  RAISE NOTICE 'DEBUG user_b/tenant_b: auth.uid=%  tenant=%  count=%', auth.uid(), get_current_tenant_id(), v_count;
+  SELECT COUNT(*), array_agg(project_id) INTO v_count, v_ids FROM public.project_balances;
   IF v_count <> 1 THEN
-    RAISE EXCEPTION 'Tenant isolation FAIL: user_b/tenant_b expected 1 project balance, got %', v_count;
+    RAISE EXCEPTION 'Tenant isolation FAIL: user_b/tenant_b expected 1, got %. auth.uid=% tenant=% ids=%',
+      v_count, auth.uid(), get_current_tenant_id(), v_ids;
   END IF;
-  RAISE NOTICE 'OK: user_b in tenant_b sees 1 project balance';
+  RAISE NOTICE 'OK: user_b in tenant_b sees 1 project balance (id=%)', v_ids;
 END $$;
 
 ROLLBACK;
