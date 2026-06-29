@@ -14,7 +14,7 @@
 | Risk | Impact | Status |
 |------|--------|--------|
 | SMTP not configured for Supabase Auth | Password-reset emails are not actually sent | Open — requires Supabase project config |
-| `log_app_error()` granted to `anon` | Potential small DoS / log-spam vector | Open — review in v271 |
+| `log_app_error()` granted to `anon` | Potential small DoS / log-spam vector | **Fixed in v273** — per-IP server-side rate limit + client-side throttle |
 | PWA service-worker cache | Users may run stale JS until hard refresh | **Fixed in v271** — update prompt added |
 | CI migration runner used Node 20 without native WebSocket support | Deploy pipeline failed at migration step | **Fixed in v270** |
 
@@ -54,27 +54,29 @@ After CI deploys v270 and migrations run:
 
 ## 4. Short-Term Hardening (v271)
 
-1. **Review `SECURITY DEFINER` functions**
+1. **Review `SECURITY DEFINER` functions** ✅
    - `apply_migration` — service_role only ✔
    - `admin_reset_password`, `admin_create_auth_user`, `admin_update_auth_email` — admin checks ✔
    - `get_current_tenant_id`, `is_app_admin` — helper functions, no direct grants ✔
-   - `log_app_error` — consider removing `anon` grant or adding a rate-limit check.
+   - `log_app_error` — per-IP server-side rate limit + client-side throttle (v273).
 
-2. **Rate-limit `log_app_error`**
-   - Add an in-memory or per-IP throttle in `js/error-reporter.js`.
-   - Alternatively restrict the RPC to `authenticated` only and drop `anon` grant.
+2. **Rate-limit `log_app_error`** ✅
+   - Added `app_error_throttle` table and rewrote `log_app_error()` to drop reports beyond 10/min per IP.
+   - Added client-side deduplication in `js/error-reporter.js`.
 
 3. **Tenant-isolation regression test** ✅
    - Added `tests/tenant_isolation.sql` — run it in the Supabase SQL Editor to verify isolation.
 
-## 5. Medium-Term Hardening
+## 5. Manual Hardening (see `docs/SECURITY_RUNBOOK.md`)
 
-- **SMTP / Auth provider**: Configure Supabase Auth with a real email provider so password-reset emails actually deliver.
-- **Admin MFA**: Enforce MFA for admin accounts in Supabase Auth settings.
-- **Network restrictions**: Restrict Supabase API keys by referer/IP where possible.
-- **Secrets audit**: rotate `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_ANON_KEY` periodically; confirm they are only in GitHub Secrets and local `.env` (gitignored).
-- **Backup verification**: restore the daily SQL backup to a staging project monthly.
-- **Audit log review**: schedule a weekly review of `app_errors` and `audit_logs` for anomalies.
+The steps below require Supabase dashboard / GitHub Secrets access and are documented in detail in `docs/SECURITY_RUNBOOK.md`:
+
+- **Rotate Supabase API keys** and update GitHub Secrets.
+- **Enable MFA** for admin accounts.
+- **Configure SMTP / Auth provider** so password-reset emails actually deliver.
+- **Restore a daily backup to staging** monthly to prove the restore path works.
+- **Review `app_errors` and `audit_logs`** weekly for anomalies.
+- **Network restrictions**: restrict Supabase API keys by referer/IP where possible.
 
 ## 6. Decision Log
 

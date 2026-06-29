@@ -1849,12 +1849,52 @@ CREATE POLICY app_errors_select_admin
   TO authenticated
   USING (auth.uid() IN (SELECT id FROM auth.users WHERE raw_user_meta_data->>'role' = 'admin'));
 
+-- Throttle table for error reporting; touched only by the SECURITY DEFINER function below.
+CREATE TABLE IF NOT EXISTS public.app_error_throttle (
+  ip_hash TEXT NOT NULL,
+  bucket TIMESTAMPTZ NOT NULL,
+  count INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (ip_hash, bucket)
+);
+ALTER TABLE public.app_error_throttle ENABLE ROW LEVEL SECURITY;
+
 CREATE OR REPLACE FUNCTION public.log_app_error(payload JSONB)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
+DECLARE
+  v_ip TEXT;
+  v_hash TEXT;
+  v_bucket TIMESTAMPTZ;
+  v_count INT;
+  v_limit INT := 10;
 BEGIN
+  BEGIN
+    v_ip := COALESCE(
+      NULLIF(current_setting('request.headers', true)::json->>'x-forwarded-for', ''),
+      NULLIF(current_setting('request.headers', true)::json->>'x-real-ip', ''),
+      'unknown'
+    );
+    v_ip := split_part(v_ip, ',', 1);
+  EXCEPTION WHEN OTHERS THEN
+    v_ip := 'unknown';
+  END;
+
+  v_hash := md5(v_ip);
+  v_bucket := date_trunc('minute', now());
+
+  DELETE FROM public.app_error_throttle WHERE bucket < now() - INTERVAL '1 hour';
+
+  SELECT count INTO v_count
+  FROM public.app_error_throttle
+  WHERE ip_hash = v_hash AND bucket = v_bucket;
+
+  IF COALESCE(v_count, 0) >= v_limit THEN
+    RETURN;
+  END IF;
+
   INSERT INTO public.app_errors (message, stack, url, user_id, tenant_id, user_agent)
   VALUES (
     payload->>'message',
@@ -1864,6 +1904,11 @@ BEGIN
     NULLIF(payload->>'tenant_id', '')::UUID,
     payload->>'user_agent'
   );
+
+  INSERT INTO public.app_error_throttle (ip_hash, bucket, count)
+  VALUES (v_hash, v_bucket, 1)
+  ON CONFLICT (ip_hash, bucket)
+  DO UPDATE SET count = public.app_error_throttle.count + 1;
 END;
 $$;
 

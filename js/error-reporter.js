@@ -6,6 +6,8 @@
 const ErrorReporter = {
   enabled: true,
   _reporting: false,
+  _lastReportTs: 0,
+  _reportedMessages: new Map(),
   _endpoint: (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '') + '/rest/v1/rpc/log_app_error',
 
   init() {
@@ -34,6 +36,21 @@ const ErrorReporter = {
       tenant_id: (typeof localStorage !== 'undefined') ? localStorage.getItem('sara_tenant_id') : null,
       user_agent: (typeof navigator !== 'undefined' ? navigator.userAgent : '')
     };
+
+    // Client-side rate limiting:
+    // - max 1 report per second globally
+    // - identical messages are deduplicated for 30 seconds
+    const now = Date.now();
+    if (now - this._lastReportTs < 1000) return;
+    const lastForMsg = this._reportedMessages.get(message);
+    if (lastForMsg && now - lastForMsg < 30000) return;
+    this._lastReportTs = now;
+    this._reportedMessages.set(message, now);
+    // prune old entries if map grows large
+    if (this._reportedMessages.size > 100) {
+      const oldest = this._reportedMessages.keys().next().value;
+      this._reportedMessages.delete(oldest);
+    }
 
     this._reporting = true;
     fetch(this._endpoint, {
