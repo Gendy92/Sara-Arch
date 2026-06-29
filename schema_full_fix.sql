@@ -713,13 +713,91 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_permissions ENABLE ROW LEVEL SECURITY;
 
 -- Open policies (adjust if you need stricter rules)
-DROP POLICY IF EXISTS "authenticated_all" ON clients; CREATE POLICY "authenticated_all" ON clients FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "authenticated_all" ON clients;
+DROP POLICY IF EXISTS "tenant_scope" ON clients;
+DROP POLICY IF EXISTS "auth_restricted_clients" ON clients;
+CREATE POLICY clients_tenant_isolation ON public.clients
+  FOR ALL TO authenticated
+  USING (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  )
+  WITH CHECK (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  );
 DROP POLICY IF EXISTS "authenticated_all" ON projects; CREATE POLICY "authenticated_all" ON projects FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON employees; CREATE POLICY "authenticated_all" ON employees FOR ALL TO authenticated USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "authenticated_all" ON vendors; CREATE POLICY "authenticated_all" ON vendors FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "authenticated_all" ON vendors;
+DROP POLICY IF EXISTS "tenant_scope" ON vendors;
+DROP POLICY IF EXISTS "auth_restricted_vendors" ON vendors;
+CREATE POLICY vendors_tenant_isolation ON public.vendors
+  FOR ALL TO authenticated
+  USING (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  )
+  WITH CHECK (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  );
 DROP POLICY IF EXISTS "authenticated_all" ON items; CREATE POLICY "authenticated_all" ON items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON sectors; CREATE POLICY "authenticated_all" ON sectors FOR ALL TO authenticated USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "authenticated_all" ON transactions; CREATE POLICY "authenticated_all" ON transactions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "authenticated_all" ON transactions;
+DROP POLICY IF EXISTS "tenant_scope" ON transactions;
+DROP POLICY IF EXISTS "auth_restricted_transactions" ON transactions;
+CREATE POLICY transactions_tenant_isolation ON public.transactions
+  FOR ALL TO authenticated
+  USING (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  )
+  WITH CHECK (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  );
 DROP POLICY IF EXISTS "authenticated_all" ON procurements; CREATE POLICY "authenticated_all" ON procurements FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON employee_transactions; CREATE POLICY "authenticated_all" ON employee_transactions FOR ALL TO authenticated USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "authenticated_all" ON employee_salary_history; CREATE POLICY "authenticated_all" ON employee_salary_history FOR ALL TO authenticated USING (true) WITH CHECK (true);
