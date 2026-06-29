@@ -95,24 +95,34 @@ BEGIN
 
   SET LOCAL ROLE authenticated;
 
-  PERFORM set_config('request.jwt.claim.sub', v_user_a::text, true);
-  PERFORM set_config('request.headers', '{"x-app-tenant":"' || v_tenant_a::text || '"}', true);
+  -- Test 1: user_a + tenant_a
+  EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_a::text);
+  EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_a::text, 'role', 'authenticated')::text);
+  EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_a::text)::text);
   SELECT COUNT(*) INTO v_count FROM public.project_balances;
+  RAISE NOTICE 'DEBUG user_a/tenant_a: auth.uid=%  tenant=%  count=%', auth.uid(), get_current_tenant_id(), v_count;
   IF v_count <> 1 THEN
     RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_a expected 1 project balance, got %', v_count;
   END IF;
   RAISE NOTICE 'OK: user_a in tenant_a sees 1 project balance';
 
-  PERFORM set_config('request.headers', '{"x-app-tenant":"' || v_tenant_b::text || '"}', true);
+  -- Test 2: user_a + tenant_b
+  EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_a::text);
+  EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_a::text, 'role', 'authenticated')::text);
+  EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
   SELECT COUNT(*) INTO v_count FROM public.project_balances;
+  RAISE NOTICE 'DEBUG user_a/tenant_b: auth.uid=%  tenant=%  count=%', auth.uid(), get_current_tenant_id(), v_count;
   IF v_count <> 0 THEN
     RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_b expected 0 project balances, got %', v_count;
   END IF;
   RAISE NOTICE 'OK: user_a in tenant_b sees 0 project balances';
 
-  PERFORM set_config('request.jwt.claim.sub', v_user_b::text, true);
-  PERFORM set_config('request.headers', '{"x-app-tenant":"' || v_tenant_b::text || '"}', true);
+  -- Test 3: user_b + tenant_b
+  EXECUTE format('SET LOCAL request.jwt.claim.sub = %L', v_user_b::text);
+  EXECUTE format('SET LOCAL request.jwt.claims = %L', json_build_object('sub', v_user_b::text, 'role', 'authenticated')::text);
+  EXECUTE format('SET LOCAL request.headers = %L', json_build_object('x-app-tenant', v_tenant_b::text)::text);
   SELECT COUNT(*) INTO v_count FROM public.project_balances;
+  RAISE NOTICE 'DEBUG user_b/tenant_b: auth.uid=%  tenant=%  count=%', auth.uid(), get_current_tenant_id(), v_count;
   IF v_count <> 1 THEN
     RAISE EXCEPTION 'Tenant isolation FAIL: user_b/tenant_b expected 1 project balance, got %', v_count;
   END IF;
