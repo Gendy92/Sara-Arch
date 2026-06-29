@@ -66,6 +66,9 @@ DECLARE
   v_count INT;
   v_ids UUID[];
   v_names TEXT[];
+  v_cleanup_count INT;
+  v_tenant_a_id UUID;
+  v_tenant_b_id UUID;
 BEGIN
   -- Clean up any leftover rows from ALL previous test runs (by name, so orphans are caught too)
   DELETE FROM public.transactions
@@ -105,12 +108,9 @@ BEGIN
   ALTER TABLE public.projects ENABLE TRIGGER projects_tenant;
 
   -- Diagnostics: confirm cleanup + insert state as postgres
-  RAISE NOTICE 'After cleanup, test project count = %',
-    (SELECT COUNT(*) FROM public.projects WHERE name LIKE 'Test Project _');
-  RAISE NOTICE 'project_a tenant_id = %',
-    (SELECT tenant_id FROM public.projects WHERE id = v_project_a);
-  RAISE NOTICE 'project_b tenant_id = %',
-    (SELECT tenant_id FROM public.projects WHERE id = v_project_b);
+  SELECT COUNT(*) INTO v_cleanup_count FROM public.projects WHERE name LIKE 'Test Project _';
+  SELECT tenant_id INTO v_tenant_a_id FROM public.projects WHERE id = v_project_a;
+  SELECT tenant_id INTO v_tenant_b_id FROM public.projects WHERE id = v_project_b;
 
   SET LOCAL ROLE authenticated;
 
@@ -121,8 +121,8 @@ BEGIN
   SELECT COUNT(*), array_agg(project_id), array_agg(project_name)
     INTO v_count, v_ids, v_names FROM public.project_balances;
   IF v_count <> 1 THEN
-    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_a expected 1, got %. auth.uid=% tenant=% ids=% names=%',
-      v_count, auth.uid(), get_current_tenant_id(), v_ids, v_names;
+    RAISE EXCEPTION 'Tenant isolation FAIL: user_a/tenant_a expected 1, got %. auth.uid=% tenant=% ids=% names=% cleanup_count=% project_a_tenant=% project_b_tenant=%',
+      v_count, auth.uid(), get_current_tenant_id(), v_ids, v_names, v_cleanup_count, v_tenant_a_id, v_tenant_b_id;
   END IF;
   RAISE NOTICE 'OK: user_a in tenant_a sees 1 project balance (id=% name=%)', v_ids, v_names;
 
