@@ -104,6 +104,14 @@ BEGIN
   ALTER TABLE public.clients ENABLE TRIGGER clients_tenant;
   ALTER TABLE public.projects ENABLE TRIGGER projects_tenant;
 
+  -- Diagnostics: confirm cleanup + insert state as postgres
+  RAISE NOTICE 'After cleanup, test project count = %',
+    (SELECT COUNT(*) FROM public.projects WHERE name LIKE 'Test Project _');
+  RAISE NOTICE 'project_a tenant_id = %',
+    (SELECT tenant_id FROM public.projects WHERE id = v_project_a);
+  RAISE NOTICE 'project_b tenant_id = %',
+    (SELECT tenant_id FROM public.projects WHERE id = v_project_b);
+
   SET LOCAL ROLE authenticated;
 
   -- Test 1: user_a + tenant_a
