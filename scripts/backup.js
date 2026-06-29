@@ -1,3 +1,4 @@
+import fs from 'fs';
 // Database Backup Script - exports all data via Supabase REST API
 // Usage: SUPABASE_URL=<url> SUPABASE_KEY=<service_role_key> node scripts/backup.js
 
@@ -35,7 +36,6 @@ async function fetchAll(table) {
 }
 
 async function backup() {
-  const fs = require('fs');
   const dir = `backups/${new Date().toISOString().slice(0,10)}`;
   fs.mkdirSync(dir, { recursive: true });
 
