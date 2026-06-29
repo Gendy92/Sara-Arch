@@ -4,6 +4,10 @@
 -- the current user is actually a member of the requested tenant.
 -- Admins bypass the check.
 
+DROP POLICY IF EXISTS clients_tenant_isolation ON public.clients;
+DROP POLICY IF EXISTS vendors_tenant_isolation ON public.vendors;
+DROP POLICY IF EXISTS transactions_tenant_isolation ON public.transactions;
+
 DROP POLICY IF EXISTS tenant_scope ON public.clients;
 DROP POLICY IF EXISTS tenant_scope ON public.vendors;
 DROP POLICY IF EXISTS tenant_scope ON public.transactions;
