@@ -5,7 +5,6 @@
 -- Run this in the Supabase SQL Editor.
 -- ============================================
 
-BEGIN;
 
 -- 1) Build canonical map: oldest created_at wins, smallest UUID as tiebreaker.
 WITH canonical AS (
@@ -47,7 +46,6 @@ WHERE deleted_at IS NULL
     ) sub
   );
 
-COMMIT;
 
 -- 4) Prevent future active duplicates at the database level.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_work_items_unique_active
