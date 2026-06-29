@@ -1,6 +1,6 @@
 # Sara-Arch Security Hardening Action Plan
 
-> Last updated: 2026-06-29 (v270 deployed)
+> Last updated: 2026-06-29 (v271 deployed)
 
 ## 1. Current Findings
 
@@ -15,7 +15,7 @@
 |------|--------|--------|
 | SMTP not configured for Supabase Auth | Password-reset emails are not actually sent | Open — requires Supabase project config |
 | `log_app_error()` granted to `anon` | Potential small DoS / log-spam vector | Open — review in v271 |
-| PWA service-worker cache | Users may run stale JS until hard refresh | Monitored; cache name bumped each release |
+| PWA service-worker cache | Users may run stale JS until hard refresh | **Fixed in v271** — update prompt added |
 | CI migration runner used Node 20 without native WebSocket support | Deploy pipeline failed at migration step | **Fixed in v270** |
 
 ## 2. Immediate Fixes Applied (v270)
@@ -64,8 +64,8 @@ After CI deploys v270 and migrations run:
    - Add an in-memory or per-IP throttle in `js/error-reporter.js`.
    - Alternatively restrict the RPC to `authenticated` only and drop `anon` grant.
 
-3. **Tenant-isolation regression test**
-   - Add a lightweight SQL test that creates two tenants, inserts a project in each, and asserts a non-admin user of tenant A cannot see tenant B's `project_balances` row.
+3. **Tenant-isolation regression test** ✅
+   - Added `tests/tenant_isolation.sql` — run it in the Supabase SQL Editor to verify isolation.
 
 ## 5. Medium-Term Hardening
 
