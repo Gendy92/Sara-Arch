@@ -15,9 +15,17 @@
 <meta http-equiv="Expires" content="0">
 <title>سارة أبو العلا — النظام المالي</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="css/style.css?v=270">
+<link rel="stylesheet" href="css/style.css?v=271">
 </head>
 <body>
+<div id="update-prompt" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#2a2a2a;color:#fff;padding:28px;border-radius:12px;text-align:center;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    <h3 style="margin:0 0 12px;color:#c4a97a;font-size:1.25rem;">تحديث جديد متوفر</h3>
+    <p style="margin:0 0 20px;color:#ccc;line-height:1.5;">تم نشر نسخة جديدة من التطبيق. اضغط تحديث للحصول على أحدث الميزات والإصلاحات.</p>
+    <button id="update-now" style="margin:0 6px;padding:10px 20px;background:linear-gradient(135deg,#c4a97a,#d4bc94);color:#14161f;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;">تحديث الآن</button>
+    <button id="update-later" style="margin:0 6px;padding:10px 20px;background:transparent;color:#c4a97a;border:1px solid #c4a97a;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;">لاحقًا</button>
+  </div>
+</div>
 <div id="app">
   <div class="splash-screen">
     <img src="logo.png" alt="Sara Abo Elelaa">
@@ -50,23 +58,7 @@
     });
   }
 
-  function loadAll(version) {
-    var oldVersion = localStorage.getItem('sara_app_version');
-    localStorage.setItem('sara_app_version', version);
-    // If a new version was just deployed, unregister the old service worker
-    // and force a clean reload so the latest assets are always served.
-    if (oldVersion && oldVersion !== String(version)) {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-          return Promise.all(regs.map(function(r) { return r.unregister(); }));
-        }).finally(function() {
-          location.reload(true);
-        });
-      } else {
-        location.reload(true);
-      }
-      return;
-    }
+  function continueLoading(version) {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + version).catch(function(err) {
         console.log('[SW] registration failed:', err);
@@ -113,6 +105,44 @@
       });
   }
 
+  function showUpdatePrompt(version) {
+    var prompt = document.getElementById('update-prompt');
+    var btnUpdate = document.getElementById('update-now');
+    var btnLater = document.getElementById('update-later');
+    if (!prompt || !btnUpdate || !btnLater) {
+      location.reload(true);
+      return;
+    }
+    prompt.style.display = 'flex';
+    btnUpdate.onclick = function() {
+      btnUpdate.disabled = true;
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          return Promise.all(regs.map(function(r) { return r.unregister(); }));
+        }).finally(function() {
+          location.reload(true);
+        });
+      } else {
+        location.reload(true);
+      }
+    };
+    btnLater.onclick = function() {
+      prompt.style.display = 'none';
+      continueLoading(version);
+    };
+  }
+
+  function loadAll(version) {
+    var oldVersion = localStorage.getItem('sara_app_version');
+    localStorage.setItem('sara_app_version', version);
+    // If a new version was just deployed, show a prompt so the user is not
+    // surprised by an automatic reload.
+    if (oldVersion && oldVersion !== String(version)) {
+      showUpdatePrompt(version);
+      return;
+    }
+    continueLoading(version);
+  }
   // Always fetch version.json uncached to detect updates
   fetch('version.json?_=' + Date.now(), { cache: 'no-store' })
     .then(function(r) { return r.json(); })
