@@ -66,16 +66,10 @@ DECLARE
   v_count INT;
   v_ids UUID[];
 BEGIN
-  -- Clean up any leftover rows from ALL previous test runs
+  -- Clean up any leftover rows from ALL previous test runs (by name, so orphans are caught too)
   DELETE FROM public.transactions
-  WHERE project_id IN (
-    SELECT id FROM public.projects
-    WHERE name LIKE 'Test Project _'
-      AND client_id IN (SELECT id FROM public.clients WHERE name LIKE 'Test Client _')
-  );
-  DELETE FROM public.projects
-  WHERE name LIKE 'Test Project _'
-    AND client_id IN (SELECT id FROM public.clients WHERE name LIKE 'Test Client _');
+  WHERE project_id IN (SELECT id FROM public.projects WHERE name LIKE 'Test Project _');
+  DELETE FROM public.projects WHERE name LIKE 'Test Project _';
   DELETE FROM public.clients WHERE name LIKE 'Test Client _';
   DELETE FROM public.user_tenants
   WHERE user_id IN (SELECT id FROM public.profiles WHERE username LIKE 'test_user_');
