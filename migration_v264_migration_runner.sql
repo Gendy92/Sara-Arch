@@ -29,5 +29,9 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.apply_migration(TEXT, TEXT) TO service_role;
 
+-- Prevent anon/authenticated from invoking this powerful RPC.
+REVOKE ALL ON FUNCTION public.apply_migration(TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.apply_migration(TEXT, TEXT) FROM anon, authenticated;
+
 -- Refresh cache
 NOTIFY pgrst, 'reload schema';
