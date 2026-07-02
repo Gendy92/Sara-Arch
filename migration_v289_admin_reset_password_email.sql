@@ -2,7 +2,7 @@
 -- Creates an RPC that generates a random password, saves it to auth.users,
 -- and sends it to the provided email address via Resend.
 --
--- PREREQUISITE: enable the "net" extension in Supabase (Database -> Extensions).
+-- PREREQUISITE: enable the "pg_net" extension in Supabase (Database -> Extensions).
 --
 -- AFTER DEPLOYING, open the Supabase SQL Editor and run (replace with your values):
 --   INSERT INTO public.app_settings (key, value)
@@ -16,7 +16,7 @@
 -- The Resend API key and sender domain must be verified in your Resend account.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS net;
+CREATE EXTENSION IF NOT EXISTS pg_net;
 
 CREATE OR REPLACE FUNCTION public.admin_reset_password_email(
   p_user_id UUID,
@@ -71,10 +71,11 @@ BEGIN
 ' || 'سارة أبو العلا'
   );
 
-  PERFORM extensions.net.http_post(
+  PERFORM net.http_post(
     'https://api.resend.com/emails',
-    jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
-    payload
+    payload,
+    '{}'::jsonb,
+    jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json')
   );
 
   RETURN jsonb_build_object('success', true);
