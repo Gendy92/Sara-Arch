@@ -1106,7 +1106,7 @@ Object.assign(App, {
         App.esc(u.email),
         {html: u.role === 'admin' ? '<span class="badge badge-green">مدير</span>' : '<span class="badge badge-gray">موظف</span>'},
         this.fmtDate(u.created_at),
-        {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل</button>${Auth.isAdmin() ? ` <button class="btn btn-sm btn-red" onclick="Crud.resetUserPassword('${u.id}')">إعادة تعيين كلمة المرور</button>` : ''}`}
+        {html: `<button class="btn btn-sm btn-secondary" onclick="Crud.editUser('${u.id}')">تعديل</button>${Auth.isAdmin() ? ` <button class="btn btn-sm btn-red" onclick="Crud.resetUserPassword('${u.id}')">إعادة تعيين كلمة المرور</button>${u.email && u.email.includes('@') ? ` <button class="btn btn-sm btn-primary" onclick="Crud.emailNewPassword('${u.id}','${App.esc(u.email)}')">إرسال كلمة مرور بالبريد</button>` : ''}` : ''}`}
       ])) : '<p style="color:var(--text3)">لا يوجد مستخدمين</p>';
       this.attachSearch('users-tbl', '🔍 بحث في المستخدمين...');
     } catch (e) {
