@@ -1543,6 +1543,17 @@ const Crud = {
     });
   },
 
+  async emailNewPassword(id, email) {
+    if (!email || !email.includes('@')) { UI.toast('لا يوجد بريد إلكتروني صالح لهذا المستخدم', 'error'); return; }
+    UI.confirm(`إرسال كلمة مرور جديدة إلى ${App.esc(email)}؟`, async () => {
+      try {
+        const res = await API.rpc('admin_reset_password_email', { p_user_id: id, p_email: email });
+        if (!res?.success) { UI.toast(res?.error || 'فشل إرسال البريد', 'error'); return; }
+        UI.toast('تم إرسال كلمة المرور الجديدة إلى البريد الإلكتروني');
+      } catch (e) { UI.toast(e.message || 'فشل إرسال البريد', 'error'); }
+    });
+  },
+
   // ─── MASTER DATA: SECTORS & ITEMS ───
   addSector() {
     const cols = [
