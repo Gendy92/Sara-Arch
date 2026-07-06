@@ -332,8 +332,8 @@ Employee ──payroll──► Salary expense
 2. **Client-level vs. project-level balance** *(resolved)*
    - Client list, client detail, project detail, and dashboard now all subtract supervision consistently using the same balance views.
 
-3. **Overpayments**
-   - The system allows `Paid Amount > Amount`. Decide whether to warn/block.
+3. **Overpayments** *(resolved in v175+)*
+   - `Crud.save()` / `bulkSave()` now reject `paid_amount > amount` for transactions and procurements server-side.
 
 4. **Credit vs. immediate vs. settlement**
    - Payment term is inferred from amount/paid comparison. It is not independently validated against the paid amount.
@@ -341,6 +341,12 @@ Employee ──payroll──► Salary expense
 5. **Employee module (on hold)**
    - Payroll, attendance, and custody RLS policies are currently open because the module is disabled.
    - When enabled, these must follow the same owner/admin permission model.
+
+6. **Retention / holdback (ضمان الأعمال)**
+   - Not implemented. Decide whether retention should be a separate transaction type, a project-level field, or an invoice line-item deduction.
+
+7. **Password-reset email delivery verification**
+   - The new `admin_reset_password_email` RPC (v289) enqueues the email via `pg_net`. The RPC returns success immediately; actual Resend delivery status must be checked in Resend logs or `net._http_response`.
 
 ---
 
@@ -368,8 +374,10 @@ Office-level configuration is persisted server-side in the `app_settings` table 
 - Settings are loaded at startup and merged with a `localStorage` fallback.
 - Only administrators can modify settings via RLS.
 - Shared keys: `company_name`, `company_address`, `company_phone`, `company_tax`, `default_supervision`, `currency_label`.
+- Email keys (added in v289): `resend_api_key`, `email_sender`. Required for the admin **"send new password by email"** feature.
 
 ---
 
-**Version:** 1.2  
-**Branch:** `dev.2`
+**Version:** 1.3  
+**Branch:** `main`  
+**Updated:** 2026-07-06
