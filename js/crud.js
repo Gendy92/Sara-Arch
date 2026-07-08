@@ -1049,7 +1049,6 @@ const Crud = {
       { key: 'item_id', label: 'البند', type: 'select', opts: [{ v: '', l: '-- اختر بند --' }] },
       { key: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
-      { key: 'paid_amount', label: 'المدفوع', type: 'number' },
       { key: 'date', label: 'التاريخ *', type: 'date', req: true },
       { key: 'description', label: 'الوصف' }
     ];
@@ -1061,13 +1060,11 @@ const Crud = {
         const item = workItems.find(i => i.id === r.item_id);
         if (!project) { UI.toast('مشروع غير موجود', 'error'); throw new Error('invalid project'); }
         if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
-        let amount = +r.amount || 0;
-        let paid_amount = +r.paid_amount || 0;
+        const amount = +r.amount || 0;
+        const paid_amount = amount;
         const payment_method = r.payment_method || null;
-        // Auto-compute payment_term for backward compatibility
-        let payment_term = 'immediate';
-        if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
-        else if (amount > paid_amount) payment_term = 'credit';
+        // Project expenses are treated as fully paid; vendor balance is tracked separately
+        const payment_term = 'immediate';
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
@@ -1387,11 +1384,10 @@ const Crud = {
         { name: 'item_id', label: 'البند', type: 'select', opts: itemOpts },
         { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'إيداع بنكي' }, { v: 'transfer', l: 'تحويل' }] },
         { name: 'amount', label: 'المبلغ', type: 'number', req: true },
-        { name: 'paid_amount', label: 'المدفوع', type: 'number' },
         { name: 'date', label: 'التاريخ *', type: 'date', req: true },
         { name: 'description', label: 'الوصف', type: 'textarea' }
       ];
-      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '', paid_amount: tx.paid_amount !== undefined ? tx.paid_amount : (tx.amount || 0) })}</form>`, async (form) => {
+      const overlay = UI.openModal('تعديل مصروف مشروع', `<form>${UI.form(fields, { ...tx, client_id: tx.client_id || '', project_id: tx.project_id || '', vendor_id: tx.vendor_id || '', section_id: tx.section_id || '', item_id: tx.item_id || '', payment_method: tx.payment_method || '' })}</form>`, async (form) => {
         const fd = new FormData(form);
         const project = projects.find(p => String(p.id) === String(fd.get('project_id')));
         const vendor = vendors.find(v => String(v.id) === String(fd.get('vendor_id')));
@@ -1399,13 +1395,11 @@ const Crud = {
         const item = workItems.find(i => String(i.id) === String(fd.get('item_id')));
         if (!project) { UI.toast('مشروع غير موجود', 'error'); return; }
         if (fd.get('client_id') && String(project.client_id) !== String(fd.get('client_id'))) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); return; }
-        let amount = +fd.get('amount') || 0;
-        let paid_amount = +fd.get('paid_amount') || 0;
+        const amount = +fd.get('amount') || 0;
+        const paid_amount = amount;
         const payment_method = fd.get('payment_method') || null;
-        // Auto-compute payment_term for backward compatibility
-        let payment_term = 'immediate';
-        if (amount === 0 && paid_amount > 0) payment_term = 'settlement';
-        else if (amount > paid_amount) payment_term = 'credit';
+        // Project expenses are treated as fully paid; vendor balance is tracked separately
+        const payment_term = 'immediate';
         // Auto-compute expense_category from section name
         const sectionName = section ? section.name : '';
         const expense_category = sectionName.includes('تصميم') ? 'design' : 'construction';
