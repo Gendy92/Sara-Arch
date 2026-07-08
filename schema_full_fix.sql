@@ -1137,7 +1137,10 @@ BEGIN
   v_project_expenses := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'project_expense'), 0);
   v_vendor_settlements := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'vendor_settlement'), 0);
   v_owner_deposits := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'owner_deposit'), 0);
-  v_office_vendor_income := COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement')), 0);
+  v_office_vendor_income :=
+    COALESCE((SELECT SUM(t.paid_amount) FROM transactions t JOIN vendors v ON v.id = t.vendor_id WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type = 'vendor_settlement'), 0)
+    +
+    COALESCE((SELECT SUM(p.paid_amount) FROM procurements p JOIN vendors v ON v.id = p.vendor_id WHERE p.deleted_at IS NULL AND v.is_office IS TRUE), 0);
   v_office_income := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'income'), 0);
   v_office_expenses := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'office_expense'), 0);
   v_withdrawals := COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.deleted_at IS NULL AND t.type = 'withdrawal'), 0);
@@ -1208,11 +1211,21 @@ BEGIN
     GROUP BY to_char(t.date, 'YYYY-MM')
   ),
   office_vendor_income AS (
-    SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
-    FROM transactions t
-    JOIN vendors v ON v.id = t.vendor_id
-    WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type IN ('project_expense','vendor_settlement') AND t.date >= filter_start_date
-    GROUP BY to_char(t.date, 'YYYY-MM')
+    SELECT mk, SUM(amt) AS amt
+    FROM (
+      SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.paid_amount) AS amt
+      FROM transactions t
+      JOIN vendors v ON v.id = t.vendor_id
+      WHERE t.deleted_at IS NULL AND v.is_office IS TRUE AND t.type = 'vendor_settlement' AND t.date >= filter_start_date
+      GROUP BY to_char(t.date, 'YYYY-MM')
+      UNION ALL
+      SELECT to_char(p.date, 'YYYY-MM') AS mk, SUM(p.paid_amount) AS amt
+      FROM procurements p
+      JOIN vendors v ON v.id = p.vendor_id
+      WHERE p.deleted_at IS NULL AND v.is_office IS TRUE AND p.date >= filter_start_date
+      GROUP BY to_char(p.date, 'YYYY-MM')
+    ) u
+    GROUP BY mk
   ),
   office_income AS (
     SELECT to_char(t.date, 'YYYY-MM') AS mk, SUM(t.amount) AS amt
@@ -1519,7 +1532,9 @@ WITH base AS (
     COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.payment_method = 'bank' THEN t.amount ELSE 0 END), 0) +
     COALESCE(SUM(CASE WHEN t.type = 'transfer' AND t.transfer_to = 'bank' THEN t.amount ELSE 0 END), 0) AS bank_balance,
     COALESCE((SELECT SUM(pb.supervision) FROM project_balances pb JOIN projects p ON p.id = pb.project_id WHERE p.deleted_at IS NULL), 0) AS supervision_income,
-    COALESCE((SELECT SUM(t2.paid_amount) FROM transactions t2 JOIN vendors v ON v.id = t2.vendor_id WHERE t2.deleted_at IS NULL AND v.is_office IS TRUE AND t2.type IN ('project_expense','vendor_settlement')), 0) AS office_vendor_income
+    COALESCE((SELECT SUM(t2.paid_amount) FROM transactions t2 JOIN vendors v ON v.id = t2.vendor_id WHERE t2.deleted_at IS NULL AND v.is_office IS TRUE AND t2.type = 'vendor_settlement'), 0)
+    +
+    COALESCE((SELECT SUM(p.paid_amount) FROM procurements p JOIN vendors v ON v.id = p.vendor_id WHERE p.deleted_at IS NULL AND v.is_office IS TRUE), 0) AS office_vendor_income
   FROM transactions t
   WHERE t.deleted_at IS NULL AND t.type IN ('owner_deposit','office_expense','withdrawal','custody_return','income','transfer')
 )
