@@ -105,3 +105,32 @@ After restore, log in to the staging app and confirm:
 
 If a GitHub OAuth token was ever used in a shell command or shared, revoke it:
 - GitHub → **Settings → Developer settings → Personal access tokens / Authorized OAuth apps** → remove the token/app.
+
+---
+
+## 5. Enable GitHub 2FA on the owner account
+
+If the repository owner (`Gendy92`) does not have 2FA enabled, enable it immediately:
+
+1. GitHub → **Settings → Account security**.
+2. Click **Enable two-factor authentication**.
+3. Choose an authenticator app (recommended) or SMS.
+4. Save the recovery codes in a secure offline location.
+
+Without 2FA, a compromised password gives an attacker full control of the repo, secrets, and Pages site.
+
+---
+
+## 6. Verify the secret-scan workflow
+
+A `.github/workflows/secret-scan.yml` job runs on every push/PR and blocks obvious tokens. If it fails:
+
+1. Check the failing file and line in the Actions log.
+2. If it is a real secret, revoke/rotate it before pushing again.
+3. If it is a false positive (e.g., a dummy key in a test fixture), review carefully and use `git commit --no-verify` only as a last resort.
+
+The local pre-commit hook (`.githooks/pre-commit`) runs the same checks. To enable it:
+
+```bash
+git config core.hooksPath .githooks
+```
