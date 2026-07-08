@@ -405,3 +405,7 @@ const App = {
   fmtDate(d) { return Utils.fmtDate(d); },
   fmtTxType(type) { return Utils.fmtTxType(type); },
 };
+
+if (typeof window !== 'undefined') {
+  window.App = App;
+}
