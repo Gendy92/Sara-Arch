@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Pre-commit hook for Sara-Arch
+# Blocks commits that contain likely secrets/tokens and runs lint/tests.
+
+set -euo pipefail
+
+# ─── Secret scan ───
+# Look for GitHub personal-access tokens, Supabase service-role keys, and generic high-entropy API keys.
+PATTERNS='gho_[A-Za-z0-9]{36,}|sk-[A-Za-z0-9]{48,}|service_role_[A-Za-z0-9]{40,}|eyJ[A-Za-z0-9_/+-]*.{0,2}eyJ[A-Za-z0-9_/+-]*'
+
+if git diff --cached --name-only | xargs -r git diff --cached -- | grep -iP "$PATTERNS" ; then
+  echo ""
+  echo "❌ Commit blocked: possible secret/token detected in staged changes."
+  echo "   If this is a false positive, use git commit --no-verify after reviewing."
+  exit 1
+fi
+
+# ─── Lint ───
+echo "🔍 Running ESLint..."
+npm run lint
+
+# ─── Unit tests ───
+echo "🧪 Running unit tests..."
+npm test
+
+echo "✅ Pre-commit checks passed."

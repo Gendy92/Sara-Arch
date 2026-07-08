@@ -1,6 +1,6 @@
 # Sara-Arch Security Hardening Action Plan
 
-> Last updated: 2026-06-29 (v275 deployed)
+> Last updated: 2026-06-15 (v292 deployed)
 
 ## 1. Current Findings
 
@@ -67,7 +67,17 @@ After CI deploys v270 and migrations run:
 3. **Tenant-isolation regression test** ✅
    - Added `tests/tenant_isolation.sql` — run it in the Supabase SQL Editor to verify isolation.
 
-## 5. Manual Hardening (see `docs/SECURITY_RUNBOOK.md`)
+## 5. Recent Automated Hardening (v291–v292)
+
+| Finding | Risk | Status |
+|---------|------|--------|
+| ESLint warnings | Low — code noise, potential bugs | **Fixed** — `0 errors, 0 warnings` |
+| Dev dependency audit vulnerabilities (esbuild/vite/vitest) | Medium — CI/dev environment | **Fixed** — `npm audit` now reports `0 vulnerabilities` after upgrading vitest to v4 |
+| `paid_amount > amount` allowed at save time | Medium — silent financial overpayment | **Fixed** — `Crud.save()` now throws before API call (excludes `vendor_settlement`) |
+| Missing pre-commit secret/lint/test gate | High — tokens or broken code can be committed | **Fixed** — `.githooks/pre-commit` blocks `gho_`/`sk-`/JWT-like strings and runs lint + tests |
+| `office_vendor_income` still counted `project_expense.paid_amount` as cash | High — incorrect dashboard/office balance after v291 | **Fixed in v292** — migration + `schema_full_fix.sql` now use `vendor_settlement` + procurement `paid_amount` only |
+
+## 6. Manual Hardening (see `docs/SECURITY_RUNBOOK.md`)
 
 The steps below require Supabase dashboard / GitHub Secrets access and are documented in detail in `docs/SECURITY_RUNBOOK.md`:
 

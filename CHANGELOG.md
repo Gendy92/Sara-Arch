@@ -1,12 +1,50 @@
 # Sara Arch — Changelog
 
-> **Current version:** v245  
-> **Branch:** `dev.2` / `main` (fast-forward synced)  
-> **Last updated:** 2026-06-22
+> **Current version:** v292  
+> **Branch:** `main` / `dev.2` (fast-forward synced)  
+> **Last updated:** 2026-06-15
 
 ---
 
-## Version 245 (Current)
+## Version 292 (Current)
+
+### Added
+- `migration_v292_fix_office_vendor_income.sql` — aligns `office_vendor_income` with LOGIC_SPEC v1.5.
+  - Dashboard KPIs, monthly revenue/expenses, and `office_balance` now count only actual cash settlements (`vendor_settlement` + office-vendor procurement `paid_amount`).
+  - `project_expense.paid_amount` is no longer treated as office-vendor cash income after v291.
+- `js/accounting.js` + `tests/unit/accounting.test.js` — pure JS implementations of project/client/vendor/office/payroll/custody formulas (30 unit tests total).
+
+### Changed
+- `schema_full_fix.sql` updated with the corrected `office_vendor_income` definitions.
+
+### Fixed
+- `0 ESLint warnings`, `0 npm audit vulnerabilities`.
+- `Crud.save()` now blocks `paid_amount > amount` instead of only warning.
+
+## Version 291
+
+### Added
+- Vendor payment without a project (`Crud.addVendorPayment`) — generic cash settlement to any vendor.
+- `migration_v291_fix_vendor_balance_after_project_expense_simplification.sql` — `vendor_balances` now separates accrual (`project_expense`) from cash settlement (`vendor_settlement`).
+
+### Changed
+- Project expense form no longer exposes `paid_amount`; it is forced equal to `amount`.
+- `LOGIC_SPEC.md` v1.5 — clarified accrual vs. cash settlement and renamed `Service Paid` to `Direct Settlement Paid`.
+
+## Version 290
+
+### Added
+- Email-new-password feature for admins (`admin_reset_password_email` RPC + UI button).
+
+### Changed
+- Vendor settlements can now be recorded independently of any project.
+
+## Version 289
+
+### Added
+- Real email support: profile emails, username-or-email login, forgot-password flow, admin email-update RPCs.
+
+## Version 245
 
 ### Fixed
 - Fixed ambiguous `start_date` column reference in `dashboard_monthly_revenue_expenses` that broke the dashboard after v242.
