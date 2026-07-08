@@ -3076,3 +3076,7 @@ const Crud = {
     });
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.Crud = Crud;
+}

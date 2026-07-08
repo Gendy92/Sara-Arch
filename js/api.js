@@ -234,3 +234,7 @@ const API = {
     select(cols) { return `select=${encodeURIComponent(cols)}`; }
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.API = API;
+}
