@@ -39,6 +39,16 @@ Alternatively, run **`migration_v267_unified_recent_changes.sql`** once to apply
 | v267 | `migration_v267_unified_recent_changes.sql` | Unified migration for v263–v269 | **Manual (run once)** | - | Single file to bootstrap everything |
 | v268 | `migration_v268_fix_profile_self_insert_rls.sql` | Prevent self-signup as admin | **Auto** | - | Applied by CI after v264 runner |
 | v269 | `migration_v269_create_app_settings.sql` | Create missing app_settings table | **Auto** | - | Applied by CI after v264 runner |
+| v270 | `migration_v270_security_advisor_hardening.sql` | Switch balance views to `security_invoker`, enable schema_migrations RLS | **Auto** | - | Applied by CI after v264 runner |
+| v273 | `migration_v273_rate_limit_app_errors.sql` | Per-IP rate limit on `log_app_error()` + client-side throttle | **Auto** | - | Applied by CI after v264 runner |
+| v285 | `migration_v285_stricter_tenant_isolation.sql` | Stricter tenant isolation policies + diagnostics | **Auto** | - | Applied by CI after v264 runner |
+| v286 | `migration_v286_lock_apply_migration.sql` | Advisory lock around `apply_migration()` to prevent concurrent runs | **Auto** | - | Applied by CI after v264 runner |
+| v287 | `migration_v287_cleanup_verification_helpers.sql` | Drop stale verification views/functions | **Auto** | - | Applied by CI after v264 runner |
+| v288 | `migration_v288_fix_app_settings_admin_policy.sql` | Fix `app_settings` RLS admin policy | **Auto** | - | Applied by CI after v264 runner |
+| v289 | `migration_v289_admin_reset_password_email.sql` | Admin "email new password" RPC + profile helper | **Auto** | - | Applied by CI after v264 runner |
+| v291 | `migration_v291_fix_vendor_balance_after_project_expense_simplification.sql` | Separate accrual (`project_expense`) from cash settlement (`vendor_settlement`) in `vendor_balances` | **Auto** | - | Applied by CI after v264 runner |
+| v292 | `migration_v292_fix_office_vendor_income.sql` | Align `office_vendor_income` with LOGIC_SPEC v1.5 (exclude `project_expense.paid_amount`) | **Auto** | - | Applied by CI after v264 runner; run `verify_high_priority.sql` after apply |
+| v293 | `migration_v293_add_common_indexes.sql` | Add indexes for transactions, projects, employees, custody, audit | **Auto** | - | Applied by CI after v264 runner |
 
 ## Adding a new migration
 
