@@ -1,0 +1,14 @@
+# Normalize line endings to CRLF on checkout to match the Windows dev environment.
+* text=auto eol=crlf
+
+# Treat binary files as binary (do not convert line endings).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.zip binary
