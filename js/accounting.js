@@ -50,6 +50,15 @@ const Accounting = {
     return given - spent - returned;
   },
 
+  // Retention / holdback
+  retainedAmount(depositAmount, retentionPercentage) {
+    return Math.round((+depositAmount || 0) * (+retentionPercentage || 0)) / 100;
+  },
+
+  netDeposit({ deposits = 0, retentionWithheld = 0, retentionReleased = 0 }) {
+    return (+deposits || 0) - (+retentionWithheld || 0) + (+retentionReleased || 0);
+  },
+
   // Basic balance equation
   unpaidBalance(amount, paidAmount) {
     return amount - paidAmount;

@@ -291,12 +291,13 @@ Object.assign(App, {
 
   async loadProject(projectId) {
     try {
-      const [projectRows, pbRows, txs, tasks, sectionRates] = await Promise.all([
+      const [projectRows, pbRows, txs, tasks, sectionRates, closes] = await Promise.all([
         API.request('projects', 'GET', null, `?select=*,clients(name)&id=eq.${projectId}&deleted_at=is.null`),
         API.request('project_balances', 'GET', null, `?select=*&project_id=eq.${projectId}`),
         API.request('transactions', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=date.desc&limit=100`),
         API.request('project_tasks', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=due_date.asc&limit=50`),
-        API.request('project_section_supervision', 'GET', null, `?select=section_id,percentage,work_sections(name)&project_id=eq.${projectId}`)
+        API.request('project_section_supervision', 'GET', null, `?select=section_id,percentage,work_sections(name)&project_id=eq.${projectId}`),
+        API.request('project_period_closes', 'GET', null, `?select=*&project_id=eq.${projectId}&deleted_at=is.null&order=period_end.desc`)
       ]);
       const project = projectRows[0];
       if (!project) { document.getElementById('project-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ المشروع غير موجود</p>'; return; }
@@ -305,17 +306,28 @@ Object.assign(App, {
       const deposits = pb.deposits || 0;
       const expenses = pb.expenses || 0;
       const supervision = pb.supervision || 0;
+      const retentionWithheld = pb.retention_withheld || 0;
+      const retentionReleased = pb.retention_released || 0;
       const balance = pb.balance || 0;
+      const netDeposit = deposits - retentionWithheld + retentionReleased;
 
       const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">القيمة</div><div class="kpi-value">${this.fmtMoney(project.value)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإيداعات الصافية</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(netDeposit)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">ضمان محجوز</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(retentionWithheld)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">ضمان مُرجع</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(retentionReleased)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
       </div>`;
 
-      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${project.client_id}', '${project.id}')">⬅️ مرتجع</button>`;
+      const isAdmin = Auth.isAdmin();
+      const retentionBtn = (isAdmin || Auth.can('transactions', 'add')) && (+project.retention_percentage || 0) > 0
+        ? ` <button class="btn btn-sm btn-secondary" onclick="Crud.releaseRetention('${project.id}', '${project.client_id}', '${App.esc(project.name)}', '${App.esc(project.clients?.name || project.client_name || '')}')">🔓 إرجاع ضمان</button>` : '';
+      const closePeriodBtn = isAdmin
+        ? ` <button class="btn btn-sm btn-secondary" onclick="Crud.closeProjectPeriod('${project.id}')">🔒 قفل دورة إشراف</button>` : '';
+      const actions = UI.actions(project.id, 'Crud.editProject', 'Crud.delProject', Auth.can('clients', 'edit'), Auth.can('clients', 'delete')) + ` <button class="btn btn-sm btn-primary" onclick="Crud.projectStatement('${project.id}')">كشف حساب</button> <button class="btn btn-sm btn-secondary" onclick="Crud.loadProjectTasks('${project.id}')">📋 مهام</button> <button class="btn btn-sm btn-secondary" onclick="Crud.addClientReturn('${project.client_id}', '${project.id}')">⬅️ مرتجع</button>${retentionBtn}${closePeriodBtn}`;
       const ratesHtml = sectionRates.length ? `<div style="margin-bottom:16px"><h4 style="margin:0 0 8px;color:var(--text2)">نسب الإشراف حسب القسم</h4><div style="display:flex;gap:8px;flex-wrap:wrap">` +
         sectionRates.map(r => `<span class="badge badge-gray">${App.esc(r.work_sections?.name || r.section_id)}: ${r.percentage || 0}%</span>`).join('') +
         `</div></div>` : '';
@@ -330,8 +342,13 @@ Object.assign(App, {
         ${ratesHtml}
       </div>`;
 
-      const txRows = txs.map((t, i) => [i+1, t.date || '-', App.fmtTxType(t.type), t.description || '-', this.fmtMoney(t.amount)]);
+      const txRows = txs.map((t, i) => [i+1, t.date || '-', App.fmtTxType(t.type) + (t.system_generated ? ' 🔒' : ''), t.description || '-', this.fmtMoney(t.amount)]);
       const txTable = txRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">💰 المعاملات</h4>' + this.table(['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'], txRows) : '';
+      const closeRows = closes.filter(c => !c.reopened_at).map((c, i) => {
+        const reopen = isAdmin ? ` <button class="btn btn-sm btn-red" onclick="Crud.reopenProjectPeriod('${c.id}', '${project.id}')">إعادة فتح</button>` : '';
+        return [i+1, c.period_start || '-', c.period_end || '-', this.fmtMoney(c.supervision_transaction_id ? (txs.find(t => t.id === c.supervision_transaction_id)?.amount || 0) : 0), {html: reopen}];
+      });
+      const closesTable = closeRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">🔒 دورات إشراف مقفلة</h4>' + this.table(['#', 'من', 'إلى', 'إشراف', ''], closeRows) : '';
 
       const statusBadge = (s) => {
         const colors = { pending: 'gray', in_progress: 'blue', done: 'green' };
@@ -347,7 +364,7 @@ Object.assign(App, {
       const taskTable = taskRows.length ? '<h4 style="margin:12px 0 8px;color:var(--text2)">📋 المهام</h4>' + this.table(['#', 'المهمة', 'المسؤول', 'تاريخ البدء', 'تاريخ الاستحقاق', 'الحالة', 'الأولوية'], taskRows) : '';
 
       document.getElementById('project-detail-name').textContent = '🏗️ ' + project.name;
-      document.getElementById('project-detail').innerHTML = summary + info + txTable + taskTable;
+      document.getElementById('project-detail').innerHTML = summary + info + closesTable + txTable + taskTable;
     } catch (e) {
       UI.toast('فشل تحميل تفاصيل المشروع: ' + e.message, 'error');
       App.loadErrorHtml('project-detail', 'تعذر تحميل البيانات', `App.loadProject('${projectId}')`, e);
@@ -466,15 +483,19 @@ Object.assign(App, {
       const txPerPage = 10;
 
       // KPIs from project_balances view
-      const projectBalances = await API.request('project_balances', 'GET', null, '?select=deposits,expenses,supervision,balance');
+      const projectBalances = await API.request('project_balances', 'GET', null, '?select=deposits,expenses,supervision,balance,retention_withheld,retention_released');
       const deposits = projectBalances.reduce((s, b) => s + (+b.deposits || 0), 0);
       const expenses = projectBalances.reduce((s, b) => s + (+b.expenses || 0), 0);
       const supervision = projectBalances.reduce((s, b) => s + (+b.supervision || 0), 0);
+      const retentionWithheld = projectBalances.reduce((s, b) => s + (+b.retention_withheld || 0), 0);
+      const retentionReleased = projectBalances.reduce((s, b) => s + (+b.retention_released || 0), 0);
       const balance = projectBalances.reduce((s, b) => s + (+b.balance || 0), 0);
       document.getElementById('tx-kpis').innerHTML = `
         <div class="kpi-card"><div class="kpi-label">إجمالي الوارد</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(deposits)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي المصروفات</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(expenses)}</div></div>
         <div class="kpi-card"><div class="kpi-label">إجمالي الإشراف</div><div class="kpi-value" style="color:var(--gold)">${this.fmtMoney(supervision)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">ضمان محجوز</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(retentionWithheld)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">ضمان مُرجع</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(retentionReleased)}</div></div>
         <div class="kpi-card"><div class="kpi-label">رصيد المشروعات</div><div class="kpi-value" style="color:var(--blue)">${this.fmtMoney(balance)}</div></div>`;
 
       // Main table: server-side paginated project transactions view

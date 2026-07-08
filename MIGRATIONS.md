@@ -49,6 +49,7 @@ Alternatively, run **`migration_v267_unified_recent_changes.sql`** once to apply
 | v291 | `migration_v291_fix_vendor_balance_after_project_expense_simplification.sql` | Separate accrual (`project_expense`) from cash settlement (`vendor_settlement`) in `vendor_balances` | **Auto** | - | Applied by CI after v264 runner |
 | v292 | `migration_v292_fix_office_vendor_income.sql` | Align `office_vendor_income` with LOGIC_SPEC v1.5 (exclude `project_expense.paid_amount`) | **Auto** | - | Applied by CI after v264 runner; run `verify_high_priority.sql` after apply |
 | v293 | `migration_v293_add_common_indexes.sql` | Add indexes for transactions, projects, employees, custody, audit | **Auto** | - | Applied by CI after v264 runner |
+| v294 | `migration_v294_retention_and_supervision_audit.sql` | Retention/holdback tracking + supervision period-close audit rows | **Pending** | - | Apply after v264 runner is active; requires `npm run health` |
 
 ## Adding a new migration
 

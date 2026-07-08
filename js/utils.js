@@ -31,7 +31,10 @@ const Utils = {
       client_return: 'مرتجع عميل',
       vendor_settlement: 'تسديد متأخرات مورد',
       office_income: 'إيراد مكتب',
-      transfer: 'تحويل داخلي'
+      transfer: 'تحويل داخلي',
+      custody_return: 'رد عهدة',
+      retention_withheld: 'ضمان أعمال محجوز',
+      retention_released: 'إرجاع ضمان أعمال'
     };
     return map[type] || type;
   },

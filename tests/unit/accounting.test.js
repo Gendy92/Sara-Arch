@@ -62,6 +62,17 @@ describe('Office balance', () => {
   });
 });
 
+describe('Retention / holdback', () => {
+  it('computes retained amount from deposit and percentage', () => {
+    expect(Accounting.retainedAmount(100000, 10)).toBe(10000);
+  });
+
+  it('computes net deposit after withheld and released retention', () => {
+    expect(Accounting.netDeposit({ deposits: 100000, retentionWithheld: 10000, retentionReleased: 0 })).toBe(90000);
+    expect(Accounting.netDeposit({ deposits: 100000, retentionWithheld: 10000, retentionReleased: 10000 })).toBe(100000);
+  });
+});
+
 describe('Custody & row balance', () => {
   it('computes remaining custody', () => {
     expect(Accounting.custodyRemaining({ given: 5000, spent: 2500, returned: 1000 })).toBe(1500);

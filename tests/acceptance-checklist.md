@@ -54,6 +54,10 @@
 | PROJ-04 | Project statement | Includes deposits and project_expense transactions | ☐ Pass ☐ Fail | |
 | PROJ-05 | Client statement | Per-project chapters and client summary correct | ☐ Pass ☐ Fail | |
 | PROJ-06 | Supervision consistency | Client list, client detail, project detail, and dashboard subtract supervision the same way | ☐ Pass ☐ Fail | |
+| PROJ-07 | Retention percentage | Project form accepts 0–100%; deposit auto-creates retention_withheld row | ☐ Pass ☐ Fail | |
+| PROJ-08 | Retention release | Admin can release retention; project balance updates | ☐ Pass ☐ Fail | |
+| PROJ-09 | Period close | Admin can close a project period; system-generated supervision row appears | ☐ Pass ☐ Fail | |
+| PROJ-10 | Period reopen | Reopening a period deletes the system-generated supervision row | ☐ Pass ☐ Fail | |
 
 ---
 
@@ -67,6 +71,9 @@
 | TX-04 | Edit a transaction | Amount/type updated everywhere | ☐ Pass ☐ Fail | |
 | TX-05 | Delete a transaction | Soft-deleted, removed from statements | ☐ Pass ☐ Fail | |
 | TX-06 | Overpayment validation | Save rejected when paid amount > total amount | ☐ Pass ☐ Fail | |
+| TX-07 | Retention withheld row | Auto-created for deposits when project retention % > 0 | ☐ Pass ☐ Fail | |
+| TX-08 | Retention released row | Manual release creates retention_released transaction | ☐ Pass ☐ Fail | |
+| TX-09 | System-generated row protection | Cannot edit/delete system-generated supervision or retention_withheld rows | ☐ Pass ☐ Fail | |
 
 ---
 

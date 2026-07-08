@@ -1,8 +1,9 @@
 # Decision Doc — Supervision as a System-Locked Audit Row
 
-**Status:** Open decision  
+**Status:** Adopted / Implemented in v294  
 **Date:** 2026-07-06  
-**Applies to:** Sara-Arch v289+  
+**Decision date:** 2026-07-09  
+**Applies to:** Sara-Arch v294+  
 **Stakeholders:** Product owner, accountant, lead dev
 
 ---

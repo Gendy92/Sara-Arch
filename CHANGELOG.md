@@ -1,12 +1,38 @@
 # Sara Arch — Changelog
 
-> **Current version:** v292  
+> **Current version:** v294  
 > **Branch:** `main` / `dev.2` (fast-forward synced)  
-> **Last updated:** 2026-06-15
+> **Last updated:** 2026-07-09
 
 ---
 
-## Version 292 (Current)
+## Version 294 (Current)
+
+### Added
+- **Retention / holdback tracking** (Decision 1.2):
+  - `projects.retention_percentage` field (0–100%).
+  - New transaction types `retention_withheld` and `retention_released`.
+  - Auto-generated `retention_withheld` row linked to every `project_deposit` when retention % > 0.
+  - Admin UI to release retention on a project.
+  - `project_balances` and `client_balances` now report `retention_withheld`, `retention_released`, and adjusted `balance`.
+- **Supervision period-close audit row** (Decision 1.1):
+  - New `project_period_closes` table.
+  - `close_project_period()` RPC creates a system-locked `supervision` transaction for a date range.
+  - `reopen_project_period()` RPC reopens a closed period and soft-deletes the linked supervision row.
+  - Admin "Close period" / "Reopen" UI on project detail.
+- `system_generated` flag on `transactions`; system-generated and retention-withheld rows are blocked from manual edit/delete.
+
+### Changed
+- `schema_full_fix.sql` updated with v294 tables, columns, views, functions, triggers, and indexes.
+- `project_transactions_view` now includes actual `supervision`, `retention_withheld`, and `retention_released` rows.
+- `LOGIC_SPEC.md` updated with retention formulas and supervision audit-row behavior.
+
+### Fixed
+- `npm run health` passes: 0 ESLint errors, 48/48 unit tests, 0 npm audit vulnerabilities.
+
+---
+
+## Version 292
 
 ### Added
 - `migration_v292_fix_office_vendor_income.sql` — aligns `office_vendor_income` with LOGIC_SPEC v1.5.

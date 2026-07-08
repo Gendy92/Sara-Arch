@@ -44,11 +44,15 @@ Unpaid Balance = Amount − Paid Amount
 For a single project, gather all its live (non-deleted) transactions:
 
 ```
-Project Deposits  = Σ Amount of all project_deposit transactions
-Project Expenses  = Σ Amount of all project_expense transactions
-Design Expenses   = Σ Amount of project_expense where category = design
-Construction Exp. = Project Expenses − Design Expenses
+Project Deposits      = Σ Amount of all project_deposit transactions
+Project Expenses      = Σ Amount of all project_expense transactions
+Design Expenses       = Σ Amount of project_expense where category = design
+Construction Exp.     = Project Expenses − Design Expenses
+Retention Withheld    = Σ Amount of retention_withheld transactions
+Retention Released    = Σ Amount of retention_released transactions
 ```
+
+`Retention %` is stored on the project master record. When a `project_deposit` is saved and `Retention % > 0`, a companion `retention_withheld` row is auto-generated for `Deposit × Retention %`.
 
 ### 2.2 Supervision Fee
 
@@ -60,13 +64,15 @@ Supervision Fee = Construction Expenses × (Supervision % / 100)
 
 Where `Supervision %` is set on the project master record.
 
-**Important:** Supervision is **computed on demand** and is **not stored as a separate transaction row**. It affects project net balance and office income, but it does not appear directly in the transaction list unless a manual supervision transaction is created.
+**Live supervision** is **computed on demand** and affects project net balance and office income. When an admin closes a project period, a `system_generated = true` `supervision` transaction row is created as an immutable audit snapshot for that period. This stored row is excluded from live supervision totals to avoid double counting.
 
 ### 2.3 Project Net Balance
 
 ```
-Project Net Balance = Project Deposits − Project Expenses − Supervision Fee
+Project Net Balance = Project Deposits − Project Expenses − Supervision Fee − Retention Withheld + Retention Released
 ```
+
+`Net Usable Deposit = Project Deposits − Retention Withheld + Retention Released`.
 
 Interpretation:
 - **Positive** → client still owes money (deposits exceed costs + fee).
@@ -77,13 +83,15 @@ Interpretation:
 
 ### 2.4 Client Balance
 
-A client may have many projects. The client balance is the sum of the net balances of all client projects, with supervision applied consistently everywhere:
+A client may have many projects. The client balance is the sum of the net balances of all client projects, with supervision and retention applied consistently everywhere:
 
 ```
-Client Deposits    = Σ Project Deposits     (for all client projects)
-Client Expenses    = Σ Project Expenses     (for all client projects)
-Client Supervision = Σ Supervision Fee      (for all client projects)
-Client Balance     = Client Deposits − Client Expenses − Client Supervision
+Client Deposits         = Σ Project Deposits       (for all client projects)
+Client Expenses         = Σ Project Expenses       (for all client projects)
+Client Supervision      = Σ Supervision Fee        (for all client projects)
+Client Retention Held   = Σ Retention Withheld     (for all client projects)
+Client Retention Released = Σ Retention Released   (for all client projects)
+Client Balance          = Client Deposits − Client Expenses − Client Supervision − Client Retention Held + Client Retention Released
 ```
 
 The same supervision formula is applied consistently in project detail, client detail, client list, and dashboard active-client balances. The canonical view `client_balances` enforces this formula.
@@ -344,9 +352,9 @@ Employee ──payroll──► Salary expense
 
 ## 10. Known Accounting Gaps & Decisions Needed
 
-1. **Supervision treatment**
+1. **Supervision treatment** *(resolved in v294)*
    - Supervision reduces the project net balance and is included consistently in client and project balances via the `project_balances` / `client_balances` views.
-   - It is still not stored as a separate receivable row. Decision: should it appear as an auto-generated `project_deposit` or `income` transaction?
+   - Period-close creates a system-locked `supervision` transaction row as an audit snapshot. Live balances continue to compute supervision from expenses.
 
 2. **Client-level vs. project-level balance** *(resolved)*
    - Client list, client detail, project detail, and dashboard now all subtract supervision consistently using the same balance views.
@@ -362,8 +370,10 @@ Employee ──payroll──► Salary expense
    - Payroll, attendance, and custody RLS policies are currently open because the module is disabled.
    - When enabled, these must follow the same owner/admin permission model.
 
-6. **Retention / holdback (ضمان الأعمال)**
-   - Not implemented. Decide whether retention should be a separate transaction type, a project-level field, or an invoice line-item deduction.
+6. **Retention / holdback (ضمان الأعمال)** *(resolved in v294)*
+   - Implemented as a project-level `retention_percentage` plus companion `retention_withheld` / `retention_released` transaction rows.
+   - `retention_withheld` is auto-generated on each `project_deposit` when `retention_percentage > 0`.
+   - `retention_released` is created manually by an admin at project close-out.
 
 7. **Password-reset email delivery verification**
    - The new `admin_reset_password_email` RPC (v289) enqueues the email via `pg_net`. The RPC returns success immediately; actual Resend delivery status must be checked in Resend logs or `net._http_response`.
@@ -374,10 +384,12 @@ Employee ──payroll──► Salary expense
 
 | Area | Formula |
 |------|---------|
-| Project net balance | `Deposits − Expenses − Supervision` |
-| Client balance (all views) | `Σ(Deposits − Expenses − Supervision)` |
+| Project net balance | `Deposits − Expenses − Supervision − Retention Withheld + Retention Released` |
+| Net usable deposit | `Deposits − Retention Withheld + Retention Released` |
+| Client balance (all views) | `Σ(Deposits − Expenses − Supervision − Retention Withheld + Retention Released)` |
 | Client supervision | `Σ Project Supervision across all client projects` |
 | Supervision fee | `(Expenses − Design Expenses) × Supervision% / 100` |
+| Retained amount | `Deposit × Retention% / 100` |
 | Vendor balance | `(Service Owed + Merchandise Owed) − (Direct Settlement Paid + Merchandise Paid)` |
 | Office balance | `(Owner Deposits + Supervision Income + Office Vendor Income) − (Office Expenses + Withdrawals)` |
 | Office vendor income | `Σ vendor_settlement paid_amount + Σ procurement paid_amount where vendor.is_office = true` |

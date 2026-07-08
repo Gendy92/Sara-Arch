@@ -422,6 +422,7 @@ const Crud = {
       { key: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { key: 'address', label: 'العنوان' },
       { key: 'value', label: 'القيمة', type: 'number' },
+      { key: 'retention_percentage', label: 'نسبة الضمان (%)', type: 'number', attr: 'max="100"' },
       { key: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { key: 'start_date', label: 'تاريخ البدء', type: 'date' },
       { key: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
@@ -434,6 +435,11 @@ const Crud = {
       const existing = await API.request('projects', 'GET', null, '?select=name,client_id&deleted_at=is.null');
       const dupes = rows.filter(r => existing.some(p => String(p.name || '').trim().toLowerCase() === String(r.name || '').trim().toLowerCase() && String(p.client_id) === String(r.client_id)));
       if (dupes.length) { UI.toast(`⚠️ ${dupes.length} مشاريع موجودة مسبقاً لنفس العميل`, 'error'); return; }
+      const badRetention = rows.filter(r => {
+        const p = +(r.retention_percentage ?? 0);
+        return p < 0 || p > 100;
+      });
+      if (badRetention.length) { UI.toast('⚠️ نسبة الضمان يجب أن تكون بين 0 و 100', 'error'); return; }
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
         const clean = { ...r, client_id: r.client_id || null, client_name: client ? client.name : null };
@@ -474,6 +480,7 @@ const Crud = {
       { name: 'client_id', label: 'العميل', type: 'select', req: true, opts: [{ v: '', l: '-- اختر عميل --' }, ...clientOpts] },
       { name: 'address', label: 'العنوان' },
       { name: 'value', label: 'القيمة', type: 'number' },
+      { name: 'retention_percentage', label: 'نسبة الضمان (%)', type: 'number', attr: 'min="0" max="100"' },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'active', l: 'نشط' }, { v: 'completed', l: 'منتهي' }, { v: 'on_hold', l: 'معلق' }, { v: 'cancelled', l: 'ملغي' }] },
       { name: 'start_date', label: 'تاريخ البدء', type: 'date' },
       { name: 'end_date', label: 'تاريخ الانتهاء', type: 'date' },
@@ -491,8 +498,10 @@ const Crud = {
         const existing = await API.request('projects', 'GET', null, `?select=id&name=ilike.${encodeURIComponent(newName)}&client_id=eq.${newClientId}&deleted_at=is.null`);
         if (existing.length) { UI.toast('⚠️ اسم المشروع موجود مسبقاً لهذا العميل', 'error'); return; }
       }
+      const retentionPct = +(fd.get('retention_percentage') ?? 0);
+      if (retentionPct < 0 || retentionPct > 100) { UI.toast('⚠️ نسبة الضمان يجب أن تكون بين 0 و 100', 'error'); return; }
       const client = clients.find(c => c.id === fd.get('client_id'));
-      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
+      await this.save('projects', { name: fd.get('name'), client_id: fd.get('client_id') || null, client_name: client ? client.name : null, value: +fd.get('value') || 0, retention_percentage: retentionPct, status: fd.get('status') || 'active', start_date: fd.get('start_date') || null, end_date: fd.get('end_date') || null, notes: fd.get('notes') || null }, id);
       // Save per-section supervision rates
       const rateRows = [];
       form.querySelectorAll('[name^="section_rate_"]').forEach(input => {
@@ -520,6 +529,64 @@ const Crud = {
       if (App.screen === 'project' && App.projectId) App.go('clients');
       else if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
       else App.loadClients();
+    });
+  },
+
+  async releaseRetention(projectId, clientId, projectName, clientName) {
+    const fields = [
+      { name: 'amount', label: 'مبلغ الإرجاع *', type: 'number', req: true, attr: 'min="0" step="any"' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { name: 'description', label: 'البيان', type: 'textarea' }
+    ];
+    UI.openModal('إرجاع ضمان أعمال', `<form>${UI.form(fields, { date: new Date().toISOString().slice(0, 10) })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const amount = +fd.get('amount') || 0;
+      if (amount <= 0) { UI.toast('المبلغ يجب أن يكون أكبر من صفر', 'error'); return; }
+      await this.save('transactions', {
+        type: 'retention_released',
+        amount,
+        project_id: projectId,
+        project_name: projectName || null,
+        client_id: clientId || null,
+        client_name: clientName || null,
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        description: fd.get('description') || null
+      });
+      UI.toast('تم إرجاع ضمان الأعمال');
+      App.loadProject(projectId);
+    });
+  },
+
+  async closeProjectPeriod(projectId) {
+    const fields = [
+      { name: 'date', label: 'تاريخ نهاية الدورة *', type: 'date', req: true }
+    ];
+    UI.openModal('قفل دورة إشراف', `<form>${UI.form(fields, { date: new Date().toISOString().slice(0, 10) })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const date = fd.get('date');
+      if (!date) { UI.toast('اختر التاريخ', 'error'); return; }
+      try {
+        await API.rpc('close_project_period', {
+          p_project_id: projectId,
+          p_end_date: date,
+          p_user_id: this._currentUserId()
+        });
+        UI.toast('تم قفل الدورة وإنشاء سجل الإشراف');
+        App.loadProject(projectId);
+      } catch (e) { UI.toast('فشل قفل الدورة: ' + e.message, 'error'); }
+    });
+  },
+
+  async reopenProjectPeriod(closeId, projectId) {
+    UI.confirm('هل أنت متأكد من إعادة فتح الدورة؟ سيتم حذف سجل الإشراف المرتبط.', async () => {
+      try {
+        await API.rpc('reopen_project_period', {
+          p_close_id: closeId,
+          p_user_id: this._currentUserId()
+        });
+        UI.toast('تم إعادة فتح الدورة');
+        App.loadProject(projectId);
+      } catch (e) { UI.toast('فشل إعادة فتح الدورة: ' + e.message, 'error'); }
     });
   },
 
@@ -1341,6 +1408,8 @@ const Crud = {
     const txRows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!txRows.length) return;
     const tx = txRows[0];
+    if (tx.system_generated) { UI.toast('لا يمكن تعديل المعاملات المولدة تلقائياً', 'error'); return; }
+    if (tx.type === 'retention_withheld') { UI.toast('يتم حساب ضمان الأعمال تلقائياً من عربون المشروع', 'error'); return; }
 
     if (tx.type === 'project_deposit') {
       const [clients, projects] = await Promise.all([
@@ -1462,7 +1531,10 @@ const Crud = {
     }
   },
 
-  delTx(id) {
+  async delTx(id) {
+    const txRows = await API.request('transactions', 'GET', null, '?select=type,system_generated&id=eq.' + id + '&deleted_at=is.null');
+    const tx = txRows[0];
+    if (tx && (tx.system_generated || tx.type === 'retention_withheld')) { UI.toast('لا يمكن حذف معاملة مولدة تلقائياً', 'error'); return; }
     UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => { await this.softDelete('transactions', id); UI.toast('تم الحذف'); App.loadTransactions(); App.loadOffice(); });
   },
 

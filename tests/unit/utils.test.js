@@ -27,6 +27,14 @@ describe('Utils.fmtMoney', () => {
   });
 });
 
+describe('Utils.fmtTxType', () => {
+  it('labels retention and supervision types in Arabic', () => {
+    expect(Utils.fmtTxType('retention_withheld')).toBe('ضمان أعمال محجوز');
+    expect(Utils.fmtTxType('retention_released')).toBe('إرجاع ضمان أعمال');
+    expect(Utils.fmtTxType('supervision')).toBe('إشراف مشروع');
+  });
+});
+
 describe('Utils.clamp', () => {
   it('clamps values inside a range', () => {
     expect(Utils.clamp(5, 0, 10)).toBe(5);
