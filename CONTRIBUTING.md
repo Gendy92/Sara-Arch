@@ -10,7 +10,15 @@
 
 ## Before committing
 
-Run the quality checks locally:
+A pre-commit hook is configured in `.githooks/pre-commit`. Enable it once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook scans for common secrets (`gho_`, `sk-`, JWT-like strings) and runs lint + tests. To bypass in an emergency, use `git commit --no-verify` after manually reviewing the blockers.
+
+You can also run the quality checks directly:
 
 ```bash
 npm run lint
