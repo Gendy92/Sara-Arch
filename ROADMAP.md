@@ -1,7 +1,7 @@
 # Sara Arch — Development Roadmap
 
-> **Current runtime version:** v178  
-> **Last updated:** 2026-06-18
+> **Current runtime version:** v292  
+> **Last updated:** 2026-06-15
 
 This roadmap prioritizes critical fixes, high-value business features, quality-of-life improvements, and long-term technical excellence.
 
@@ -18,7 +18,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | 1.1.3 | **Prevent negative financial inputs** | Amount inputs allowed negative values, corrupting balances. | ✅ All number inputs already use `min="0"`; `Crud.save()` / `bulkSave()` now reject negative financial values server-side as well. |
 | 1.1.4 | **Fix audit trail `old_data`** | UPDATE/DELETE audit logs could record `old_data: null`. | ✅ Added `_fetchOldData()` helper; `save()` accepts an optional pre-fetched old row and logs it with every UPDATE. |
 | 1.1.5 | **Remove exposed service-role key** | `SUPABASE_SERVICE_KEY` was hardcoded in `js/config.js`. | ✅ Moved admin user operations to the server-side `admin_create_auth_user` Postgres function; service-role key now only used in GitHub Actions backup workflow. |
-| 1.1.6 | **Fix payroll regeneration bug** | Regenerating an already-paid payroll keeps `paid` status with new numbers. | Reset status to `draft` on regeneration or block regeneration of paid payrolls. |
+| 1.1.6 | **Fix payroll regeneration bug** | Regenerating an already-paid payroll keeps `paid` status with new numbers. | ✅ `generateEmpPayroll()` now resets regenerated records to `draft` and updates the linked `office_expense` amount. |
 | 1.1.7 | **Add duplicate detection** | Infinite duplicate clients/projects/vendors could be created. | ✅ Added unique normalized-name checks for clients, projects, vendors, sectors, sections, work items, and items; added soft-delete cleanup script. |
 | 1.1.9 | **Fix non-admin login (`email_not_confirmed`)** | New users created via public signup or admin RPC could not log in because Supabase still required email confirmation. | ✅ Added `auto_confirm_user` trigger on `auth.users`; backfilled existing unconfirmed accounts; verified public signup and login return a valid session. |
 | 1.1.10 | **Harden admin user creation** | `addUser()` had a check-then-act race, could create orphaned `auth.users` rows, and provided poor error reporting. | ✅ Moved profile upsert into atomic `admin_create_auth_user` RPC; added duplicate username/email pre-checks; added per-row failure messages; added `profiles.username` unique constraint. |
@@ -31,14 +31,14 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | 1.2.2 | **Add PostgreSQL functions/triggers** for supervision, net salary, and vendor balance. | Guarantees correctness regardless of client code. |
 | 1.2.3 | **Tighten RLS policies** so users can only access their own/allowed rows. | Replace `authenticated_all` with ownership or permission-based policies. |
 | 1.2.4 | **Rotate Supabase keys** and remove from repository history. | ✅ Hardcoded anon key fallback removed from `js/config.js`; rotate keys in Supabase Dashboard and update GitHub Secrets `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY`. |
-| 1.2.5 | **Add input sanitization** to prevent XSS in modals and dropdowns. | Security hardening. |
+| 1.2.5 | **Add input sanitization** to prevent XSS in modals and dropdowns. | ✅ All rendered values go through `Utils.esc` / `App.esc`; searchable selects escape option HTML. |
 
 ### 1.3 Core Business Features
 
 | # | Improvement | Rationale | Effort |
 |---|-------------|-----------|--------|
 | 1.3.1 | **Invoicing module** | Generate client invoices with status workflow and PDF export. | Medium |
-| 1.3.2 | **Restore from backup** | Import previously exported JSON/ZIP backups. | Medium |
+| 1.3.2 | **Restore from backup** | Import previously exported JSON/ZIP backups. | ✅ UI exists in Settings → Backup. |
 | 1.3.3 | **Document attachments** | Link files to clients/projects/transactions via Supabase Storage. | Medium |
 | 1.3.4 | **Retention / holdback tracking** | Track project retention amounts. | Low |
 
@@ -51,7 +51,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | # | Improvement | Rationale |
 |---|-------------|-----------|
 | 2.1.1 | **Server-side pagination** on transactions, clients, vendors, and employees. | Prevents unbounded queries from degrading performance. |
-| 2.1.2 | **Add missing indexes** on frequently filtered columns (`client_id`, `employee_id`, `date`, `type`). | Improves query speed. |
+| 2.1.2 | **Add missing indexes** on frequently filtered columns (`client_id`, `employee_id`, `date`, `type`). | ✅ Added in `migration_v293_add_common_indexes.sql`. |
 | 2.1.3 | **Optimize dashboard queries** with materialized views or pre-aggregated tables. | Reduces repeated heavy calculations. |
 | 2.1.4 | **Cascade soft deletes** consistently across all related tables. | Prevents orphaned visible records. |
 
@@ -70,11 +70,11 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale |
 |---|-------------|-----------|
-| 2.3.1 | **Items catalog screen** | `items` CRUD exists but no UI loads it. |
-| 2.3.2 | **Employee transactions screen** | Allow direct entry of advances, penalties, bonuses, other. |
-| 2.3.3 | **Custody expenses screen** | Use the existing `custody_expenses` table instead of updating `returned_amount`. |
-| 2.3.4 | **Salary history screen** | Surface `employee_salary_history` data. |
-| 2.3.5 | **Real Settings page** | Configure currency, company name, logo, default supervision percentage. |
+| 2.3.1 | **Items catalog screen** | ✅ Exists in Master Data screen. |
+| 2.3.2 | **Employee transactions screen** | ✅ Exists in Employees screen. |
+| 2.3.3 | **Custody expenses screen** | ✅ Exists in Office → Custody. |
+| 2.3.4 | **Salary history screen** | ✅ Exists in Employees screen. |
+| 2.3.5 | **Real Settings page** | ✅ Company settings, users/permissions, and backup cards exist. |
 
 ### 2.4 Reporting
 
@@ -120,8 +120,8 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale |
 |---|-------------|-----------|
-| 3.4.1 | **Automated test suite** (unit + integration) with Jest or Vitest. | Prevents regressions. |
-| 3.4.2 | **Update `TEST_PLAN.md` and `TEST_DATA.md` to v292**. | Current test docs target v83. |
+| 3.4.1 | **Automated test suite** (unit + integration) with Jest or Vitest. | ✅ Vitest suite with 36 unit tests; runs in CI and pre-commit hook. |
+| 3.4.2 | **Update `TEST_PLAN.md` and `TEST_DATA.md` to v292**. | ✅ Version references updated. |
 | 3.4.3 | **End-to-end tests** with Playwright. | Confidence in critical workflows. |
 | 3.4.4 | **Documentation automation** — generate schema docs from migrations. | Keeps docs in sync with code. |
 
