@@ -1,6 +1,6 @@
 # Sara Arch — Complete App Tabs Guide
 
-> Version v105 — Detailed breakdown of every screen with exact formulas
+> Version v292 — Detailed breakdown of every screen with exact formulas
 
 ---
 
@@ -470,7 +470,7 @@ draft → approved → paid
 3. **Work Sections** — Project construction phases
 4. **Work Items** — Tasks within each section
 
-### Excel Upload (v105)
+### Excel Upload (v292)
 
 **Mode 1: Sections only**
 - Single column: Section name
