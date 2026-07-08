@@ -316,6 +316,16 @@ BEGIN
     RETURN OLD;
   END IF;
 
+  -- Treat soft-deleted deposits as deletion for linked retention rows
+  IF NEW.type = 'project_deposit' AND NEW.deleted_at IS NOT NULL THEN
+    UPDATE transactions
+    SET deleted_at = NOW(), updated_by = NEW.updated_by
+    WHERE linked_transaction_id = NEW.id
+      AND type = 'retention_withheld'
+      AND deleted_at IS NULL;
+    RETURN NEW;
+  END IF;
+
   IF NEW.type = 'project_deposit' AND COALESCE(NEW.system_generated, false) = false THEN
     SELECT * INTO v_project FROM projects WHERE id = NEW.project_id;
 
