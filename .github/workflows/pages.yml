@@ -40,6 +40,9 @@ jobs:
       - name: Lint and test
         run: npm run lint && npm test
 
+      - name: Check for vulnerabilities
+        run: npm audit --audit-level=moderate
+
       - name: Inject Supabase config
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
