@@ -2182,8 +2182,9 @@ const Crud = {
       });
     });
     txs.forEach((t, idx) => {
-      const amount = +t.amount || 0;
-      const paid = +t.paid_amount || 0;
+      const isSettlement = t.type === 'vendor_settlement';
+      const amount = isSettlement ? 0 : (+t.amount || 0);
+      const paid = isSettlement ? (+t.paid_amount || 0) : 0;
       allRows.push({
         i: idx + 1, date: t.date || '-', item: App.esc(t.item_name || '-'), section: App.esc(t.section_name || '-'), desc: App.esc(t.description || '-'),
         amount, paid, balance: amount - paid,
