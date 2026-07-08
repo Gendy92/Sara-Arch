@@ -27,6 +27,49 @@ describe('Utils.fmtMoney', () => {
   });
 });
 
+describe('Utils.clamp', () => {
+  it('clamps values inside a range', () => {
+    expect(Utils.clamp(5, 0, 10)).toBe(5);
+    expect(Utils.clamp(-5, 0, 10)).toBe(0);
+    expect(Utils.clamp(15, 0, 10)).toBe(10);
+  });
+
+  it('treats non-numeric input as 0', () => {
+    expect(Utils.clamp('abc', 0, 10)).toBe(0);
+  });
+});
+
+describe('Utils.isNonEmptyString', () => {
+  it('identifies non-empty strings', () => {
+    expect(Utils.isNonEmptyString('hello')).toBe(true);
+    expect(Utils.isNonEmptyString('')).toBe(false);
+    expect(Utils.isNonEmptyString('   ')).toBe(false);
+    expect(Utils.isNonEmptyString(123)).toBe(false);
+  });
+});
+
+describe('Utils.ilikeOr', () => {
+  it('builds an OR ilike query', () => {
+    const q = Utils.ilikeOr(['name', 'email'], 'sara');
+    expect(q).toContain('name.ilike');
+    expect(q).toContain('email.ilike');
+    expect(q).toContain('*sara*');
+  });
+
+  it('returns empty string when term is missing', () => {
+    expect(Utils.ilikeOr(['name'], '')).toBe('');
+    expect(Utils.ilikeOr(['name'], null)).toBe('');
+  });
+});
+
+describe('Utils.sleep', () => {
+  it('waits the requested milliseconds', async () => {
+    const start = Date.now();
+    await Utils.sleep(50);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(45);
+  });
+});
+
 describe('Utils.fmtDate', () => {
   it('formats ISO dates to Arabic locale', () => {
     expect(Utils.fmtDate('2024-05-15')).not.toBe('-');
