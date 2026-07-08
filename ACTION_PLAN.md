@@ -2,7 +2,7 @@
 
 > **Live version:** v292  
 > **Branch:** `main` / `dev.2` (fast-forward synced)  
-> **Last updated:** 2026-06-15
+> **Last updated:** 2026-07-09
 
 | Check | Result |
 |-------|--------|
@@ -35,7 +35,7 @@
 | 1.3 | UI input validation to block `paid_amount > amount` | High | **Done** | Hard guard in `Crud.save()` (v291+) |
 | 1.4 | Unit tests for balance, supervision, payroll math | High | **Done** | `tests/unit/accounting.test.js` + `tests/unit/crud.test.js` |
 | 1.5 | Patch vitest/vite/esbuild vulnerabilities | High | **Done** | `npm audit` reports 0 vulnerabilities |
-| 1.6 | Fix ESLint warnings | Medium | **Done** | 0 errors, 0 warnings |
+| 1.6 | Fix ESLint warnings | Medium | **Done** | 0 errors, 0 warnings (verified `npm run lint`) |
 | 1.7 | Protect `main` and `dev.2` with required status checks | High | **Pending** | Requires GitHub owner settings |
 | 1.8 | Fast-forward or delete `dev.2` | Low | **Done** | `dev.2` is now fast-forwarded to `main` |
 
@@ -48,8 +48,8 @@
 | 2.1 | Implement retention / holdback tracking | High | **Pending** | Blocked by 1.2 decision |
 | 2.2 | Generate system-locked supervision audit rows | High | **Pending** | Blocked by 1.1 decision |
 | 2.3 | Items catalog UI | High | **Done** | Exists in Master Data screen |
-| 2.4 | Custody expenses UI | High | **Done** | Exists in Office → Custody |
-| 2.5 | Employee transactions UI | High | **Done** | Exists in Employees |
+| 2.4 | Custody expenses UI | High | **Partial** | UI exists but spent/returned split not fully wired; verify `custody_expenses` table usage |
+| 2.5 | Employee transactions UI | High | **Partial** | Bonuses/penalties consumed in payroll; standalone add/edit screen not implemented |
 | 2.6 | Salary history UI | Medium | **Done** | Exists in Employees |
 | 2.7 | Real Settings page | High | **Done** | Company settings + users/permissions + backup |
 | 2.8 | Restore-from-backup | High | **Done** | UI exists in Settings → Backup |
