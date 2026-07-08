@@ -73,6 +73,8 @@ Interpretation:
 - **Zero** → account is square.
 - **Negative** → project is over-budget or over-paid by the client.
 
+**Project expenses are treated as fully paid.** The `paid_amount` field is not collected on the project expense form; `paid_amount` is set equal to `amount` and `payment_term` is set to `immediate`. Any subsequent payment to the vendor is recorded separately as a project-agnostic `vendor_settlement` from the vendors screen.
+
 ### 2.4 Client Balance
 
 A client may have many projects. The client balance is the sum of the net balances of all client projects, with supervision applied consistently everywhere:
@@ -332,8 +334,9 @@ Employee ──payroll──► Salary expense
 2. **Client-level vs. project-level balance** *(resolved)*
    - Client list, client detail, project detail, and dashboard now all subtract supervision consistently using the same balance views.
 
-3. **Overpayments** *(resolved in v175+)*
-   - `Crud.save()` / `bulkSave()` now reject `paid_amount > amount` for transactions and procurements server-side.
+3. **Overpayments** *(resolved in v175+; simplified in v290)*
+   - `Crud.save()` / `bulkSave()` reject `paid_amount > amount` server-side.
+   - Project expense no longer exposes `paid_amount` to the user; it is always set equal to `amount`. Vendor payments are handled separately via `vendor_settlement`.
 
 4. **Credit vs. immediate vs. settlement**
    - Payment term is inferred from amount/paid comparison. It is not independently validated against the paid amount.
@@ -378,6 +381,6 @@ Office-level configuration is persisted server-side in the `app_settings` table 
 
 ---
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Branch:** `main`  
-**Updated:** 2026-07-06
+**Updated:** 2026-07-08
