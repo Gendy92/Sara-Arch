@@ -6,7 +6,7 @@
 
 | Check | Result |
 |-------|--------|
-| Unit tests | **36 passed / 36** |
+| Unit tests | **45 passed / 45** |
 | Lint | **0 errors, 0 warnings** |
 | npm audit | **0 vulnerabilities** |
 | GitHub Pages deploy | Green |
@@ -84,6 +84,12 @@
 
 ## Recent Commits
 
+- `18dd0c4` — ci: Dependabot weekly npm updates
+- `2f93da7` — build: `npm run health` script
+- `edbe70d` — test: expand Utils tests (clamp, ilikeOr, sleep)
+- `c138724` — test: add Auth.fromEmail and safeName unit tests
+- `682f7e1` — chore: expose App on window
+- `344958a` — ci: run npm audit in CI/deploy workflows
 - `b52eb1d` — test: expose API/Crud on window + add Crud guard tests
 - `7a95736` — perf: v293 add common indexes
 - `160886b` — ci: secret-scan workflow
