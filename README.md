@@ -57,8 +57,9 @@ A single-page web application for managing the finances, projects, vendors, empl
 | Excel/Spreadsheets | SheetJS (`xlsx`) via CDN |
 | ZIP Export | JSZip via CDN |
 | Hosting | GitHub Pages |
-| CI/Backup | GitHub Actions (daily JSON backup) |
+| CI/Backup | GitHub Actions (lint/test/audit + deploy + daily JSON backup) |
 | Versioning | `version.json` + cache-busting query params |
+| Health | `npm run health` (lint + tests + audit) |
 
 ---
 
@@ -109,7 +110,7 @@ cd Sara-Arch
 
 ### 4. Run locally
 
-Because the app uses ES modules and `import`/`export`, open it through a local server rather than directly from disk:
+Because the app loads scripts dynamically, open it through a local server rather than directly from disk:
 
 ```bash
 # Python 3
