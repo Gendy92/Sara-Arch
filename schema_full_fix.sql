@@ -1470,14 +1470,16 @@ SELECT
   COALESCE(SUM(amounts.total_owed), 0) - COALESCE(SUM(amounts.total_paid), 0) AS balance
 FROM vendors v
 LEFT JOIN (
+  -- Service-linked project expenses: cost recognition only.
   SELECT
     vendor_id,
     COALESCE(SUM(amount), 0) AS total_owed,
-    COALESCE(SUM(CASE WHEN payment_term IS NOT NULL THEN paid_amount ELSE amount END), 0) AS total_paid
+    0 AS total_paid
   FROM transactions
   WHERE deleted_at IS NULL AND type = 'project_expense' AND vendor_id IS NOT NULL
   GROUP BY vendor_id
   UNION ALL
+  -- Procurements: still carry their own paid_amount lifecycle.
   SELECT
     vendor_id,
     COALESCE(SUM(total_price), 0) AS total_owed,
@@ -1486,6 +1488,7 @@ LEFT JOIN (
   WHERE deleted_at IS NULL AND vendor_id IS NOT NULL
   GROUP BY vendor_id
   UNION ALL
+  -- Project-agnostic vendor payments (v290+).
   SELECT
     vendor_id,
     0 AS total_owed,
