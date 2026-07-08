@@ -1173,6 +1173,43 @@ const Crud = {
     });
   },
 
+  async addVendorPayment(vendorId) {
+    const vendors = await API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc');
+    const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
+    const paymentMethodOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
+    const fields = [
+      { name: 'vendor_id', label: 'المورد *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر مورد --' }, ...vendorOpts], default: vendorId || '' },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true, min: '0.01' },
+      { name: 'payment_method', label: 'طريقة الدفع *', type: 'select', req: true, opts: [{ v: '', l: '-- اختر --' }, ...paymentMethodOpts], default: 'cash' },
+      { name: 'date', label: 'التاريخ *', type: 'date', req: true },
+      { name: 'description', label: 'الوصف', type: 'textarea' }
+    ];
+    UI.openModal('💰 دفع للمورد', `<form>${UI.form(fields)}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const vendor = vendors.find(v => v.id === fd.get('vendor_id'));
+      if (!vendor) { UI.toast('مورد غير موجود', 'error'); return; }
+      const amount = +fd.get('amount') || 0;
+      if (amount <= 0) { UI.toast('المبلغ يجب أن يكون أكبر من صفر', 'error'); return; }
+      await this.save('transactions', {
+        type: 'vendor_settlement',
+        amount,
+        paid_amount: amount,
+        payment_term: 'settlement',
+        payment_method: fd.get('payment_method') || 'cash',
+        vendor_id: vendor.id,
+        vendor_name: vendor.name,
+        party_id: vendor.id,
+        party_name: vendor.name,
+        party_type: 'vendor',
+        date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        description: fd.get('description') || null
+      });
+      UI.toast('تم تسجيل الدفع للمورد');
+      App.loadVendors();
+      if (vendorId) App.loadVendor(vendorId);
+    });
+  },
+
   async addOfficeExpense() {
     const [employees, sectors, vendors] = await Promise.all([
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
