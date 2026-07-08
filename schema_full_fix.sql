@@ -1442,6 +1442,10 @@ REVOKE EXECUTE ON FUNCTION public.dashboard_vendor_alerts(int) FROM anon;
 -- │ STEP 10b: Balance Views                                 │
 -- └─────────────────────────────────────────────────────────┘
 
+-- Drop dependent views first so column changes to project_balances can be applied cleanly.
+DROP VIEW IF EXISTS public.client_balances CASCADE;
+DROP VIEW IF EXISTS public.project_transactions_view CASCADE;
+
 CREATE OR REPLACE VIEW public.project_balances WITH (security_invoker = true) AS
 SELECT
   p.id AS project_id,
