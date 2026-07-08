@@ -27,7 +27,7 @@ Object.assign(App, {
     const cx = size / 2, cy = size / 2, r = size / 2 - 4;
     let startAngle = 0;
     const pieColors = ['#e53935', '#43a047', '#1e88e5', '#fb8c00', '#8e24aa', '#00acc1', '#fdd835', '#6d4c41', '#26a69a', '#ef5350'];
-    const paths = rows.map(([label, amt], i) => {
+    const paths = rows.map(([_label, amt], i) => {
       const angle = (amt / total) * 2 * Math.PI;
       const x1 = cx + r * Math.cos(startAngle);
       const y1 = cy + r * Math.sin(startAngle);
@@ -846,8 +846,8 @@ Object.assign(App, {
 
         // Determine status
         let status = 'present';
-        let checkIn = rawIn ? String(rawIn).trim() : null;
-        let checkOut = rawOut ? String(rawOut).trim() : null;
+        const checkIn = rawIn ? String(rawIn).trim() : null;
+        const checkOut = rawOut ? String(rawOut).trim() : null;
         if (!checkIn && !checkOut) status = 'absent';
         else if (checkIn && !checkOut) status = 'half_day';
         else if (checkIn) {
@@ -1039,7 +1039,7 @@ Object.assign(App, {
   async loadSettings() {
     await App.loadServerSettings();
     const s = App.settings || {};
-    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val == null ? '' : val; };
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val === null || val === undefined) ? '' : val; };
     setVal('setting-company-name', s.company_name);
     setVal('setting-company-address', s.company_address);
     setVal('setting-company-phone', s.company_phone);
@@ -1242,7 +1242,8 @@ Object.assign(App, {
     const btn = document.getElementById('restore-btn');
     btn.disabled = true;
     progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري الاستعادة...</p>';
-    let ok = 0, fail = 0, failTables = [];
+    let ok = 0, fail = 0;
+    const failTables = [];
     const chunkSize = 100;
     for (const table of this._restoreOrder) {
       const rows = this._restoreData[table];

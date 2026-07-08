@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 const Crud = {
   _currentUserId() { return Auth.user?.id || null; },
   _currentUserName() { return Auth.user?.displayName || Auth.fromEmail(Auth.user?.email) || 'unknown'; },
@@ -53,7 +54,7 @@ const Crud = {
     const targets = Array.isArray(data) ? data : [data];
     for (const obj of targets) {
       for (const [k, v] of Object.entries(obj)) {
-        if (this._FINANCIAL_NUMERIC_KEYS.has(k) && v != null && v !== '' && Number(v) < 0) {
+        if (this._FINANCIAL_NUMERIC_KEYS.has(k) && v !== null && v !== undefined && v !== '' && Number(v) < 0) {
           throw new Error('لا يمكن أن تكون القيمة سالبة: ' + k);
         }
       }
@@ -102,19 +103,19 @@ const Crud = {
     this._assertNonNegative(data);
 
     // total_price is a generated column (quantity * unit_price); never send it to the DB.
-    let cleanData = { ...data };
+    const cleanData = { ...data };
     if (table === 'procurements') delete cleanData.total_price;
 
-    // Basic accounting guardrails: warn if paid exceeds total, but allow per LOGIC_SPEC.
-    if (table === 'transactions' && cleanData.amount != null && cleanData.paid_amount != null) {
+    // Basic accounting guardrail: block paid amount from exceeding the total amount.
+    if (table === 'transactions' && cleanData.amount !== null && cleanData.amount !== undefined && cleanData.paid_amount !== null && cleanData.paid_amount !== undefined && cleanData.type !== 'vendor_settlement') {
       const amount = +cleanData.amount || 0;
       const paid = +cleanData.paid_amount || 0;
-      if (paid > amount) UI.toast('تنبيه: المبلغ المدفوع أكبر من إجمالي المبلغ', 'warning');
+      if (paid > amount) throw new Error('المبلغ المدفوع أكبر من إجمالي المبلغ');
     }
-    if (table === 'procurements' && cleanData.paid_amount != null) {
+    if (table === 'procurements' && cleanData.paid_amount !== null && cleanData.paid_amount !== undefined) {
       const total = (+cleanData.quantity || 1) * (+cleanData.unit_price || 0);
       const paid = +cleanData.paid_amount || 0;
-      if (paid > total) UI.toast('تنبيه: المبلغ المدفوع أكبر من إجمالي المشتريات', 'warning');
+      if (paid > total) throw new Error('المبلغ المدفوع أكبر من إجمالي المشتريات');
     }
     if (id) {
       const preUpdateData = oldData || await this._fetchOldData(table, id);
@@ -181,9 +182,6 @@ const Crud = {
     const projSel = form.querySelector('[name="project_id"]');
     if (!clientSel || !projSel) return;
 
-    // Store full options
-    const allProjOpts = Array.from(projSel.options).map(o => ({ v: o.value, l: o.textContent }));
-
     const projInput = projSel.closest('.searchable-select')?.querySelector('.searchable-select-input');
     const filterProjects = (clientId) => {
       if (!clientId) {
@@ -218,8 +216,6 @@ const Crud = {
     const secSel = form.querySelector('[name="section_id"]');
     const itemSel = form.querySelector('[name="item_id"]');
     if (!secSel || !itemSel) return;
-
-    const allItemOpts = Array.from(itemSel.options).map(o => ({ v: o.value, l: o.textContent }));
 
     const filterItems = (sectionId) => {
       if (!sectionId) {
@@ -941,7 +937,7 @@ const Crud = {
     const emp = employees.find(e => e.id === employeeId);
     const fields = [
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
-      { name: 'old_salary', label: 'الراتب القديم', type: 'number', default: oldSalary != null ? oldSalary : (emp ? emp.salary : 0) },
+      { name: 'old_salary', label: 'الراتب القديم', type: 'number', default: (oldSalary !== null && oldSalary !== undefined) ? oldSalary : (emp ? emp.salary : 0) },
       { name: 'new_salary', label: 'الراتب الجديد *', type: 'number', req: true },
       { name: 'effective_date', label: 'تاريخ التطبيق *', type: 'date', req: true },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' }
@@ -1800,12 +1796,11 @@ const Crud = {
       if (!selected.length) { UI.toast('اختر مشروعاً واحداً على الأقل', 'error'); return; }
       UI.closeModal();
 
-      const [txs, cbRows, pbRows] = await Promise.all([
+      const [txs, pbRows] = await Promise.all([
         API.fetchAll('transactions', `?select=*,projects(name)&client_id=eq.${clientId}&deleted_at=is.null&order=date.desc`),
-        API.request('client_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`),
+
         API.request('project_balances', 'GET', null, `?select=*&client_id=eq.${clientId}`)
       ]);
-      const cb = cbRows[0] || {};
       const pbByProject = Object.fromEntries(pbRows.map(b => [b.project_id, b]));
 
       const selectedSet = new Set(selected);
@@ -2569,8 +2564,8 @@ const Crud = {
         const item = workItems.find(i => i.id === r.item_id);
         if (!project) { UI.toast('مشروع غير موجود', 'error'); throw new Error('invalid project'); }
         if (r.client_id && project.client_id !== r.client_id) { UI.toast('المشروع لا ينتمي للعميل المختار', 'error'); throw new Error('client mismatch'); }
-        let amount = +r.amount || 0;
-        let paid_amount = +r.paid_amount || 0;
+        const amount = +r.amount || 0;
+        const paid_amount = +r.paid_amount || 0;
         const payment_method = r.payment_method || null;
         let payment_term = 'immediate';
         if (amount === 0 && paid_amount > 0) payment_term = 'settlement';

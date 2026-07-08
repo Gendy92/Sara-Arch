@@ -61,7 +61,7 @@ const UI = {
 
   searchableSelectHTML(selectAttrs, options, value) {
     const esc = (s) => App.esc ? App.esc(s) : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${value == o.v ? 'selected' : ''}>${esc(o.l)}</option>`).join('');
+    const optsHtml = options.map(o => `<option value="${this._escAttr(o.v)}" ${String(value) === String(o.v) ? 'selected' : ''}>${esc(o.l)}</option>`).join('');
     const dropdownOpts = options.map(o => `<div class="searchable-select-option" data-value="${this._escAttr(o.v)}">${esc(o.l)}</div>`).join('');
     const isDisabled = selectAttrs.includes('disabled');
     return `<div class="searchable-select">
@@ -504,7 +504,7 @@ const Spreadsheet = {
         const el = newRow.querySelector(`[data-key="${key}"]`);
         if (!el || !col) return;
         if (col.type === 'select') {
-          const match = col.opts.find(o => o.v == rawVal || o.l === rawVal);
+          const match = col.opts.find(o => String(o.v) === String(rawVal) || o.l === rawVal);
           el.value = match ? match.v : '';
         } else if (col.type === 'number') {
           const num = parseFloat(rawVal.replace(/,/g, ''));
@@ -631,7 +631,7 @@ const Spreadsheet = {
     const spreadsheet = el.closest('.spreadsheet');
     const cascade = spreadsheet._cascade;
     if (!cascade || !cascade.sectionItem) return;
-    const { sectionKey, itemKey, items } = cascade.sectionItem;
+    const { itemKey, items } = cascade.sectionItem;
     const itemSel = row.querySelector(`select[data-key="${itemKey}"]`);
     if (!itemSel) return;
     const sectionId = el.value;

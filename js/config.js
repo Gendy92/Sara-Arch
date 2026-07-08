@@ -35,6 +35,7 @@ const urlKey = isStaging ? 'STAGING_SUPABASE_URL' : 'SUPABASE_URL';
 const keyKey = isStaging ? 'STAGING_SUPABASE_ANON_KEY' : 'SUPABASE_ANON_KEY';
 
 // Public project URL — safe to commit, but can be overridden by config.local.js.
+// eslint-disable-next-line no-unused-vars
 const SUPABASE_URL = localCfg[urlKey] || 'https://tvjkctttcijymqvaetsv.supabase.co';
 
 // Anon key is provided by config.local.js so it can be rotated without editing source.
@@ -44,15 +45,18 @@ const SUPABASE_ANON_KEY = localCfg[keyKey] || localCfg.SUPABASE_ANON_KEY || 'YOU
 
 // Email domain used when mapping usernames to syntactically-valid auth emails.
 // Can be overridden via config.local.js if the Pages domain ever changes.
+// eslint-disable-next-line no-unused-vars
 const SARA_EMAIL_DOMAIN = localCfg.SARA_EMAIL_DOMAIN || 'gendy92.github.io';
 
 // Debug / performance logging toggle.
+// eslint-disable-next-line no-unused-vars
 const PERF_LOG = localCfg.PERF_LOG || false;
 
 // Admin operations (user creation) are handled server-side by the
 // admin_create_auth_user() Postgres function (SECURITY DEFINER).
 // The service-role key MUST NOT be stored in the browser or in source control.
 // This constant is intentionally left empty.
+// eslint-disable-next-line no-unused-vars
 const SUPABASE_SERVICE_KEY = '';
 
 // Convenience check so the app fails fast if the anon key is not configured.

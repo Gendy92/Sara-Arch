@@ -1,5 +1,6 @@
 // Direct Supabase REST API (no external dependencies)
 
+// eslint-disable-next-line no-unused-vars
 const API = {
   base: SUPABASE_URL + '/rest/v1',
 
@@ -37,7 +38,7 @@ const API = {
       const idx = part.indexOf('=');
       if (idx === -1) return part;
       const key = part.slice(0, idx);
-      let val = part.slice(idx + 1);
+      const val = part.slice(idx + 1);
       const m = val.match(new RegExp(`^(${ops})\\.(.+)$|^is\\.(null)$|^not\\.is\\.(null)$|^in\\.\\((.*)\\)$`));
       if (!m) return part;
       if (m[1]) return `${key}=${m[1]}.${this._safeEncode(m[2])}`;
@@ -189,11 +190,11 @@ const API = {
     throw new Error('Admin user listing is disabled in the browser. Use the profiles table or a secure Edge Function.');
   },
 
-  async authCreateUser(email, password, metadata) {
+  async authCreateUser(_email, _password, _metadata) {
     throw new Error('Admin user creation is disabled in the browser. Use public signup or a secure Edge Function.');
   },
 
-  async authUpdateUser(id, metadata) {
+  async authUpdateUser(_id, _metadata) {
     throw new Error('Admin user update is disabled in the browser. Use a secure Edge Function.');
   },
 

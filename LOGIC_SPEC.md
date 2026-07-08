@@ -114,10 +114,12 @@ Total Owed       = Service Owed + Merchandise Owed
 ### 3.2 Vendor Paid
 
 ```
-Service Paid     = Σ Paid Amount of vendor_settlement rows linked to the vendor
-Merchandise Paid = Σ Paid Amount of procurement rows linked to the vendor
-Total Paid       = Service Paid + Merchandise Paid
+Direct Settlement Paid = Σ paid_amount of vendor_settlement rows linked to the vendor
+Merchandise Paid       = Σ paid_amount of procurement rows linked to the vendor
+Total Paid             = Direct Settlement Paid + Merchandise Paid
 ```
+
+> **Why the name change?** A `vendor_settlement` is a generic cash payment to the vendor, not an earmarked payment against a specific service transaction. With v291, `project_expense.paid_amount` is forced equal to `amount`, so it records cost recognition only. Real cash outflows to vendors are tracked through `vendor_settlement` rows (and procurement `paid_amount`).
 
 ### 3.3 Vendor Balance
 
@@ -145,7 +147,7 @@ The system seeds one special vendor marked `is_office = true` (e.g. "مكتب س
 - Procurements where the office is the supplier.
 - Office expenses linked to a vendor for traceability.
 
-Transactions linked to the office vendor are included in vendor balances and the top-vendor dashboard like any other vendor. Their paid amounts are also still treated as **office income** and appear in the office cash-flow.
+Transactions linked to the office vendor are included in vendor balances and the top-vendor dashboard like any other vendor. Cash received by the office vendor is treated as **office income** and appears in the office cash-flow.
 
 ---
 
@@ -376,9 +378,9 @@ Employee ──payroll──► Salary expense
 | Client balance (all views) | `Σ(Deposits − Expenses − Supervision)` |
 | Client supervision | `Σ Project Supervision across all client projects` |
 | Supervision fee | `(Expenses − Design Expenses) × Supervision% / 100` |
-| Vendor balance | `(Service Owed + Merchandise Owed) − (Service Paid + Merchandise Paid)` |
+| Vendor balance | `(Service Owed + Merchandise Owed) − (Direct Settlement Paid + Merchandise Paid)` |
 | Office balance | `(Owner Deposits + Supervision Income + Office Vendor Income) − (Office Expenses + Withdrawals)` |
-| Office vendor income | `Σ paid_amount of project_expense/vendor_settlement where vendor.is_office = true` |
+| Office vendor income | `Σ vendor_settlement paid_amount + Σ procurement paid_amount where vendor.is_office = true` |
 | Net salary | `Base Salary − Deductions + Bonuses − Penalties` |
 | Custody remaining | `Given − Returned` |
 | Unpaid balance (row) | `Amount − Paid Amount` |
