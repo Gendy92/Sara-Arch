@@ -1,12 +1,12 @@
 # Sara-Arch Action Plan
 
-> **Live version:** v292  
+> **Live version:** v294  
 > **Branch:** `main` / `dev.2` (fast-forward synced)  
 > **Last updated:** 2026-07-09
 
 | Check | Result |
 |-------|--------|
-| Unit tests | **45 passed / 45** |
+| Unit tests | **48 passed / 48** |
 | Lint | **0 errors, 0 warnings** |
 | npm audit | **0 vulnerabilities** |
 | GitHub Pages deploy | Green |
@@ -30,8 +30,8 @@
 
 | # | Task | Priority | Status | Notes |
 |---|------|----------|--------|-------|
-| 1.1 | Design decision: supervision system-locked audit row | High | **Pending** | Decision doc exists in `docs/DECISION_supervision_audit_row.md`; implementation ticket pending |
-| 1.2 | Design decision: retention / holdback model | High | **Pending** | Decision doc exists in `docs/DECISION_retention_holdback.md`; implementation ticket pending |
+| 1.1 | Design decision: supervision system-locked audit row | High | **Done** | Decision adopted; implemented in v294 |
+| 1.2 | Design decision: retention / holdback model | High | **Done** | Decision adopted; implemented in v294 |
 | 1.3 | UI input validation to block `paid_amount > amount` | High | **Done** | Hard guard in `Crud.save()` (v291+) |
 | 1.4 | Unit tests for balance, supervision, payroll math | High | **Done** | `tests/unit/accounting.test.js` + `tests/unit/crud.test.js` |
 | 1.5 | Patch vitest/vite/esbuild vulnerabilities | High | **Done** | `npm audit` reports 0 vulnerabilities |
@@ -45,8 +45,8 @@
 
 | # | Task | Priority | Status | Notes |
 |---|------|----------|--------|-------|
-| 2.1 | Implement retention / holdback tracking | High | **Pending** | Blocked by 1.2 decision |
-| 2.2 | Generate system-locked supervision audit rows | High | **Pending** | Blocked by 1.1 decision |
+| 2.1 | Implement retention / holdback tracking | High | **Done** | `projects.retention_percentage`, `retention_withheld`/`retention_released`, auto-withholding trigger |
+| 2.2 | Generate system-locked supervision audit rows | High | **Done** | `project_period_closes`, `close_project_period()` / `reopen_project_period()` RPCs |
 | 2.3 | Items catalog UI | High | **Done** | Exists in Master Data screen |
 | 2.4 | Custody expenses UI | High | **Partial** | UI exists but spent/returned split not fully wired; verify `custody_expenses` table usage |
 | 2.5 | Employee transactions UI | High | **Partial** | Bonuses/penalties consumed in payroll; standalone add/edit screen not implemented |
@@ -84,6 +84,8 @@
 
 ## Recent Commits
 
+- `0e8a0ab` — fix: handle soft-deleted deposits in retention sync trigger + regenerate specs
+- `c4eadcb` — feat: v294 retention/holdback tracking + supervision period-close audit rows
 - `18dd0c4` — ci: Dependabot weekly npm updates
 - `2f93da7` — build: `npm run health` script
 - `edbe70d` — test: expand Utils tests (clamp, ilikeOr, sleep)
