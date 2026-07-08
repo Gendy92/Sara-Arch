@@ -65,7 +65,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Clean files not meant for deployment
-        run: rm -f .env && rm -rf backups/
+        run: |
+          rm -f .env
+          rm -rf backups/ tests/ .githooks/ docs/ screenshots/ .venv-manual/
+          rm -f *.md *.sql *.xlsx *.xls *.docx *.pdf
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
