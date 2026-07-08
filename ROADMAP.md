@@ -121,7 +121,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | # | Improvement | Rationale |
 |---|-------------|-----------|
 | 3.4.1 | **Automated test suite** (unit + integration) with Jest or Vitest. | Prevents regressions. |
-| 3.4.2 | **Update `TEST_PLAN.md` and `TEST_DATA.md` to v162**. | Current test docs target v83. |
+| 3.4.2 | **Update `TEST_PLAN.md` and `TEST_DATA.md` to v292**. | Current test docs target v83. |
 | 3.4.3 | **End-to-end tests** with Playwright. | Confidence in critical workflows. |
 | 3.4.4 | **Documentation automation** — generate schema docs from migrations. | Keeps docs in sync with code. |
 
