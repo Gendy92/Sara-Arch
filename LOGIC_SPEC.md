@@ -97,20 +97,26 @@ A vendor can supply two things:
 1. **Services** → recorded directly as `project_expense` with the vendor linked.
 2. **Merchandise / Materials** → recorded first as a `procurement`, which auto-creates a linked `project_expense` transaction.
 
+Since **v290**, **cost recognition** and **cash settlement** are separated:
+
+- `project_expense` rows record that a cost was incurred (accrual).
+- `vendor_settlement` rows record actual cash paid to the vendor.
+- `procurement` rows still track their own `paid_amount` because they function as purchase orders with their own payment lifecycle.
+
 ### 3.1 Vendor Owed
 
 ```
-Service Owed    = Σ Amount of project_expense rows linked to the vendor
-Merchandise Owed= Σ Total Price of procurement rows linked to the vendor
-Total Owed      = Service Owed + Merchandise Owed
+Service Owed     = Σ Amount of project_expense rows linked to the vendor
+Merchandise Owed = Σ Total Price of procurement rows linked to the vendor
+Total Owed       = Service Owed + Merchandise Owed
 ```
 
 ### 3.2 Vendor Paid
 
 ```
-Service Paid    = Σ Paid Amount of those service project_expense rows
-Merchandise Paid= Σ Paid Amount of those procurements
-Total Paid      = Service Paid + Merchandise Paid
+Service Paid     = Σ Paid Amount of vendor_settlement rows linked to the vendor
+Merchandise Paid = Σ Paid Amount of procurement rows linked to the vendor
+Total Paid       = Service Paid + Merchandise Paid
 ```
 
 ### 3.3 Vendor Balance
@@ -124,7 +130,14 @@ Interpretation:
 - **Zero** → fully paid.
 - **Negative** → vendor was over-paid.
 
-### 3.4 Office Vendor
+### 3.4 vendor_settlement Rows
+
+- Linked to a vendor only; no project is required.
+- Represent cash leaving the office to the vendor.
+- Can be entered from the vendors screen.
+- Reduce the vendor balance immediately.
+
+### 3.5 Office Vendor
 
 The system seeds one special vendor marked `is_office = true` (e.g. "مكتب سارة أبو العلا"). This vendor represents the office itself and can be used for:
 
@@ -190,6 +203,8 @@ Category   = merchandise
 Project    = same project
 Vendor     = same vendor
 ```
+
+This linked row is used for **project cash-flow and balance** calculations. The vendor's overall balance, however, is computed from the procurement's own `paid_amount` plus any `vendor_settlement` rows linked to the vendor.
 
 ### 5.3 Consistency Rules
 
@@ -381,6 +396,6 @@ Office-level configuration is persisted server-side in the `app_settings` table 
 
 ---
 
-**Version:** 1.4  
+**Version:** 1.5  
 **Branch:** `main`  
 **Updated:** 2026-07-08
