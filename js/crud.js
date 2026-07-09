@@ -36,11 +36,12 @@ const Crud = {
   },
 
   _stripMissing(payload, missingKey) {
-    // Only allow silent stripping of internal audit columns. Stripping user-data
-    // columns hides schema/permission bugs and can silently discard input.
+    // Internal audit columns are always safe to strip on older schemas.
+    // Other columns are stripped with a warning so the app keeps working
+    // when a migration has not been applied yet.
     const allowed = new Set(['created_by', 'updated_by']);
     if (!allowed.has(missingKey)) {
-      throw new Error('عمود غير معروف في قاعدة البيانات: ' + missingKey);
+      console.warn(`[Crud] Stripping missing DB column "${missingKey}" from payload. Apply pending migrations if this is unexpected.`);
     }
     const clean = Array.isArray(payload) ? payload.map(r => { const c = { ...r }; delete c[missingKey]; return c; }) : { ...payload };
     if (!Array.isArray(payload)) delete clean[missingKey];
