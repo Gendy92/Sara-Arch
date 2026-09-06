@@ -1,0 +1,85 @@
+# Dump all app tables from the live Supabase project into an ENCRYPTED artifact
+# (.saraenc — same AES-256-GCM/PBKDF2 format as the apps' encrypted transfer),
+# used to test the desktop cloud-import wizard against real data shape.
+# The passphrase is a dispatch input: it never touches the repo, logs, or git.
+name: Cloud Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      passphrase:
+        description: 'Encryption passphrase (choose a strong one; you will need it to decrypt)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump + encrypt all tables
+        uses: actions/github-script@v7
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        with:
+          passphrase: ${{ inputs.passphrase }}
+          script: |
+            const crypto = require('node:crypto');
+            const fs = require('node:fs');
+            const passphrase = core.getInput('passphrase');
+            if (!passphrase || passphrase.length < 8) throw new Error('Passphrase must be at least 8 characters');
+
+            const base = process.env.SUPABASE_URL;
+            const headers = {
+              apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              Accept: 'application/json'
+            };
+            const tables = [
+              'app_settings', 'clients', 'employees', 'vendors', 'sectors', 'items',
+              'work_sections', 'work_items', 'projects', 'transactions', 'procurements',
+              'employee_transactions', 'employee_salary_history', 'custody_records', 'custody_expenses',
+              'attendance_records', 'payroll_records', 'project_tasks', 'audit_logs',
+              'user_permissions', 'profiles', 'notification_rules', 'notifications'
+            ];
+            const data = {};
+            for (const table of tables) {
+              const rows = [];
+              let offset = 0;
+              for (;;) {
+                const res = await fetch(`${base}/rest/v1/${table}?select=*&limit=1000&offset=${offset}`, { headers });
+                if (!res.ok) { core.warning(`${table}: HTTP ${res.status} — stored empty`); break; }
+                const chunk = await res.json();
+                rows.push(...chunk);
+                if (chunk.length < 1000) break;
+                offset += 1000;
+              }
+              data[table] = rows;
+              core.info(`${table}: ${rows.length} rows`);
+            }
+
+            // Encrypt: same container as CryptoVault (.saraenc, SARAENC1).
+            const salt = crypto.randomBytes(16);
+            const iv = crypto.randomBytes(12);
+            const key = crypto.pbkdf2Sync(passphrase, salt, 310000, 32, 'sha256');
+            const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+            const plaintext = Buffer.from(JSON.stringify(data), 'utf8');
+            // WebCrypto-style layout: GCM tag is APPENDED to the ciphertext
+            // (must match js/crypto-vault.js: MAGIC | salt | iv | ct+tag).
+            const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+            const out = Buffer.concat([
+              Buffer.from('SARAENC1'), salt, iv, ciphertext
+            ]);
+            fs.writeFileSync('cloud-snapshot.saraenc', out);
+            core.info(`Encrypted snapshot: ${out.length} bytes (plaintext ${plaintext.length})`);
+          result-encoding: string
+
+      - name: Upload encrypted snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-snapshot
+          path: cloud-snapshot.saraenc
+          retention-days: 3
