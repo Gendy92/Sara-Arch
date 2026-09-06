@@ -1,4 +1,4 @@
--- v304: Emergency admin password reset, callable ONLY with the service_role key.
+-- v305: Emergency (replaces v304: relaxes min password length 6 -> 4) admin password reset, callable ONLY with the service_role key.
 -- Used by the admin-password-reset workflow when dashboard access is unavailable.
 -- The existing public.admin_reset_password(UUID, TEXT) is guarded by
 -- is_app_admin(auth.uid()) and therefore cannot run with the service key
