@@ -1420,6 +1420,44 @@ Object.assign(App, {
     }
   },
 
+  // ─── ENCRYPTED PORTABLE EXPORT (.saraenc) ───
+  async downloadEncryptedBackup() {
+    const progress = document.getElementById('backup-progress');
+    progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري جمع البيانات...</p>';
+    try {
+      const password = await CryptoVault.askNewPassword('🔐 تصدير مشفر — اختر كلمة مرور');
+      if (!password) { progress.innerHTML = ''; return; }
+      const { blob, manifest, ok, fail, failed } = await this._backupToZip({
+        onProgress: ({ ok, skip, fail }) => {
+          progress.innerHTML = `<p style="color:var(--gold)">⏳ تم ${ok} جداول${skip ? ` (تخطي ${skip})` : ''}${fail ? ` — فشل ${fail}` : ''}...</p>`;
+        }
+      });
+      progress.innerHTML = '<p style="color:var(--gold)">⏳ جاري التشفير (قد يستغرق ثوانٍ)...</p>';
+      const encrypted = await CryptoVault.encryptBlob(blob, password);
+      const fileName = `Sara_Backup_${new Date().toISOString().slice(0,10)}_${Date.now()}.saraenc`;
+      const url = URL.createObjectURL(encrypted);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      localStorage.setItem('sara_last_backup', new Date().toISOString());
+      if (typeof BackupManager !== 'undefined') {
+        await BackupManager.logBackup({ manifest, status: fail ? 'partial' : 'success', fileName });
+      }
+      const failMsg = fail > 0 ? ` <span style="color:var(--red)">(${fail} جدول فشل: ${failed.join(', ')})</span>` : '';
+      progress.innerHTML = `<p style="color:${fail ? 'var(--red)' : 'var(--green)'}">${fail ? '⚠️' : '✅'} تم التحميل — ${ok} جدول مشفر${failMsg}</p>`;
+      this.loadBackup();
+    } catch (e) {
+      progress.innerHTML = `<p style="color:var(--red)">⚠️ فشل التصدير المشفر: ${App.esc(e.message)}</p>`;
+      if (typeof BackupManager !== 'undefined') {
+        await BackupManager.logBackup({ status: 'error', error: e.message });
+      }
+    }
+  },
+
   // ─── RESTORE FROM BACKUP ───
   _restoreOrder: [
     'app_settings', 'clients', 'employees', 'vendors', 'sectors', 'items',
@@ -1438,7 +1476,16 @@ Object.assign(App, {
     preview.innerHTML = '<p style="color:var(--gold)">⏳ جاري قراءة الملف...</p>';
     btn.style.display = 'none';
     try {
-      const zip = await JSZip.loadAsync(input.files[0]);
+      // Encrypted portable files (.saraenc) must be decrypted with the user's
+      // password before they can be read as a ZIP.
+      let sourceFile = input.files[0];
+      if (CryptoVault.isEncryptedFile(sourceFile)) {
+        const password = await CryptoVault.askPassword('🔐 ملف مشفر — أدخل كلمة المرور');
+        if (!password) { preview.innerHTML = ''; return; }
+        preview.innerHTML = '<p style="color:var(--gold)">⏳ جاري فك التشفير...</p>';
+        sourceFile = await CryptoVault.decryptFile(sourceFile, password);
+      }
+      const zip = await JSZip.loadAsync(sourceFile);
       const files = Object.values(zip.files).filter(f => !f.dir && f.name.endsWith('.json'));
       const data = {};
       for (const f of files) {

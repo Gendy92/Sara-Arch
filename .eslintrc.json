@@ -19,6 +19,7 @@
     "Utils": "readonly",
     "ErrorReporter": "readonly",
     "BackupManager": "readonly",
+    "CryptoVault": "readonly",
     "SyncManager": "readonly",
     "NotificationService": "readonly",
     "SUPABASE_URL": "readonly",
