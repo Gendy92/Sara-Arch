@@ -1,5 +1,11 @@
 // eslint-disable-next-line no-unused-vars
 const Crud = {
+  _requirePermission(screen, action) {
+    if (Auth.can(screen, action)) return true;
+    UI.toast('ليس لديك صلاحية لإجراء هذه العملية', 'error');
+    return false;
+  },
+
   _currentUserId() { return Auth.user?.id || null; },
   _currentUserName() { return Auth.user?.displayName || Auth.fromEmail(Auth.user?.email) || 'unknown'; },
 
@@ -106,9 +112,11 @@ const Crud = {
     // total_price is a generated column (quantity * unit_price); never send it to the DB.
     const cleanData = { ...data };
     if (table === 'procurements') delete cleanData.total_price;
+    // Never send an id in the payload; it belongs in the URL.
+    if (!id) delete cleanData.id;
 
     // Basic accounting guardrail: block paid amount from exceeding the total amount.
-    if (table === 'transactions' && cleanData.amount !== null && cleanData.amount !== undefined && cleanData.paid_amount !== null && cleanData.paid_amount !== undefined && cleanData.type !== 'vendor_settlement') {
+    if (table === 'transactions' && cleanData.paid_amount !== null && cleanData.paid_amount !== undefined && cleanData.type !== 'vendor_settlement') {
       const amount = +cleanData.amount || 0;
       const paid = +cleanData.paid_amount || 0;
       if (paid > amount) throw new Error('المبلغ المدفوع أكبر من إجمالي المبلغ');
@@ -358,6 +366,7 @@ const Crud = {
 
   // ─── CLIENTS ───
   addClient() {
+    if (!this._requirePermission('clients', 'add')) return;
     const cols = [
       { key: 'name', label: 'اسم العميل *', req: true },
       { key: 'phone', label: 'الهاتف' },
@@ -377,6 +386,7 @@ const Crud = {
   },
 
   async editClient(id) {
+    if (!this._requirePermission('clients', 'edit')) return;
     const rows = await API.request('clients', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!rows.length) return;
     const fields = [
@@ -401,11 +411,13 @@ const Crud = {
   },
 
   delClient(id) {
+    if (!this._requirePermission('clients', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا العميل؟ سيتم حذف جميع مشاريعه ومعاملاته المرتبطة.', async () => { await this.softDelete('clients', id, true); UI.toast('تم الحذف مع البيانات المرتبطة'); App.go('clients'); });
   },
 
   // ─── PROJECTS (linked to Clients) ───
   async addProject(clientId) {
+    if (!this._requirePermission('projects', 'add')) return;
     const [clients, workSections] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
@@ -467,6 +479,7 @@ const Crud = {
   },
 
   async editProject(id) {
+    if (!this._requirePermission('projects', 'edit')) return;
     const [projectRows, clients, workSections, rates] = await Promise.all([
       API.request('projects', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null'),
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
@@ -526,7 +539,8 @@ const Crud = {
 
 
   delProject(id) {
-    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id); UI.toast('تم الحذف');
+    if (!this._requirePermission('projects', 'delete')) return;
+    UI.confirm('هل أنت متأكد من حذف هذا المشروع؟', async () => { await this.softDelete('projects', id, true); UI.toast('تم الحذف');
       if (App.screen === 'project' && App.projectId) App.go('clients');
       else if (App.screen === 'client' && App.clientId) App.loadClient(App.clientId);
       else App.loadClients();
@@ -534,6 +548,7 @@ const Crud = {
   },
 
   async releaseRetention(projectId, clientId, projectName, clientName) {
+    if (!this._requirePermission('projects', 'edit')) return;
     const fields = [
       { name: 'amount', label: 'مبلغ الإرجاع *', type: 'number', req: true, attr: 'min="0" step="any"' },
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
@@ -559,6 +574,7 @@ const Crud = {
   },
 
   async closeProjectPeriod(projectId) {
+    if (!this._requirePermission('projects', 'edit')) return;
     const fields = [
       { name: 'date', label: 'تاريخ نهاية الدورة *', type: 'date', req: true }
     ];
@@ -579,6 +595,7 @@ const Crud = {
   },
 
   async reopenProjectPeriod(closeId, projectId) {
+    if (!this._requirePermission('projects', 'edit')) return;
     UI.confirm('هل أنت متأكد من إعادة فتح الدورة؟ سيتم حذف سجل الإشراف المرتبط.', async () => {
       try {
         await API.rpc('reopen_project_period', {
@@ -593,6 +610,7 @@ const Crud = {
 
   // ─── VENDORS ───
   addVendor() {
+    if (!this._requirePermission('vendors', 'add')) return;
     const sectorOpts = [{ v: '', l: '-- اختر تخصص --' }, { v: 'كهرباء', l: 'كهرباء' }, { v: 'سباكة', l: 'سباكة' }, { v: 'نجارة', l: 'نجارة' }, { v: 'دهانات', l: 'دهانات' }, { v: 'بناء', l: 'بناء' }, { v: 'ألوميتال', l: 'ألوميتال' }, { v: 'ديكور', l: 'ديكور' }, { v: 'تكييف', l: 'تكييف' }, { v: 'أرضيات', l: 'أرضيات' }, { v: 'حدادة', l: 'حدادة' }, { v: 'أخرى', l: 'أخرى' }];
     const typeOpts = [{ v: 'service', l: 'خدمات' }, { v: 'merchandise', l: 'بضاعة' }];
     const cols = [
@@ -617,6 +635,7 @@ const Crud = {
   },
 
   async editVendor(id) {
+    if (!this._requirePermission('vendors', 'edit')) return;
     const rows = await API.request('vendors', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!rows.length) return;
     const fields = [
@@ -645,6 +664,7 @@ const Crud = {
   },
 
   async delVendor(id) {
+    if (!this._requirePermission('vendors', 'delete')) return;
     const rows = await API.request('vendors', 'GET', null, `?select=is_office&id=eq.${id}&deleted_at=is.null`);
     if (rows[0]?.is_office) { UI.toast('لا يمكن حذف مورد المكتب الرئيسي', 'error'); return; }
     UI.confirm('هل أنت متأكد من حذف هذا المورد؟', async () => { await this.softDelete('vendors', id, true); UI.toast('تم الحذف'); App.go('vendors'); });
@@ -686,6 +706,7 @@ const Crud = {
   },
 
   async addProcurement(vendorId) {
+    if (!this._requirePermission('vendors', 'add')) return;
     const [clients, projects, vendors] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
@@ -739,6 +760,7 @@ const Crud = {
   },
 
   async editProcurement(id) {
+    if (!this._requirePermission('vendors', 'edit')) return;
     const rows = await API.request('procurements', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const p = rows[0];
@@ -823,6 +845,7 @@ const Crud = {
   },
 
   delProcurement(id) {
+    if (!this._requirePermission('vendors', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذه المشتريات؟', async () => {
       const rows = await API.request('procurements', 'GET', null, `?select=vendor_id,linked_transaction_id&id=eq.${id}`);
       const vendorId = rows[0]?.vendor_id;
@@ -837,6 +860,7 @@ const Crud = {
 
   // ─── EMPLOYEES ───
   addEmp() {
+    if (!this._requirePermission('employees', 'add')) return;
     const cols = [
       { key: 'name', label: 'اسم الموظف *', req: true },
       { key: 'job_title', label: 'الوظيفة' },
@@ -857,11 +881,13 @@ const Crud = {
   },
 
   async editEmp(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const rows = await API.request('employees', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!rows.length) return;
     const fields = [
       { name: 'name', label: 'اسم الموظف', req: true },
       { name: 'job_title', label: 'الوظيفة' },
+      { name: 'salary', label: 'الراتب', type: 'number', attr: 'min="0" step="any"' },
       { name: 'phone', label: 'الهاتف' },
       { name: 'email', label: 'البريد' },
       { name: 'hire_date', label: 'تاريخ التعيين *', type: 'date', req: true },
@@ -892,6 +918,7 @@ const Crud = {
   },
 
   delEmp(id) {
+    if (!this._requirePermission('employees', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا الموظف؟', async () => { await this.softDelete('employees', id, true); UI.toast('تم الحذف'); App.loadEmployees(); });
   },
 
@@ -916,6 +943,7 @@ const Crud = {
   },
 
   async addEmpTransaction(employeeId) {
+    if (!this._requirePermission('employee-transactions', 'add')) return;
     const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
     const fields = [
       { name: 'employee_id', label: 'الموظف *', type: 'select', req: true, opts: [{v:'',l:'-- اختر موظف --'}, ...employees.map(e => ({v:e.id,l:e.name}))], default: employeeId || '' },
@@ -937,11 +965,13 @@ const Crud = {
       });
       UI.toast('تم الحفظ');
       App.loadEmpTransactions();
+      if (App.screen === 'employee-transactions') App.loadEmployeeTransactionsScreen();
       if (employeeId) this.employeeTransactions(employeeId);
     });
   },
 
   async editEmpTransaction(id) {
+    if (!this._requirePermission('employee-transactions', 'edit')) return;
     const rows = await API.request('employee_transactions', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const [employees] = await Promise.all([
@@ -967,16 +997,19 @@ const Crud = {
       }, id);
       UI.toast('تم التحديث');
       App.loadEmpTransactions();
+      if (App.screen === 'employee-transactions') App.loadEmployeeTransactionsScreen();
       if (rows[0].employee_id) this.employeeTransactions(rows[0].employee_id);
     });
   },
 
   delEmpTransaction(id) {
+    if (!this._requirePermission('employee-transactions', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذه المعاملة؟', async () => {
       const rows = await API.request('employee_transactions', 'GET', null, `?select=employee_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('employee_transactions', id);
       UI.toast('تم الحذف');
       App.loadEmpTransactions();
+      if (App.screen === 'employee-transactions') App.loadEmployeeTransactionsScreen();
       if (rows.length && rows[0].employee_id) this.employeeTransactions(rows[0].employee_id);
     });
   },
@@ -1001,6 +1034,7 @@ const Crud = {
   },
 
   async addSalaryHistory(employeeId, oldSalary) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const employees = await API.request('employees', 'GET', null, '?select=id,name,salary&is_active=eq.true&deleted_at=is.null&order=name.asc');
     const emp = employees.find(e => e.id === employeeId);
     const fields = [
@@ -1028,6 +1062,7 @@ const Crud = {
   },
 
   async editSalaryHistory(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const rows = await API.request('employee_salary_history', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
@@ -1056,6 +1091,7 @@ const Crud = {
   },
 
   delSalaryHistory(id) {
+    if (!this._requirePermission('employees', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا السجل؟', async () => {
       const rows = await API.request('employee_salary_history', 'GET', null, `?select=employee_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('employee_salary_history', id);
@@ -1067,6 +1103,7 @@ const Crud = {
 
   // ─── TRANSACTIONS: 4 Types ───
   async addProjectDeposit() {
+    if (!this._requirePermission('transactions', 'add')) return;
     const [clients, projects] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id&deleted_at=is.null&order=name.asc')
@@ -1085,7 +1122,7 @@ const Crud = {
       const enriched = rows.map(r => {
         const client = clients.find(c => c.id === r.client_id);
         const project = projects.find(p => p.id === r.project_id);
-        return { type: 'project_deposit', amount: r.amount, client_id: r.client_id, party_id: r.client_id, party_name: client ? client.name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, payment_method: r.payment_method || null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
+        return { type: 'project_deposit', amount: r.amount, client_id: r.client_id, client_name: client ? client.name : null, party_id: r.client_id, party_name: client ? client.name : null, party_type: 'client', project_id: r.project_id, project_name: project ? project.name : null, payment_method: r.payment_method || null, date: r.date || new Date().toISOString().slice(0, 10), description: r.description || null };
       });
       await this.bulkSave('transactions', enriched);
       UI.toast(`تم حفظ ${rows.length} عربون`);
@@ -1094,6 +1131,7 @@ const Crud = {
   },
 
   async addProjectExpense() {
+    if (!this._requirePermission('transactions', 'add')) return;
     const [clients, projects, vendors, workSections, workItems] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
@@ -1150,6 +1188,7 @@ const Crud = {
   },
 
   async addClientReturn(clientId, projectId) {
+    if (!this._requirePermission('transactions', 'add')) return;
     const [clients, projects] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
@@ -1192,6 +1231,7 @@ const Crud = {
   },
 
   async addVendorSettlement(vendorId) {
+    if (!this._requirePermission('vendors', 'add')) return;
     const [vendors, projects] = await Promise.all([
       API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
@@ -1235,6 +1275,7 @@ const Crud = {
   },
 
   async addVendorPayment(vendorId) {
+    if (!this._requirePermission('vendors', 'add')) return;
     const vendors = await API.request('vendors', 'GET', null, '?select=id,name,is_office&deleted_at=is.null&order=name.asc');
     const vendorOpts = vendors.map(v => ({ v: v.id, l: v.name }));
     const paymentMethodOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
@@ -1272,6 +1313,7 @@ const Crud = {
   },
 
   async addOfficeExpense() {
+    if (!this._requirePermission('office', 'add')) return;
     const [employees, sectors, vendors] = await Promise.all([
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
@@ -1305,6 +1347,7 @@ const Crud = {
   },
 
   addOwnerDeposit() {
+    if (!this._requirePermission('office', 'add')) return;
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -1321,6 +1364,7 @@ const Crud = {
   },
 
   async addOfficeIncome() {
+    if (!this._requirePermission('office', 'add')) return;
     const sectors = await API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
@@ -1342,6 +1386,7 @@ const Crud = {
   },
 
   addOwnerWithdrawal() {
+    if (!this._requirePermission('office', 'add')) return;
     const pmOpts = [{ v: '', l: '-- اختر --' }, { v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const cols = [
       { key: 'amount', label: 'المبلغ', type: 'number', req: true },
@@ -1358,6 +1403,7 @@ const Crud = {
   },
 
   addOfficeTransfer() {
+    if (!this._requirePermission('office', 'add')) return;
     const accountOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
     const fields = [
       { name: 'from_account', label: 'من الحساب *', type: 'select', req: true, opts: accountOpts, default: 'cash' },
@@ -1386,6 +1432,7 @@ const Crud = {
   },
 
   async addProjectSupervision() {
+    if (!this._requirePermission('projects', 'edit')) return;
     const projects = await API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc');
     const projectOpts = projects.map(p => ({ v: p.id, l: p.name }));
     const cols = [
@@ -1406,6 +1453,7 @@ const Crud = {
   },
 
   async editTx(id) {
+    if (!this._requirePermission('transactions', 'edit')) return;
     const txRows = await API.request('transactions', 'GET', null, '?select=*&id=eq.' + id + '&deleted_at=is.null');
     if (!txRows.length) return;
     const tx = txRows[0];
@@ -1533,6 +1581,7 @@ const Crud = {
   },
 
   async delTx(id) {
+    if (!this._requirePermission('transactions', 'delete')) return;
     const txRows = await API.request('transactions', 'GET', null, '?select=type,system_generated&id=eq.' + id + '&deleted_at=is.null');
     const tx = txRows[0];
     if (tx && (tx.system_generated || tx.type === 'retention_withheld')) { UI.toast('لا يمكن حذف معاملة مولدة تلقائياً', 'error'); return; }
@@ -1541,6 +1590,7 @@ const Crud = {
 
   // ─── USERS (admin only) ───
   addUser() {
+    if (!this._requirePermission('users', 'add')) return;
     const cols = [
       { key: 'username', label: 'اسم المستخدم *', req: true },
       { key: 'name', label: 'الاسم الكامل *', req: true },
@@ -1600,6 +1650,7 @@ const Crud = {
   },
 
   async editUser(id) {
+    if (!this._requirePermission('users', 'edit')) return;
     const profiles = await API.request('profiles', 'GET', null, `?id=eq.${id}`);
     const profile = profiles[0];
     if (!profile) {
@@ -1631,6 +1682,7 @@ const Crud = {
   },
 
   async resetUserPassword(id) {
+    if (!this._requirePermission('users', 'edit')) return;
     const profiles = await API.request('profiles', 'GET', null, `?id=eq.${id}`);
     const profile = profiles[0];
     if (!profile) { UI.toast('ملف المستخدم غير موجود', 'error'); return; }
@@ -1644,6 +1696,7 @@ const Crud = {
   },
 
   async emailNewPassword(id, email) {
+    if (!this._requirePermission('users', 'edit')) return;
     if (!email || !email.includes('@')) { UI.toast('لا يوجد بريد إلكتروني صالح لهذا المستخدم', 'error'); return; }
     UI.confirm(`إرسال كلمة مرور جديدة إلى ${App.esc(email)}؟`, async () => {
       try {
@@ -1656,6 +1709,7 @@ const Crud = {
 
   // ─── MASTER DATA: SECTORS & ITEMS ───
   addSector() {
+    if (!this._requirePermission('master', 'add')) return;
     const cols = [
       { key: 'name', label: 'اسم التصنيف *', req: true },
       { key: 'description', label: 'الوصف' }
@@ -1672,6 +1726,7 @@ const Crud = {
   },
 
   async editSector(id) {
+    if (!this._requirePermission('master', 'edit')) return;
     const rows = await API.request('sectors', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
@@ -1691,6 +1746,7 @@ const Crud = {
   },
 
   delSector(id) {
+    if (!this._requirePermission('master', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا التصنيف؟', async () => {
       await this.softDelete('sectors', id);
       UI.toast('تم الحذف'); App.loadMasterData();
@@ -1698,6 +1754,7 @@ const Crud = {
   },
 
   addItem() {
+    if (!this._requirePermission('master', 'add')) return;
     const cols = [
       { key: 'name', label: 'اسم الصنف *', req: true },
       { key: 'specification', label: 'المواصفات' },
@@ -1717,6 +1774,7 @@ const Crud = {
   },
 
   async editItem(id) {
+    if (!this._requirePermission('master', 'edit')) return;
     const rows = await API.request('items', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
@@ -1739,6 +1797,7 @@ const Crud = {
   },
 
   delItem(id) {
+    if (!this._requirePermission('master', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا الصنف؟', async () => {
       await this.softDelete('items', id);
       UI.toast('تم الحذف'); App.loadMasterData();
@@ -1748,6 +1807,7 @@ const Crud = {
 
   // ─── WORK SECTIONS & ITEMS (أقسام وبنود المشاريع) ───
   addWorkSection() {
+    if (!this._requirePermission('master', 'add')) return;
     const cols = [
       { key: 'name', label: 'اسم القسم *', req: true },
       { key: 'notes', label: 'ملاحظات' }
@@ -1764,6 +1824,7 @@ const Crud = {
   },
 
   async editWorkSection(id) {
+    if (!this._requirePermission('master', 'edit')) return;
     const rows = await API.request('work_sections', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
@@ -1783,6 +1844,7 @@ const Crud = {
   },
 
   delWorkSection(id) {
+    if (!this._requirePermission('master', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا القسم؟', async () => {
       await this.softDelete('work_sections', id);
       UI.toast('تم الحذف'); App.loadMasterData();
@@ -1790,6 +1852,7 @@ const Crud = {
   },
 
   async addWorkItem() {
+    if (!this._requirePermission('master', 'add')) return;
     const sections = await API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc');
     const sectionOpts = sections.map(s => ({ v: s.id, l: s.name }));
     const cols = [
@@ -1812,6 +1875,7 @@ const Crud = {
   },
 
   async editWorkItem(id) {
+    if (!this._requirePermission('master', 'edit')) return;
     const [rows, sections] = await Promise.all([
       API.request('work_items', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`),
       API.request('work_sections', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc')
@@ -1839,6 +1903,7 @@ const Crud = {
   },
 
   delWorkItem(id) {
+    if (!this._requirePermission('master', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا البند؟', async () => {
       await this.softDelete('work_items', id);
       UI.toast('تم الحذف'); App.loadMasterData();
@@ -1936,7 +2001,7 @@ const Crud = {
       </div>`;
 
       this._clientStatementData = this._clientStatementData || {};
-      this._clientStatementData[clientId] = { clientName, chapters, totalDep, totalExp };
+      this._clientStatementData[clientId] = { clientName, chapters, totalDep, totalExp, totalSup };
 
       UI.openModal(`كشف حساب العميل: ${App.esc(clientName)}`, logoHtml + actionsHtml + clientSummary + chapterHtml, null);
     });
@@ -1947,11 +2012,13 @@ const Crud = {
     if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
+    const totalSup = data.totalSup || 0;
     const sheet = [
       ['كشف حساب العميل: ' + data.clientName],
       ['إجمالي الإيداعات', data.totalDep],
       ['إجمالي المصروفات', data.totalExp],
-      ['الرصيد', data.totalDep - data.totalExp],
+      ['إجمالي الإشراف', totalSup],
+      ['الرصيد', data.totalDep - data.totalExp - totalSup],
       []
     ];
     data.chapters.forEach(c => {
@@ -2006,9 +2073,9 @@ const Crud = {
         if (t.type === 'project_deposit') totalDep += amt;
         else if (t.type === 'client_return') totalDep -= amt;
         else if (['project_expense','vendor_settlement'].includes(t.type)) totalExp += paid;
-        rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), App.fmtMoney(amt)]);
+        rows.push([i+1, t.date || '-', App.fmtTxType(t.type), App.esc(t.description || '-'), { html: `<span class="print-nowrap">${App.fmtMoney(amt)}</span>` }]);
       });
-      if (supervision > 0) rows.push(['-', '-', App.fmtTxType('supervision'), App.esc('رسوم إشراف'), App.fmtMoney(supervision)]);
+      if (supervision > 0) rows.push(['-', '-', App.fmtTxType('supervision'), App.esc('رسوم إشراف'), { html: `<span class="print-nowrap">${App.fmtMoney(supervision)}</span>` }]);
       const balance = totalDep - totalExp - supervision;
       const summary = `<h4 style="margin:0 0 8px">تفاصيل المشروع: ${App.esc(name)}</h4>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
@@ -2025,7 +2092,7 @@ const Crud = {
         <button class="btn btn-sm btn-secondary" onclick="Crud._printProjectStatement('${projectId}')">🖨️ طباعة / PDF</button>
       </div>`;
       this._projectStatementData = this._projectStatementData || {};
-      this._projectStatementData[projectId] = { rows, totalDep, totalExp, name };
+      this._projectStatementData[projectId] = { rows, totalDep, totalExp, supervision, name };
 
       UI.openModal(`كشف حساب مشروع: ${App.esc(name)}`, logoHtml + actionsHtml + summary + table, null);
   },
@@ -2039,10 +2106,15 @@ const Crud = {
     sheet.push(
       ['تفاصيل المشروع: ' + data.name],
       ['#', 'التاريخ', 'النوع', 'البيان', 'المبلغ'],
-      ...data.rows.map((row, i) => [i+1, row[1], row[2], row[3], row[4]]),
+      ...data.rows.map((row, i) => {
+        const amountCell = row[4] && typeof row[4] === 'object' ? row[4].html : row[4];
+        const plainAmount = typeof amountCell === 'string' ? amountCell.replace(/<[^>]+>/g, '') : amountCell;
+        return [i + 1, row[1], row[2], row[3], plainAmount];
+      }),
       ['', '', '', 'إجمالي الإيداعات', data.totalDep],
       ['', '', '', 'إجمالي المصروفات', data.totalExp],
-      ['', '', '', 'الرصيد', data.totalDep - data.totalExp]
+      ['', '', '', 'الإشراف', data.supervision || 0],
+      ['', '', '', 'الرصيد', data.totalDep - data.totalExp - (data.supervision || 0)]
     );
     const ws = XLSX.utils.aoa_to_sheet(sheet);
     ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }];
@@ -2095,7 +2167,7 @@ const Crud = {
     </div>`;
     const downloadBtn = `<div style="margin-bottom:12px"><button class="btn btn-sm btn-secondary" onclick="Crud._exportProjectBudget('${projectId}')">📥 تحميل Excel</button></div>`;
     this._projectBudgetData = this._projectBudgetData || {};
-    this._projectBudgetData[projectId] = { name: p.name, deposits, expenses, constr, design, supervision, balance, supervisionPercentage: '-' };
+    this._projectBudgetData[projectId] = { name: p.name, deposits, expenses, constr, design, supervision, balance, supervisionPercentage: p.supervision_percentage || 0 };
 
     UI.openModal(`📊 ميزانية مشروع: ${App.esc(p.name)}`, downloadBtn + html, null);
   },
@@ -2159,6 +2231,7 @@ const Crud = {
   },
 
   addProjectTask(projectId) {
+    if (!this._requirePermission('tasks', 'add')) return;
     const fields = [
       { name: 'name', label: 'اسم المهمة *', req: true },
       { name: 'assignee', label: 'المسؤول' },
@@ -2186,6 +2259,7 @@ const Crud = {
   },
 
   async editProjectTask(id) {
+    if (!this._requirePermission('tasks', 'edit')) return;
     const rows = await API.request('project_tasks', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
@@ -2215,6 +2289,7 @@ const Crud = {
   },
 
   delProjectTask(id) {
+    if (!this._requirePermission('tasks', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذه المهمة؟', async () => {
       const rows = await API.request('project_tasks', 'GET', null, `?select=project_id&id=eq.${id}&deleted_at=is.null`);
       await this.softDelete('project_tasks', id);
@@ -2318,11 +2393,13 @@ const Crud = {
     if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
+    const netBalance = data.netBalance || 0;
     const sheet = [
       ['كشف حساب مورد: ' + data.vendorName],
       ['إجمالي المستحق', data.totalOwed],
       ['إجمالي المدفوع', data.totalPaid],
-      ['الرصيد', data.netBalance],
+      ['الرصيد', Math.abs(netBalance)],
+      ['الاتجاه', netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية'],
       []
     ];
     data.chapters.forEach(c => {
@@ -2410,11 +2487,12 @@ const Crud = {
     if (!data) { UI.toast('لا توجد بيانات للتصدير', 'error'); return; }
     if (typeof XLSX === 'undefined') { UI.toast('مكتبة Excel لم يتم تحميلها', 'error'); return; }
 
+    const netBalance = data.netBalance || 0;
     const sheet = [
       ['مشتريات مورد: ' + data.name],
-      ['#', 'التاريخ', 'القسم', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع'],
-      ...data.procData.map(p => [p.i, p.date, p.section, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project]),
-      ['', '', '', '', '', '', 'الإجمالي', data.total, data.totalPaid, data.netBalance]
+      ['#', 'التاريخ', 'القسم', 'البند', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'المدفوع', 'الباقي', 'المشروع', 'الاتجاه'],
+      ...data.procData.map(p => [p.i, p.date, p.section, p.item, p.qty, p.unitPrice, p.total, p.paid, p.balance, p.project, p.balance > 0 ? 'مستحق' : p.balance < 0 ? 'زيادة' : 'تسوية']),
+      ['', '', '', '', '', '', 'الإجمالي', data.total, data.totalPaid, Math.abs(netBalance), netBalance > 0 ? 'مستحق' : netBalance < 0 ? 'زيادة مدفوعة' : 'تسوية']
     ];
     const ws = XLSX.utils.aoa_to_sheet(sheet);
     ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 24 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
@@ -2442,6 +2520,7 @@ const Crud = {
 
   // ─── CUSTODY ───
   async addCustody(employeeId) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const employees = await API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc');
     const pmOpts = [{v:'',l:'-- اختر --'},{v:'cash',l:'نقدي'},{v:'bank',l:'بنكي'}];
     const cols = [
@@ -2494,10 +2573,12 @@ const Crud = {
   },
 
   async addOfficeCustody() {
+    if (!this._requirePermission('office', 'add')) return;
     await this.addCustody('');
   },
 
   async addOfficeCustodyExpense() {
+    if (!this._requirePermission('office', 'add')) return;
     const custodies = await API.request('custody_records', 'GET', null, "?select=*,employees(name)&status=in.(active,partial)&deleted_at=is.null&order=date.desc");
     if (!custodies.length) { UI.toast('لا توجد عهد مفتوحة لإضافة مصروف', 'error'); return; }
     const custodyOpts = custodies.map(c => ({ v: c.id, l: `${c.employees?.name || c.employee_name || '-'} — ${App.fmtMoney(c.amount)} (متبقي: ${App.fmtMoney(c.remaining_balance || 0)})` }));
@@ -2541,6 +2622,7 @@ const Crud = {
   },
 
   async _openOfficeCustodyExpenseSheet(c) {
+    if (!this._requirePermission('office', 'add')) return;
     const [employees, sectors, vendors] = await Promise.all([
       API.request('employees', 'GET', null, '?select=id,name&is_active=eq.true&deleted_at=is.null&order=name.asc'),
       API.request('sectors', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
@@ -2588,6 +2670,7 @@ const Crud = {
         await this.save('custody_expenses', {
           custody_id: c.id,
           linked_transaction_id: txId || null,
+          type: 'spent',
           amount,
           date,
           description: r.description || 'مصروف عهدة'
@@ -2600,6 +2683,7 @@ const Crud = {
   },
 
   async _openProjectCustodyExpenseSheet(c) {
+    if (!this._requirePermission('transactions', 'add')) return;
     const [clients, projects, vendors, workSections, workItems] = await Promise.all([
       API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
       API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc'),
@@ -2673,6 +2757,7 @@ const Crud = {
         await this.save('custody_expenses', {
           custody_id: c.id,
           linked_transaction_id: txId || null,
+          type: 'spent',
           amount,
           date: r.date || new Date().toISOString().slice(0, 10),
           description: r.description || 'مصروف عهدة'
@@ -2685,6 +2770,7 @@ const Crud = {
   },
 
   async editCustody(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const rows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const [sectors, employees, projects] = await Promise.all([
@@ -2740,6 +2826,7 @@ const Crud = {
   },
 
   delCustody(id) {
+    if (!this._requirePermission('employees', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذه العهدة؟', async () => {
       const rows = await API.request('custody_records', 'GET', null, `?select=employee_id,advance_transaction_id&id=eq.${id}&deleted_at=is.null`);
       const custody = rows[0];
@@ -2792,23 +2879,26 @@ const Crud = {
     ]);
     const c = custody[0];
     if (!c) { UI.toast('العهدة غير موجودة', 'error'); return; }
-    const totalExpenses = expenses.reduce((s, x) => s + (+x.amount || 0), 0);
-    const returnedCash = +c.returned_cash_amount || 0;
+    const totalSpent = expenses.filter(x => x.type !== 'returned').reduce((s, x) => s + (+x.amount || 0), 0);
+    const totalReturned = expenses.filter(x => x.type === 'returned').reduce((s, x) => s + (+x.amount || 0), 0);
     const remaining = +c.remaining_balance || 0;
     const empName = c.employees?.name || c.employee_name || '-';
+    const typeLabels = { spent: 'مصروف', returned: 'مرتجع نقدي' };
+    const typeColors = { spent: 'red', returned: 'green' };
     const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">مبلغ العهدة</div><div class="kpi-value">${App.fmtMoney(c.amount || 0)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalExpenses)}</div></div>
-      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع نقدًا</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(returnedCash)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المصروفات</div><div class="kpi-value" style="color:var(--red)">${App.fmtMoney(totalSpent)}</div></div>
+      <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المرتجع نقدًا</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(totalReturned)}</div></div>
       <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:var(--gold)">${App.fmtMoney(remaining)}</div></div>
     </div>`;
-    const rows = expenses.map((x, i) => [i+1, x.date || '-', App.fmtMoney(x.amount), App.esc(x.description || '-'), {html: UI.actions(x.id, 'Crud.editCustodyExpense', 'Crud.delCustodyExpense')}]);
-    const table = rows.length ? App.table(['#', 'التاريخ', 'المبلغ', 'البيان', ''], rows) : '<p style="color:var(--text3)">لا توجد مصروفات لهذه العهدة</p>';
+    const rows = expenses.map((x, i) => [i+1, x.date || '-', {html: `<span class="badge badge-${typeColors[x.type] || 'gray'}">${App.esc(typeLabels[x.type] || x.type || 'مصروف')}</span>`}, App.fmtMoney(x.amount), App.esc(x.description || '-'), {html: UI.actions(x.id, 'Crud.editCustodyExpense', 'Crud.delCustodyExpense')}]);
+    const table = rows.length ? App.table(['#', 'التاريخ', 'النوع', 'المبلغ', 'البيان', ''], rows) : '<p style="color:var(--text3)">لا توجد مصروفات لهذه العهدة</p>';
     const addBtn = `<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="Crud.addCustodyExpense('${custodyId}')">➕ إضافة مصروف</button> <button class="btn btn-secondary" onclick="Crud.custodyReturn('${custodyId}')">💵 سداد باقي</button></div>`;
     UI.openModal(`🧾 مصروفات العهدة: ${App.esc(empName)}`, addBtn + summary + table, null);
   },
 
   async addCustodyExpense(custodyId) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*&id=eq.${custodyId}&deleted_at=is.null`);
     if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const c = custodyRows[0];
@@ -2866,6 +2956,7 @@ const Crud = {
       await this.save('custody_expenses', {
         custody_id: custodyId,
         linked_transaction_id: txId || null,
+        type: 'spent',
         amount,
         date,
         description: desc
@@ -2878,6 +2969,7 @@ const Crud = {
   },
 
   async editCustodyExpense(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const rows = await API.request('custody_expenses', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const expense = rows[0];
@@ -2902,7 +2994,7 @@ const Crud = {
       if (expense.linked_transaction_id) {
         await this.save('transactions', { amount, paid_amount: amount, payment_method: paymentMethod, date, description: desc }, expense.linked_transaction_id);
       }
-      await this.save('custody_expenses', { amount, date, description: desc }, id);
+      await this.save('custody_expenses', { amount, date, description: desc, type: expense.type || 'spent' }, id);
       await this._updateCustodyAdvance(expense.custody_id);
       UI.toast('تم التحديث');
       App.loadOffice();
@@ -2911,6 +3003,7 @@ const Crud = {
   },
 
   delCustodyExpense(id) {
+    if (!this._requirePermission('employees', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا المصروف؟', async () => {
       const rows = await API.request('custody_expenses', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
       if (!rows.length) return;
@@ -2925,10 +3018,10 @@ const Crud = {
   },
 
   async custodyReturn(custodyId) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const custodyRows = await API.request('custody_records', 'GET', null, `?select=*,employees(name)&id=eq.${custodyId}&deleted_at=is.null`);
     if (!custodyRows.length) { UI.toast('العهدة غير موجودة', 'error'); return; }
     const c = custodyRows[0];
-    const returnedCash = +c.returned_cash_amount || 0;
     const remaining = +c.remaining_balance || 0;
     if (remaining <= 0) { UI.toast('لا يوجد رصيد متبقي للسداد', 'error'); return; }
     const pmOpts = [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }];
@@ -2945,7 +3038,7 @@ const Crud = {
       if (amount > remaining) { UI.toast('المبلغ يتجاوز الرصيد المتبقي', 'error'); return; }
       const date = fd.get('date') || new Date().toISOString().slice(0, 10);
       const desc = fd.get('description') || 'سداد باقي عهدة';
-      await this.save('transactions', {
+      const txResult = await this.save('transactions', {
         type: 'custody_return',
         amount,
         payment_method: fd.get('payment_method') || 'cash',
@@ -2955,8 +3048,15 @@ const Crud = {
         employee_name: c.employee_name || null,
         sector_name: 'عهدة نقدية'
       });
-      const newReturnedCash = returnedCash + amount;
-      await API.request('custody_records', 'PATCH', { returned_cash_amount: newReturnedCash }, '?id=eq.' + custodyId);
+      const txId = Array.isArray(txResult) ? txResult[0]?.id : txResult?.id;
+      await this.save('custody_expenses', {
+        custody_id: custodyId,
+        linked_transaction_id: txId || null,
+        type: 'returned',
+        amount,
+        date,
+        description: desc
+      });
       await this._updateCustodyAdvance(custodyId);
       UI.toast('تم تسجيل السداد');
       App.loadOffice();
@@ -2982,6 +3082,7 @@ const Crud = {
   },
 
   addAttendance(employeeId) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const fields = [
       { name: 'date', label: 'التاريخ *', type: 'date', req: true },
       { name: 'status', label: 'الحالة', type: 'select', opts: [{v:'present',l:'حاضر'},{v:'absent',l:'غائب'},{v:'late',l:'متأخر'},{v:'half_day',l:'نصف يوم'},{v:'leave',l:'إجازة'}] },
@@ -3012,6 +3113,7 @@ const Crud = {
   },
 
   async editAttendance(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     const rows = await API.request('attendance_records', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`);
     if (!rows.length) return;
     const fields = [
@@ -3043,6 +3145,7 @@ const Crud = {
   },
 
   delAttendance(id) {
+    if (!this._requirePermission('employees', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف هذا السجل؟', async () => {
       const rows = await API.request('attendance_records', 'GET', null, `?select=employee_id&id=eq.${id}`);
       await this.softDelete('attendance_records', id);
@@ -3100,6 +3203,7 @@ const Crud = {
   },
 
   async approvePayroll(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     UI.confirm('هل أنت متأكد من اعتماد هذا الراتب؟', async () => {
       await this.save('payroll_records', { status: 'approved' }, id);
       UI.toast('تم الاعتماد');
@@ -3108,6 +3212,7 @@ const Crud = {
   },
 
   async payPayroll(id) {
+    if (!this._requirePermission('employees', 'edit')) return;
     UI.confirm('هل أنت متأكد من تسجيل الدفع؟', async () => {
       const rows = await API.request('payroll_records', 'GET', null, `?select=*,employees(name)&id=eq.${id}&deleted_at=is.null`);
       if (!rows.length) return;
@@ -3139,6 +3244,7 @@ const Crud = {
   },
 
   delPayroll(id) {
+    if (!this._requirePermission('employees', 'delete')) return;
     UI.confirm('هل أنت متأكد من حذف سجل الراتب؟', async () => {
       const rows = await API.request('payroll_records', 'GET', null, `?select=office_expense_id&id=eq.${id}&deleted_at=is.null`);
       const officeExpenseId = rows[0]?.office_expense_id;
@@ -3147,6 +3253,276 @@ const Crud = {
       UI.toast('تم الحذف');
       App.loadEmpPayroll(); App.loadOffice();
     });
+  },
+
+  // ─── INVOICES ───
+  async _nextInvoiceNumber() {
+    const year = new Date().getFullYear();
+    const prefix = `INV-${year}-`;
+    const rows = await API.request('invoices', 'GET', null, '?select=invoice_number&deleted_at=is.null&order=invoice_number.desc&limit=500');
+    const nums = (rows || [])
+      .filter(r => String(r.invoice_number || '').startsWith(prefix))
+      .map(r => parseInt(String(r.invoice_number).slice(prefix.length), 10))
+      .filter(n => !isNaN(n));
+    const next = (nums.length ? Math.max(...nums) : 0) + 1;
+    return prefix + String(next).padStart(4, '0');
+  },
+
+  _invoiceItemsEditor(items = []) {
+    const rows = items.map((it) => `
+      <tr class="inv-item-row">
+        <td><input type="text" name="item_desc[]" value="${App.esc(it.description || '')}" required style="width:100%"></td>
+        <td><input type="number" name="item_qty[]" value="${it.quantity || 1}" min="0" step="any" required style="width:80px" oninput="Crud._recalcInvoiceTotal()"></td>
+        <td><input type="number" name="item_price[]" value="${it.unit_price || 0}" min="0" step="any" required style="width:100px" oninput="Crud._recalcInvoiceTotal()"></td>
+        <td class="item-total">${App.fmtMoney((+it.quantity || 1) * (+it.unit_price || 0))}</td>
+        <td><button type="button" class="btn btn-sm btn-red" onclick="this.closest('tr').remove();Crud._recalcInvoiceTotal()">حذف</button></td>
+      </tr>`).join('');
+    const total = items.reduce((s, it) => s + ((+it.quantity || 1) * (+it.unit_price || 0)), 0);
+    return `<table class="data-table" style="margin:12px 0"><thead><tr><th>البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody id="invoice-items-body">${rows}</tbody></table><button type="button" class="btn btn-sm btn-secondary" onclick="Crud._addInvoiceItemRow()">+ إضافة بند</button><div style="text-align:left;margin-top:8px;font-weight:700;color:var(--gold)">الإجمالي: <span id="invoice-total">${App.fmtMoney(total)}</span></div>`;
+  },
+
+  _addInvoiceItemRow() {
+    const tbody = document.getElementById('invoice-items-body');
+    if (!tbody) return;
+    const row = document.createElement('tr');
+    row.className = 'inv-item-row';
+    row.innerHTML = `
+      <td><input type="text" name="item_desc[]" required style="width:100%"></td>
+      <td><input type="number" name="item_qty[]" value="1" min="0" step="any" required style="width:80px" oninput="Crud._recalcInvoiceTotal()"></td>
+      <td><input type="number" name="item_price[]" value="0" min="0" step="any" required style="width:100px" oninput="Crud._recalcInvoiceTotal()"></td>
+      <td class="item-total">0.00</td>
+      <td><button type="button" class="btn btn-sm btn-red" onclick="this.closest('tr').remove();Crud._recalcInvoiceTotal()">حذف</button></td>`;
+    tbody.appendChild(row);
+  },
+
+  _recalcInvoiceTotal() {
+    const tbody = document.getElementById('invoice-items-body');
+    const totalEl = document.getElementById('invoice-total');
+    if (!tbody) return;
+    let total = 0;
+    tbody.querySelectorAll('tr').forEach(tr => {
+      const q = +tr.querySelector('[name="item_qty[]"]')?.value || 0;
+      const p = +tr.querySelector('[name="item_price[]"]')?.value || 0;
+      const t = q * p;
+      const cell = tr.querySelector('.item-total');
+      if (cell) cell.textContent = App.fmtMoney(t);
+      total += t;
+    });
+    if (totalEl) totalEl.textContent = App.fmtMoney(total);
+  },
+
+  async addInvoice() {
+    if (!this._requirePermission('invoices', 'add')) return;
+    const [clients, projects] = await Promise.all([
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
+    ]);
+    const clientOpts = [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))];
+    const projectOpts = [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: `${p.name} (${p.client_name || '-'})` }))];
+    const nextNumber = await this._nextInvoiceNumber();
+    const fields = [
+      { name: 'invoice_number', label: 'رقم الفاتورة *', req: true },
+      { name: 'client_id', label: 'العميل *', type: 'select', req: true, opts: clientOpts },
+      { name: 'project_id', label: 'المشروع *', type: 'select', req: true, opts: projectOpts },
+      { name: 'issue_date', label: 'تاريخ الإصدار *', type: 'date', req: true },
+      { name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'draft', l: 'مسودة' }, { v: 'sent', l: 'مرسلة' }, { v: 'paid', l: 'مدفوعة' }, { v: 'cancelled', l: 'ملغاة' }] },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    const defaults = { invoice_number: nextNumber, issue_date: new Date().toISOString().slice(0, 10), status: 'draft' };
+    const overlay = UI.openModal('إنشاء فاتورة', `<form>${UI.form(fields, defaults)}</form><div class="modal-section"><div class="modal-section-title">البنود</div>${this._invoiceItemsEditor([])}</div>`, async (form) => {
+      const fd = new FormData(form);
+      const clientId = fd.get('client_id');
+      const projectId = fd.get('project_id');
+      if (!clientId || !projectId) { UI.toast('اختر العميل والمشروع', 'error'); return; }
+      const descs = fd.getAll('item_desc[]');
+      const qtys = fd.getAll('item_qty[]');
+      const prices = fd.getAll('item_price[]');
+      if (!descs.length || descs.every(d => !String(d).trim())) { UI.toast('أضف بندًا واحدًا على الأقل', 'error'); return; }
+      const items = [];
+      let total = 0;
+      for (let i = 0; i < descs.length; i++) {
+        const desc = String(descs[i] || '').trim();
+        if (!desc) continue;
+        const q = +qtys[i] || 1;
+        const p = +prices[i] || 0;
+        items.push({ description: desc, quantity: q, unit_price: p, sort_order: i });
+        total += q * p;
+      }
+      if (!items.length) { UI.toast('أضف بندًا واحدًا على الأقل', 'error'); return; }
+      const client = clients.find(c => String(c.id) === String(clientId));
+      const project = projects.find(p => String(p.id) === String(projectId));
+      const invoicePayload = {
+        invoice_number: fd.get('invoice_number'),
+        client_id: clientId,
+        client_name: client ? client.name : null,
+        project_id: projectId,
+        project_name: project ? project.name : null,
+        issue_date: fd.get('issue_date'),
+        due_date: fd.get('due_date') || null,
+        status: fd.get('status') || 'draft',
+        amount: total,
+        notes: fd.get('notes') || null
+      };
+      const saved = await API.rpc('upsert_invoice_with_items', { p_invoice_id: null, p_invoice: invoicePayload, p_items: items });
+      if (saved?.id) {
+        this._logAudit('invoices', saved.id, 'INSERT', null, invoicePayload, this._currentUserId(), this._currentUserName()).catch(() => {});
+      }
+      UI.toast('تم إنشاء الفاتورة');
+      App.loadInvoices();
+    });
+    this._setupClientProjectCascade(overlay, projects, '', '');
+  },
+
+  async editInvoice(id) {
+    if (!this._requirePermission('invoices', 'edit')) return;
+    const [invRows, itemRows, clients, projects] = await Promise.all([
+      API.request('invoices', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`),
+      API.request('invoice_items', 'GET', null, `?select=*&invoice_id=eq.${id}&deleted_at=is.null&order=sort_order.asc`),
+      API.request('clients', 'GET', null, '?select=id,name&deleted_at=is.null&order=name.asc'),
+      API.request('projects', 'GET', null, '?select=id,name,client_id,client_name&deleted_at=is.null&order=name.asc')
+    ]);
+    if (!invRows.length) return;
+    const inv = invRows[0];
+    const clientOpts = [{ v: '', l: '-- اختر عميل --' }, ...clients.map(c => ({ v: c.id, l: c.name }))];
+    const projectOpts = [{ v: '', l: '-- اختر مشروع --' }, ...projects.map(p => ({ v: p.id, l: `${p.name} (${p.client_name || '-'})` }))];
+    const fields = [
+      { name: 'invoice_number', label: 'رقم الفاتورة *', req: true },
+      { name: 'client_id', label: 'العميل *', type: 'select', req: true, opts: clientOpts },
+      { name: 'project_id', label: 'المشروع *', type: 'select', req: true, opts: projectOpts },
+      { name: 'issue_date', label: 'تاريخ الإصدار *', type: 'date', req: true },
+      { name: 'due_date', label: 'تاريخ الاستحقاق', type: 'date' },
+      { name: 'status', label: 'الحالة', type: 'select', opts: [{ v: 'draft', l: 'مسودة' }, { v: 'sent', l: 'مرسلة' }, { v: 'paid', l: 'مدفوعة' }, { v: 'cancelled', l: 'ملغاة' }] },
+      { name: 'notes', label: 'ملاحظات', type: 'textarea' }
+    ];
+    const values = { ...inv, client_id: inv.client_id || '', project_id: inv.project_id || '' };
+    const overlay = UI.openModal('تعديل فاتورة', `<form>${UI.form(fields, values)}</form><div class="modal-section"><div class="modal-section-title">البنود</div>${this._invoiceItemsEditor(itemRows)}</div>`, async (form) => {
+      const fd = new FormData(form);
+      const clientId = fd.get('client_id');
+      const projectId = fd.get('project_id');
+      if (!clientId || !projectId) { UI.toast('اختر العميل والمشروع', 'error'); return; }
+      const descs = fd.getAll('item_desc[]');
+      const qtys = fd.getAll('item_qty[]');
+      const prices = fd.getAll('item_price[]');
+      const items = [];
+      let total = 0;
+      for (let i = 0; i < descs.length; i++) {
+        const desc = String(descs[i] || '').trim();
+        if (!desc) continue;
+        const q = +qtys[i] || 1;
+        const p = +prices[i] || 0;
+        items.push({ description: desc, quantity: q, unit_price: p, sort_order: i });
+        total += q * p;
+      }
+      if (!items.length) { UI.toast('أضف بندًا واحدًا على الأقل', 'error'); return; }
+      const client = clients.find(c => String(c.id) === String(clientId));
+      const project = projects.find(p => String(p.id) === String(projectId));
+      const invoicePayload = {
+        invoice_number: fd.get('invoice_number'),
+        client_id: clientId,
+        client_name: client ? client.name : null,
+        project_id: projectId,
+        project_name: project ? project.name : null,
+        issue_date: fd.get('issue_date'),
+        due_date: fd.get('due_date') || null,
+        status: fd.get('status') || inv.status,
+        amount: total,
+        notes: fd.get('notes') || null
+      };
+      await API.rpc('upsert_invoice_with_items', { p_invoice_id: id, p_invoice: invoicePayload, p_items: items });
+      this._logAudit('invoices', id, 'UPDATE', inv, invoicePayload, this._currentUserId(), this._currentUserName()).catch(() => {});
+      UI.toast('تم تحديث الفاتورة');
+      if (App.screen === 'invoice' && App.invoiceId) App.loadInvoice(App.invoiceId);
+      else App.loadInvoices();
+    });
+    this._setupClientProjectCascade(overlay, projects, inv.client_id || '', inv.project_id || '');
+  },
+
+  delInvoice(id) {
+    if (!this._requirePermission('invoices', 'delete')) return;
+    UI.confirm('هل أنت متأكد من حذف هذه الفاتورة؟', async () => {
+      await API.rpc('delete_invoice', { p_invoice_id: id });
+      this._logAudit('invoices', id, 'DELETE', null, { deleted_at: new Date().toISOString() }, this._currentUserId(), this._currentUserName()).catch(() => {});
+      UI.toast('تم الحذف');
+      if (App.screen === 'invoice' && App.invoiceId) App.go('invoices');
+      else App.loadInvoices();
+    });
+  },
+
+  async markInvoicePaid(id) {
+    if (!this._requirePermission('invoices', 'edit')) return;
+    const [invRows] = await Promise.all([
+      API.request('invoices', 'GET', null, `?select=*&id=eq.${id}&deleted_at=is.null`)
+    ]);
+    if (!invRows.length) return;
+    const inv = invRows[0];
+    const remaining = (+inv.amount || 0) - (+inv.paid_amount || 0);
+    if (remaining <= 0) { UI.toast('الفاتورة مدفوعة بالفعل', 'error'); return; }
+    const fields = [
+      { name: 'date', label: 'تاريخ الدفع *', type: 'date', req: true },
+      { name: 'payment_method', label: 'طريقة الدفع', type: 'select', opts: [{ v: 'cash', l: 'نقدي' }, { v: 'bank', l: 'بنكي' }] },
+      { name: 'amount', label: 'المبلغ *', type: 'number', req: true, attr: `min="0" max="${remaining}" step="any"` },
+      { name: 'description', label: 'البيان', type: 'textarea' }
+    ];
+    UI.openModal('تسجيل دفع فاتورة', `<form>${UI.form(fields, { date: new Date().toISOString().slice(0, 10), payment_method: 'cash', amount: remaining, description: `دفع فاتورة ${inv.invoice_number}` })}</form>`, async (form) => {
+      const fd = new FormData(form);
+      const amount = +fd.get('amount') || 0;
+      if (amount <= 0 || amount > remaining) { UI.toast('المبلغ غير صالح', 'error'); return; }
+      const result = await API.rpc('record_invoice_payment', {
+        p_invoice_id: id,
+        p_amount: amount,
+        p_payment_method: fd.get('payment_method') || 'cash',
+        p_date: fd.get('date') || new Date().toISOString().slice(0, 10),
+        p_description: fd.get('description') || `دفع فاتورة ${inv.invoice_number}`
+      });
+      if (result?.transaction_id) {
+        this._logAudit('transactions', result.transaction_id, 'INSERT', null, { amount }, this._currentUserId(), this._currentUserName()).catch(() => {});
+        this._logAudit('invoices', id, 'UPDATE', inv, { paid_amount: (+inv.paid_amount || 0) + amount }, this._currentUserId(), this._currentUserName()).catch(() => {});
+      }
+      UI.toast('تم تسجيل الدفع');
+      if (App.screen === 'invoice' && App.invoiceId) App.loadInvoice(App.invoiceId);
+      else App.loadInvoices();
+    });
+  },
+
+  async printInvoice(id) {
+    const [invRows, itemRows] = await Promise.all([
+      API.request('invoices', 'GET', null, `?select=*,clients(name),projects(name)&id=eq.${id}&deleted_at=is.null`),
+      API.request('invoice_items', 'GET', null, `?select=*&invoice_id=eq.${id}&deleted_at=is.null&order=sort_order.asc`)
+    ]);
+    if (!invRows.length) return;
+    const inv = invRows[0];
+    const statusLabels = { draft: 'مسودة', sent: 'مرسلة', paid: 'مدفوعة', cancelled: 'ملغاة' };
+    const company = App.settings?.company_name || 'سارة أبو العلا';
+    const safeStatus = App.esc(statusLabels[inv.status] || inv.status);
+    const itemRowsHtml = itemRows.map((it, i) => `
+      <tr>
+        <td style="border:1px solid #ccc;padding:6px;text-align:center">${i + 1}</td>
+        <td style="border:1px solid #ccc;padding:6px">${App.esc(it.description)}</td>
+        <td style="border:1px solid #ccc;padding:6px;text-align:center">${App.esc(it.quantity || 1)}</td>
+        <td style="border:1px solid #ccc;padding:6px;text-align:left;direction:ltr">${App.fmtMoney(it.unit_price || 0)}</td>
+        <td style="border:1px solid #ccc;padding:6px;text-align:left;direction:ltr">${App.fmtMoney(it.total_price || 0)}</td>
+      </tr>`).join('');
+    const total = itemRows.reduce((s, it) => s + (+it.total_price || 0), 0);
+    const content = `
+      <div id="invoice-print-area" style="max-width:720px;margin:0 auto;background:#fff;color:#000;padding:24px">
+        <div style="text-align:center;margin-bottom:24px">
+          <h2 style="margin:0">${App.esc(company)}</h2>
+          <p style="margin:4px 0 0;color:#555">فاتورة ضريبية مبسطة / Invoice</p>
+        </div>
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin-bottom:24px;font-size:14px">
+          <div><strong>رقم الفاتورة:</strong> ${App.esc(inv.invoice_number)}<br><strong>التاريخ:</strong> ${App.esc(inv.issue_date || '-')}<br><strong>الاستحقاق:</strong> ${App.esc(inv.due_date || '-')}</div>
+          <div><strong>العميل:</strong> ${App.esc(inv.clients?.name || inv.client_name || '-')}<br><strong>المشروع:</strong> ${App.esc(inv.projects?.name || inv.project_name || '-')}<br><strong>الحالة:</strong> ${safeStatus}</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px" class="data-table">
+          <thead><tr><th style="width:8%">#</th><th>البيان</th><th style="width:12%">الكمية</th><th style="width:18%">سعر الوحدة</th><th style="width:18%">الإجمالي</th></tr></thead>
+          <tbody>${itemRowsHtml}</tbody>
+        </table>
+        <div style="text-align:left;font-size:16px;font-weight:700;margin-top:12px">الإجمالي: ${App.fmtMoney(total)}</div>
+        ${inv.notes ? `<p style="margin-top:16px;font-size:13px"><strong>ملاحظات:</strong> ${App.esc(inv.notes)}</p>` : ''}
+      </div>
+      <div class="modal-actions no-print" style="margin-top:16px"><button type="button" class="btn btn-primary" onclick="App.printReport('فاتورة-${App.esc(inv.invoice_number)}', { portrait: true })">🖨️ طباعة</button><button type="button" class="btn btn-secondary" onclick="UI.closeModal()">إغلاق</button></div>`;
+    UI.openModal('معاينة الفاتورة', content, null);
   }
 };
 

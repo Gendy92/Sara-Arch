@@ -213,19 +213,27 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
 
 /* ─── PRINT / PDF ─── */
 @media print{
-  @page { size: A4; margin: 12mm; }
+  @page { size: A4 landscape; margin: 10mm; }
   body.modal-open > *:not(.modal-overlay):not(script):not(style):not(link),
   body.printing-report > *:not(.modal-overlay):not(script):not(style):not(link){display:none!important}
-  .sidebar,.hamburger,.page-header button,.btn,.table-actions,.modal-close{display:none!important}
-  .main-content{margin-right:0;padding:20px}
+  .sidebar,.hamburger,.page-header button,.btn,.table-actions,.modal-close,.modal-header,.modal-actions,.no-print{display:none!important}
+  #invoice-print-area{max-width:100%!important;padding:0!important}
+  .main-content{margin-right:0;padding:0}
   body{background:#fff;color:#000}
   .card{background:#fff;border:1px solid #ccc;box-shadow:none}
   .kpi-card{background:#fff!important;border:1px solid #ccc!important;box-shadow:none!important}
   .kpi-card::after{display:none}
   .kpi-label{color:#666!important}
   .kpi-value{color:#000!important}
-  .data-table th,.data-table td{border-bottom:1px solid #ccc;color:#000;white-space:normal;word-break:break-word;font-size:11px}
+  .data-table{table-layout:fixed;width:100%}
+  .data-table th,.data-table td{border-bottom:1px solid #ccc;color:#000;white-space:normal;word-break:break-word;font-size:10px;padding:6px 8px}
   .data-table th{background:#e8e8e8!important}
+  .data-table th:nth-child(1),.data-table td:nth-child(1){width:5%}
+  .data-table th:nth-child(2),.data-table td:nth-child(2){width:12%}
+  .data-table th:nth-child(3),.data-table td:nth-child(3){width:15%}
+  .data-table th:nth-child(4),.data-table td:nth-child(4){width:50%}
+  .data-table th:nth-child(5),.data-table td:nth-child(5){width:18%;text-align:left;direction:ltr}
+  .print-nowrap{white-space:nowrap}
   .modal-overlay{position:static;background:none;backdrop-filter:none;padding:0;display:block!important}
   .modal{display:block!important;box-shadow:none;border:1px solid #ccc;max-width:100%;max-height:none;background:#fff;overflow:visible!important}
   .modal-header{border-bottom:1px solid #ccc}
@@ -408,4 +416,26 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Arial,
   #tx-tbl .data-table td:nth-child(7) {
     display: none;
   }
+}
+
+/* ─── v301 Notifications & Sync ─── */
+.header-actions{position:fixed;top:16px;left:16px;z-index:90;display:flex;align-items:center;gap:10px}
+.btn-icon{width:40px;height:40px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border);color:var(--gold);font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.btn-icon:hover{background:var(--bg2)}
+.notification-bell-wrap{position:relative}
+.bell-badge{position:absolute;top:-4px;left:-4px;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;padding:0 5px}
+.notification-dropdown{position:absolute;top:48px;left:0;width:320px;max-height:360px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--shadow);z-index:120;padding:8px 0}
+.notification-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.notification-item:hover{background:var(--bg2)}
+.notification-item.unread{border-right:3px solid var(--gold)}
+.notification-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.notification-message{font-size:12px;color:var(--text2);line-height:1.4;margin-bottom:6px}
+.notification-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text3)}
+.notification-empty{padding:16px;text-align:center;color:var(--text3);font-size:13px}
+.notification-footer{padding:10px 16px;text-align:center;border-top:1px solid var(--border)}
+.sync-indicator{padding:6px 10px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border)}
+@media (max-width:768px){
+  .header-actions{top:12px;left:12px}
+  .sync-text{display:none}
+  .notification-dropdown{width:calc(100vw - 24px);left:0;right:auto}
 }

@@ -71,8 +71,8 @@ Sara-Arch aims to provide a single, centralized, easy-to-use financial and opera
 - Audit logging and backup export.
 
 **Out of scope (for current version):**
-- Inventory/stock tracking. N/A
-- Invoicing and quotations. N/A
+- ~~Inventory/stock tracking~~ — moved in-scope for v301.
+- ~~Invoicing and quotations~~ — invoicing shipped in v300.
 - Purchase orders. N/A
 - Document attachments.  no because will consume data whil supabase freeplan wont fit
 - Retention/holdback tracking. N/A	
@@ -329,6 +329,46 @@ The following screens are restricted to administrators regardless of `user_permi
 | SEC-004 | The system shall include a Content-Security-Policy header/meta tag. | Should |
 | SEC-005 | The application shall not expose secrets in source control. | Must |
 
+### 6.14 Inventory / Stock Management (Future Release)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| INV-001 | The system shall track quantity on hand (`qoh`) per item in the items catalog. | Must |
+| INV-002 | The system shall record stock movements in an `inventory_transactions` ledger (in, out, adjustment). | Must |
+| INV-003 | A procurement for a merchandise item shall increase stock when the procurement is saved/approved. | Must |
+| INV-004 | A project expense linked to a merchandise item shall decrease stock when the expense is saved. | Must |
+| INV-005 | The system shall support manual stock adjustments with reason and date. | Must |
+| INV-006 | The system shall flag items at or below their reorder point in the inventory list. | Should |
+| INV-007 | The system shall provide an inventory list screen (`#/inventory`) with search and low-stock filter. | Must |
+| INV-008 | The system shall provide an item stock history / ledger view. | Should |
+| INV-009 | Stock quantities shall be tenant-isolated and protected by RLS. | Must |
+| INV-010 | Stock shall be included in backup/restore order and data export. | Should |
+
+### 6.15 Notifications / Alerts (v301)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| NTF-001 | The system shall maintain a `notifications` table with type, title, message, link, severity, and read status. | Must |
+| NTF-002 | Notifications shall be generated for overdue client balances, upcoming/overdue task deadlines, and contract milestones. | Must |
+| NTF-003 | Notifications shall be tenant-isolated and user-scoped (per recipient). | Must |
+| NTF-004 | The UI shall show a notification bell with an unread count badge in the app header. | Must |
+| NTF-005 | Clicking the bell shall open a dropdown listing recent notifications with mark-read and archive actions. | Must |
+| NTF-006 | The system shall provide a notifications list screen (`#/notifications`) for full history and management. | Should |
+| NTF-007 | Notification generation rules shall be configurable per tenant (enable/disable types, thresholds). | Should |
+| NTF-008 | RLS policies shall ensure users can only read their own notifications. | Must |
+
+### 6.16 PWA Background Sync Queue (v301)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| SYNC-001 | The service worker shall detect failed `fetch` requests caused by network loss. | Must |
+| SYNC-002 | Failed mutations shall be serialized and stored in an IndexedDB queue with endpoint, method, body, and timestamp. | Must |
+| SYNC-003 | When connectivity returns, the queued mutations shall be replayed in order. | Must |
+| SYNC-004 | Conflicts or replay failures shall be surfaced to the user as toasts or notifications. | Must |
+| SYNC-005 | The UI shall display a pending-mutation count and last-sync timestamp. | Should |
+| SYNC-006 | The queue shall respect tenant/auth context by preserving the JWT with each request. | Must |
+| SYNC-007 | The system shall avoid duplicate replays by marking queued items as in-flight or completed. | Must |
+
 ---
 
 ## 7. Non-Functional Requirements
@@ -457,16 +497,19 @@ The database shall contain the following tables:
 
 ## 9. Future Modules
 
-### 9.1 Invoicing
+### 9.1 Invoicing ✅ Shipped in v300
 - Create and manage client invoices.
 - Auto-numbering and status workflow (draft, sent, paid, cancelled).
 - Link invoices to projects and deposits.
-- PDF export and print.
+- Print preview and Excel-friendly layout.
 
-### 9.2 Inventory / Stock Management
-- Track stock quantities for merchandise items.
-- Update stock on procurement.
-- Reorder alerts.
+### 9.2 Inventory / Stock Management (Future Release)
+- Track quantity on hand per item in the items catalog.
+- Stock-in via procurement; stock-out via project expense.
+- Manual stock adjustments with reason.
+- Reorder alerts and low-stock filter.
+- Item stock history ledger.
+- See `Specs/v301_inventory_spec.md` for full design (spec drafted; not next priority).
 
 ### 9.3 Quotations & Purchase Orders
 - Create project quotations/estimates.
@@ -487,12 +530,19 @@ The database shall contain the following tables:
 - Cash flow statement.
 - Project profitability dashboard.
 
-### 9.7 Notifications
-- Alerts for overdue payments.
-- Low stock alerts.
-- Task deadline reminders.
+### 9.7 Notifications / Alerts 🔄 v301
+- In-app notification bell with unread badge.
+- Notification types: overdue client balances, task deadlines, contract/milestone reminders.
+- Per-user read/archive state.
+- Tenant-isolated notification rules and delivery.
 
-### 9.8 Restore from Backup
+### 9.8 PWA Background Sync Queue 🔄 v301
+- Intercept failed mutations when offline.
+- Queue mutations in IndexedDB.
+- Retry queued mutations when connectivity returns.
+- Show pending-count and last-sync indicator in the UI.
+
+### 9.9 Restore from Backup
 - Import previously exported JSON/ZIP backups.
 - Validation and conflict resolution.
 
@@ -590,6 +640,40 @@ The database shall contain the following tables:
 
 **AC-RPT-002:** Given a vendor statement, when the user clicks Excel, then the downloaded file matches the on-screen data without truncation.
 
+### 10.12 Inventory / Stock Management
+
+**AC-INV-001:** Given an item with reorder point 10 and current QOH 10, when the inventory list loads, then the item is flagged as low stock.
+
+**AC-INV-002:** Given a procurement for 50 units of an item, when the procurement is saved, then the item's QOH increases by 50 and an `inventory_transactions` row of type `in` is created.
+
+**AC-INV-003:** Given a project expense for 5 units of an item, when the expense is saved, then the item's QOH decreases by 5 and an `inventory_transactions` row of type `out` is created.
+
+**AC-INV-004:** Given a user performs a stock adjustment of −3 units with reason "damaged", when saved, then QOH decreases by 3 and an `inventory_transactions` row of type `adjustment` is created.
+
+**AC-INV-005:** Given a non-admin user without inventory view permission, when the navigation loads, then the Inventory menu item is hidden.
+
+### 10.13 Notifications / Alerts
+
+**AC-NTF-001:** Given a client balance is overdue by the configured threshold, when the notification generator runs, then a notification is created for users with permission to view that client.
+
+**AC-NTF-002:** Given an unread notification exists, when the app header loads, then the bell icon shows the correct unread count.
+
+**AC-NTF-003:** Given the user clicks the notification bell, when the dropdown opens, then unread notifications appear first with a mark-read action.
+
+**AC-NTF-004:** Given a user marks a notification as read, when the dropdown refreshes, then the unread count decreases and the notification is no longer highlighted.
+
+**AC-NTF-005:** Given a non-admin user without notification permission, when the navigation loads, then the Notifications menu item is hidden.
+
+### 10.14 PWA Background Sync Queue
+
+**AC-SYNC-001:** Given the device is offline, when the user saves a transaction, then the mutation is queued in IndexedDB and a pending-count indicator appears.
+
+**AC-SYNC-002:** Given queued mutations exist, when the device comes back online, then the service worker replays them in order and clears the queue on success.
+
+**AC-SYNC-003:** Given a replayed mutation fails with a 4xx/5xx error, when the retry completes, then the user sees a toast with the failure reason and the item remains in the queue for manual review.
+
+**AC-SYNC-004:** Given the service worker replays a queued mutation, when the request is sent, then the original auth token and tenant context are preserved.
+
 ---
 
 ## 11. Implementation Phases
@@ -620,6 +704,29 @@ The database shall contain the following tables:
 | P5-2 | Execute checklist against deployed `dev.2` build. | Each checklist item is marked pass/fail with notes. |
 | P5-3 | Record and triage defects. | Any failures are logged as issues with severity and owner. |
 | P5-4 | Merge `dev.2` to `main` after sign-off. | `main` is fast-forwarded to the signed-off `dev.2` commit. |
+
+### Phase 6 — Notifications / Alerts + PWA Background Sync 🔄 v301
+
+| ID | Task | Acceptance Criteria |
+|----|------|---------------------|
+| P6-1 | Create `notifications` table and generator triggers/rules. | Notifications are tenant/user-scoped; rules support overdue balances, task deadlines, and milestones. |
+| P6-2 | Add notification bell + dropdown to app header. | Bell shows unread count; dropdown lists recent notifications with mark-read/archive. |
+| P6-3 | Add `#/notifications` history screen. | Users can view, filter, and archive their full notification history. |
+| P6-4 | Implement service-worker mutation queue. | Failed fetches are stored in IndexedDB and retried in order on reconnect. |
+| P6-5 | Add pending-sync UI indicator. | Header/footer shows pending mutation count and last successful sync time. |
+| P6-6 | Permissions, RLS, and tests. | `notifications` screen permission controls access; unit + E2E tests cover notification creation and sync replay. |
+
+### Phase 7 — Inventory / Stock Tracking (Future Release)
+
+| ID | Task | Acceptance Criteria |
+|----|------|---------------------|
+| P7-1 | Add stock columns to `items` and create `inventory_transactions` ledger. | `items.qoh` and `items.reorder_point` exist; `inventory_transactions` records every in/out/adjustment with item, quantity, type, reference, reason, and tenant. |
+| P7-2 | Stock-in on procurement. | Saving a procurement for a merchandise item increases QOH and posts an `in` transaction. |
+| P7-3 | Stock-out on project expense. | Saving a project expense linked to a merchandise item decreases QOH and posts an `out` transaction. |
+| P7-4 | Manual stock adjustment. | Users can open a stock-take modal, enter quantity delta and reason, and post an `adjustment`. |
+| P7-5 | Inventory list screen. | `#/inventory` shows items, QOH, reorder point, and highlights low-stock rows. |
+| P7-6 | Permissions and RLS. | `inventory` screen permission controls access; RLS ensures tenant isolation. |
+| P7-7 | Tests and docs. | Unit tests cover stock math; E2E spec covers stock-in and stock-out; CHANGELOG and MIGRATIONS updated. |
 
 ## 12. UI/UX Design & Layout
 

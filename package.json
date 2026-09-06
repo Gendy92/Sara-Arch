@@ -1,11 +1,14 @@
 {
   "name": "sara-arch",
-  "version": "294.0.0",
+  "version": "303.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "vitest run",
     "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
     "lint": "eslint js/ tests/",
     "lint:fix": "eslint js/ tests/ --fix",
     "audit:check": "npm audit --audit-level=moderate",
@@ -13,6 +16,7 @@
     "migrate": "node scripts/run-migrations.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@supabase/supabase-js": "^2.43.0",
     "eslint": "^8.57.0",
     "globals": "^15.0.0",

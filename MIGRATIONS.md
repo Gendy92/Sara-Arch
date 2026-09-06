@@ -50,6 +50,14 @@ Alternatively, run **`migration_v267_unified_recent_changes.sql`** once to apply
 | v292 | `migration_v292_fix_office_vendor_income.sql` | Align `office_vendor_income` with LOGIC_SPEC v1.5 (exclude `project_expense.paid_amount`) | **Auto** | - | Applied by CI after v264 runner; run `verify_high_priority.sql` after apply |
 | v293 | `migration_v293_add_common_indexes.sql` | Add indexes for transactions, projects, employees, custody, audit | **Auto** | - | Applied by CI after v264 runner |
 | v294 | `migration_v294_retention_and_supervision_audit.sql` | Retention/holdback tracking + supervision period-close audit rows | **Pending** | - | Apply after v264 runner is active; requires `npm run health` |
+| v296 | `migration_v296_custody_ledger.sql` | Unify custody spent/returned ledger (`custody_expenses.type`) | **Pending** | - | Apply after v264 runner is active; run after v294 |
+| v298 | `migration_v298_aging_report.sql` | Aging (A/R and A/P) report views (`report_aging_ar`, `report_aging_ap`) | **Pending** | - | Apply after v264 runner is active; run after v294/v296 |
+| v300 | `migration_v300_invoicing.sql` | Invoicing module (`invoices`, `invoice_items`, RLS, triggers) | **Pending** | - | Apply after v264 runner is active; run after v294/v296/v298 |
+| v300-inclusive | `migration_v300_inclusive.sql` | One-file catch-up for v294 + v296 + v298 + v300 | **Manual (run once)** | - | Use this if the v264 runner is not active; idempotent |
+| v300-custody-fix | `migration_v300_custody_triggers_fix.sql` | Missing `custody_expenses_state_t` trigger + recursion guard refresh | **Manual patch** | - | Run before v301 if production v300 lacks these triggers |
+| v301 | `migration_v301_notifications.sql` | Notifications / alerts + PWA background-sync schema | **Applied** | - | Includes the v300 custody trigger catch-up |
+| v302 | `migration_v302_security_advisor_hardening.sql` | Security Advisor hardening: revoke anon/trigger executes, fix apply_migration search_path | **Pending** | - | Auto-applied by CI after v264 runner is active |
+| v303 | `migration_v303_atomic_invoice_operations.sql` | Atomic invoice upsert/delete/payment RPCs | **Pending** | - | Auto-applied by CI after v264 runner is active; requires client code update |
 
 ## Adding a new migration
 

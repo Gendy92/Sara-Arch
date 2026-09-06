@@ -19,6 +19,8 @@
     "Utils": "readonly",
     "ErrorReporter": "readonly",
     "BackupManager": "readonly",
+    "SyncManager": "readonly",
+    "NotificationService": "readonly",
     "SUPABASE_URL": "readonly",
     "SUPABASE_ANON_KEY": "readonly",
     "SARA_EMAIL_DOMAIN": "readonly",

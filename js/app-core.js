@@ -5,8 +5,10 @@ const App = {
 
   txTypeFilter: 'all',
   taskStatusFilter: 'all',
+  invoiceStatusFilter: 'all',
   loading: false,
-  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, officeTransactions: 1, officeCustody: 1, masterSectors: 1, masterWorkSections: 1, masterWorkItems: 1, masterItems: 1, empTransactions: 1, empSalaryHistory: 1 },
+  pageState: { clients: 1, vendors: 1, employees: 1, users: 1, master: 1, transactions: 1, officeTransactions: 1, officeCustody: 1, masterSectors: 1, masterWorkSections: 1, masterWorkItems: 1, masterItems: 1, empTransactions: 1, empSalaryHistory: 1, notifications: 1 },
+  notificationFilter: 'all',
   searchState: {},
   settings: { currency_label: 'ج.م', default_supervision: 10, company_name: 'سارة أبو العلا' },
   PAGE_SIZE: 50,
@@ -55,9 +57,16 @@ const App = {
       this.loadLocalSettings();
       await this.loadServerSettings();
       this.bindNav();
+      if (typeof SyncManager !== 'undefined') {
+        SyncManager.startListening();
+        this.registerBackgroundSync();
+      }
       if (Auth.isLoggedIn()) {
         this.startIdleTimer();
         if (typeof BackupManager !== 'undefined') BackupManager.init();
+        this._refreshBellBadge();
+        this.updateSyncIndicator();
+        this._generateNotifications();
         const { screen, opts } = this._routeFromHash();
         await this.go(screen, opts);
       } else {
@@ -98,14 +107,28 @@ const App = {
     UI.toast('تم تسجيل الخروج تلقائيًا بسبب عدم النشاط لمدة 10 دقائق', 'error');
   },
 
-  printReport(title) {
+  printReport(title, options = {}) {
     const origTitle = document.title;
     const date = new Date().toISOString().slice(0, 10);
     const safe = (s) => String(s || '').replace(/[^\w\u0600-\u06FF\s.-]/g, '').trim().replace(/\s+/g, '-');
     document.title = `${safe(title)}-${date}`;
     document.body.classList.add('printing-report');
+
+    let portraitStyle = null;
+    if (options.portrait) {
+      portraitStyle = document.createElement('style');
+      portraitStyle.textContent = '@media print { @page { size: A4 portrait; margin: 10mm; } }';
+      document.head.appendChild(portraitStyle);
+    }
+
+    const cleanup = () => {
+      document.title = origTitle;
+      document.body.classList.remove('printing-report');
+      if (portraitStyle) { portraitStyle.remove(); portraitStyle = null; }
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     window.print();
-    setTimeout(() => { document.title = origTitle; document.body.classList.remove('printing-report'); }, 1000);
   },
 
   bindNav() {
@@ -146,7 +169,9 @@ const App = {
     if (screen === 'vendors') await this.loadVendors();
     if (screen === 'transactions') { await this.loadTransactions(); }
     if (screen === 'office') await this.loadOffice();
+    if (screen === 'reports') await this.loadReports();
     if (screen === 'employees') await this.loadEmployees();
+    if (screen === 'employee-transactions') await this.loadEmployeeTransactionsScreen();
     if (screen === 'tasks') await this.loadTasks();
     if (screen === 'settings') await this.loadSettings();
     if (screen === 'users') await this.loadUsers();
@@ -157,6 +182,7 @@ const App = {
     if (screen === 'client' && opts.clientId) { this.clientId = opts.clientId; await this.loadClient(opts.clientId); }
     if (screen === 'project' && opts.projectId) { this.projectId = opts.projectId; await this.loadProject(opts.projectId); }
     if (screen === 'vendor' && opts.vendorId) { this.vendorId = opts.vendorId; await this.loadVendor(opts.vendorId); }
+    if (screen === 'invoice' && opts.invoiceId) { this.invoiceId = opts.invoiceId; await this.loadInvoice(opts.invoiceId); }
 
 
 
@@ -191,12 +217,172 @@ const App = {
     this.loadTasks();
   },
 
+  setInvoiceStatusFilter(filter) {
+    this.invoiceStatusFilter = filter;
+    this.loadInvoices();
+  },
+
+  setNotificationFilter(filter) {
+    this.notificationFilter = filter;
+    this.loadNotifications();
+  },
+
+  async markAllNotificationsRead() {
+    try {
+      await API.request('notifications', 'PATCH', { is_read: true }, '?is_read=eq.false&archived=eq.false');
+      UI.toast('تم تحديد جميع الإشعارات كمقروءة');
+      this.loadNotifications();
+      this._refreshBellBadge();
+    } catch (e) {
+      UI.toast('فشل تحديث الإشعارات: ' + e.message, 'error');
+    }
+  },
+
+  async _refreshBellBadge() {
+    if (!Auth.can('notifications', 'view')) return;
+    try {
+      const count = await API.count('notifications', '?is_read=eq.false&archived=eq.false');
+      const badge = document.getElementById('bell-badge');
+      if (badge) {
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'inline-flex' : 'none';
+      }
+    } catch (e) {
+      // ignore badge refresh errors
+    }
+  },
+
+  async toggleNotificationDropdown(event) {
+    event.stopPropagation();
+    const dd = document.getElementById('notification-dropdown');
+    if (!dd) return;
+    if (dd.style.display === 'block') {
+      dd.style.display = 'none';
+      return;
+    }
+    await this._renderNotificationDropdown();
+    dd.style.display = 'block';
+    const close = (ev) => {
+      if (!ev.target.closest('#bell-btn') && !ev.target.closest('#notification-dropdown')) {
+        dd.style.display = 'none';
+        document.removeEventListener('click', close);
+      }
+    };
+    document.addEventListener('click', close);
+  },
+
+  async _renderNotificationDropdown() {
+    const dd = document.getElementById('notification-dropdown');
+    if (!dd) return;
+    try {
+      const items = await API.request('notifications', 'GET', null, '?select=*&is_read=eq.false&archived=eq.false&order=created_at.desc&limit=10');
+      if (!items.length) {
+        dd.innerHTML = '<div class="notification-empty">لا توجد إشعارات جديدة</div>';
+        return;
+      }
+      dd.innerHTML = items.map(n => `<div class="notification-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}">
+        <div class="notification-title">${this.esc(n.title)}</div>
+        <div class="notification-message">${this.esc(n.message)}</div>
+        <div class="notification-meta"><span class="notification-time">${this.fmtDate(n.created_at)}</span><button class="btn-link" onclick="App.markNotificationRead('${n.id}', event)">تحديد كمقروء</button></div>
+      </div>`).join('') + `<div class="notification-footer"><button class="btn-link" onclick="App.go('notifications')">عرض الكل</button></div>`;
+    } catch (e) {
+      dd.innerHTML = '<div class="notification-empty">تعذر تحميل الإشعارات</div>';
+    }
+  },
+
+  async markNotificationRead(id, event) {
+    if (event) event.stopPropagation();
+    try {
+      await API.request('notifications', 'PATCH', { is_read: true }, `?id=eq.${id}`);
+      this._refreshBellBadge();
+      await this._renderNotificationDropdown();
+      if (this.screen === 'notifications') this.loadNotifications();
+    } catch (e) {
+      UI.toast('فشل تحديث الإشعار', 'error');
+    }
+  },
+
+  async archiveNotification(id, event) {
+    if (event) event.stopPropagation();
+    try {
+      await API.request('notifications', 'PATCH', { archived: true }, `?id=eq.${id}`);
+      this._refreshBellBadge();
+      await this._renderNotificationDropdown();
+      if (this.screen === 'notifications') this.loadNotifications();
+    } catch (e) {
+      UI.toast('فشل أرشفة الإشعار', 'error');
+    }
+  },
+
+  _syncIndicatorHtml() {
+    return `<div class="sync-indicator" id="sync-indicator" title="حالة المزامنة" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);cursor:pointer" onclick="App.showSyncModal()">
+      <span id="sync-icon">☁️</span>
+      <span id="sync-text">متصل</span>
+    </div>`;
+  },
+
+  async updateSyncIndicator() {
+    const icon = document.getElementById('sync-icon');
+    const text = document.getElementById('sync-text');
+    if (!icon || !text) return;
+    const pending = await SyncManager.pendingCount().catch(() => 0);
+    const lastSync = await SyncManager.getLastSync().catch(() => null);
+    if (pending > 0) {
+      icon.textContent = '⏳';
+      text.textContent = `${pending} عملية معلقة`;
+    } else {
+      icon.textContent = navigator.onLine ? '☁️' : '⚠️';
+      const when = lastSync ? new Date(lastSync).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '-';
+      text.textContent = navigator.onLine ? `تمت المزامنة ${when}` : 'غير متصل';
+    }
+  },
+
+  async showSyncModal() {
+    const pending = await SyncManager.list().catch(() => []);
+    const lastSync = await SyncManager.getLastSync().catch(() => null);
+    const when = lastSync ? new Date(lastSync).toLocaleString('ar-EG') : '-';
+    const rows = pending.length ? pending.map(p => `<tr><td>${this.esc(p.description)}</td><td>${new Date(p.createdAt).toLocaleString('ar-EG')}</td><td>${p.attempts}</td><td>${p.lastError ? this.esc(p.lastError) : '-'}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">لا توجد عمليات معلقة</td></tr>';
+    const table = `<table class="data-table"><thead><tr><th>العملية</th><th>الوقت</th><th>المحاولات</th><th>آخر خطأ</th></tr></thead><tbody>${rows}</tbody></table>`;
+    UI.openModal('حالة المزامنة', `<div style="margin-bottom:12px;font-size:13px;color:var(--text2)">آخر مزامنة: <strong>${when}</strong></div><div class="table-responsive">${table}</div><div class="modal-actions"><button class="btn btn-secondary" onclick="UI.closeModal()">إغلاق</button>${pending.length ? `<button class="btn btn-primary" onclick="SyncManager.replay().then(() => { App.updateSyncIndicator(); App.showSyncModal(); })">🔄 إعادة المحاولة</button>` : ''}</div>`);
+  },
+
+  async registerBackgroundSync() {
+    if (!('serviceWorker' in navigator) || !('SyncManager' in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.sync.register('sara-sync');
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'SYNC_QUEUED') {
+          this.updateSyncIndicator();
+        }
+      });
+    } catch (e) {
+      // ignore unsupported environments
+    }
+  },
+
+  async _generateNotifications() {
+    try {
+      const tenant = localStorage.getItem('sara_tenant_id');
+      if (!tenant) return;
+      await API.rpc('generate_notifications', { p_tenant_id: tenant });
+      this._refreshBellBadge();
+    } catch (e) {
+      // ignore generator errors on startup
+    }
+  },
+
   layout(content) {
     const user = Auth.user || {};
     const name = user.displayName || user.user_metadata?.name || 'المستخدم';
     const isAdmin = Auth.isAdmin();
     const navItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button data-nav="${screen}" class="nav-item ${this.screen === screen ? 'active' : ''}"><span>${icon}</span> ${label}</button>` : '';
     const bnavItem = (screen, icon, label) => Auth.can(screen, 'view') ? `<button class="bottom-nav-item ${this.screen === screen ? 'active' : ''}" onclick="App.go('${screen}')"><span class="bottom-nav-icon">${icon}</span><span class="bottom-nav-label">${label}</span></button>` : '';
+    const headerActions = `<div class="header-actions" style="display:flex;align-items:center;gap:12px;margin-left:auto">
+      ${this._syncIndicatorHtml()}
+      ${Auth.can('notifications', 'view') ? `<div class="notification-bell-wrap"><button class="btn-icon" id="bell-btn" onclick="App.toggleNotificationDropdown(event)" aria-label="الإشعارات"><span class="bell-icon">🔔</span><span class="bell-badge" id="bell-badge" style="display:none">0</span></button><div class="notification-dropdown" id="notification-dropdown" style="display:none"></div></div>` : ''}
+      <button class="btn-icon" onclick="App.toggleSidebar()" aria-label="القائمة">☰</button>
+    </div>`;
     const bottomNav = `<div class="bottom-nav"><div class="bottom-nav-inner">
       ${bnavItem('dashboard', '📊', 'الرئيسية')}
       ${bnavItem('clients', '👥', 'العملاء')}
@@ -211,11 +397,14 @@ const App = {
       ${navItem('vendors', '🚚', 'الموردين')}
       ${navItem('transactions', '💰', 'معاملات المشاريع')}
       ${navItem('office', '🏢', 'المكتب')}
+      ${navItem('employee-transactions', '💸', 'معاملات الموظفين')}
+      ${navItem('invoices', '🧾', 'الفواتير')}
+      ${navItem('reports', '📈', 'التقارير')}
       ${navItem('tasks', '📋', 'المهام')}
-
+      ${navItem('notifications', '🔔', 'الإشعارات')}
 
       ${isAdmin ? navItem('settings', '⚙️', 'الإعدادات') : ''}
-    </nav><div class="sidebar-footer"><div class="user-info">${App.esc(name)}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div><button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
+    </nav><div class="sidebar-footer"><div class="user-info">${App.esc(name)}</div><div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px">${isAdmin ? '👑 مدير' : '👤 موظف'}</div><button data-action="logout" class="btn-logout">🚪 خروج</button></div></aside><div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.closeSidebar()"></div>${headerActions}<button class="hamburger" id="hamburger-btn" onclick="App.toggleSidebar()"><span></span><span></span><span></span></button><main class="main-content">${content}</main>${bottomNav}</div>`;
   },
 
   pageContent(screen) {
@@ -226,9 +415,10 @@ const App = {
     if (screen === 'office') return `<div class="page-header"><h1>🏢 حساب المكتب</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="Crud.addOfficeExpense()">🏢 مصروف مكتبي</button><button class="btn btn-primary" onclick="Crud.addOfficeCustodyExpense()">🔨 مصروف عهدة</button><button class="btn btn-primary" onclick="Crud.addOwnerDeposit()">👤 توريد صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOfficeIncome()">📈 إيراد مكتبي</button><button class="btn btn-primary" onclick="Crud.addOwnerWithdrawal()">🏃 سحب صاحب المكتب</button><button class="btn btn-primary" onclick="Crud.addOfficeTransfer()">🔄 تحويل بين الحسابات</button><button class="btn btn-primary" onclick="Crud.addOfficeCustody()">💼 عهد نقدية</button><button class="btn btn-secondary" onclick="App.exportOfficeExcel()">📥 تحميل Excel</button></div></div><div class="kpi-grid" id="office-kpis"><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div><div class="kpi-card skeleton skeleton-kpi"></div></div><div class="card" style="margin-top:16px"><h3>تفاصيل المعاملات</h3><div id="office-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card" style="margin-top:16px"><h3>💼 العهد النقدية</h3><div id="office-custody-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'vendors') return `<div class="page-header"><h1>🚚 الموردين</h1>${Auth.can('vendors', 'add') ? `<button class="btn btn-primary" onclick="Crud.addVendor()">+ إضافة مورد</button>` : ''}</div><div class="card"><div id="vendors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'employees') return `<div class="page-header"><h1>🧑‍💼 الموظفين</h1><button class="btn btn-primary" onclick="Crud.addEmp()">+ إضافة موظفين</button></div><div class="card"><div id="emp-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card" style="margin-top:16px"><h3>💰 معاملات الموظفين</h3><div id="emp-tx-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'employee-transactions') return `<div class="page-header"><h1>💸 معاملات الموظفين</h1><div style="display:flex;gap:8px;flex-wrap:wrap">${Auth.can('employee-transactions', 'add') ? `<button class="btn btn-primary" onclick="Crud.addEmpTransaction()">+ إضافة معاملة</button>` : ''}<button class="btn btn-secondary" onclick="App.go('employees')">🧑‍💼 الموظفين</button></div></div><div class="card"><div id="emp-tx-standalone-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'settings') return `<div class="page-header"><h1>⚙️ الإعدادات</h1></div><div class="content-grid"><div class="card" style="grid-column:1/-1"><h3>🏢 بيانات الشركة / المكتب</h3><form id="settings-form" style="max-width:720px"><div class="form-grid"><div class="form-group"><label>اسم الشركة / المكتب</label><input type="text" name="company_name" id="setting-company-name" value="سارة أبو العلا" /></div><div class="form-group"><label>العنوان</label><input type="text" name="company_address" id="setting-company-address" /></div><div class="form-group"><label>الهاتف</label><input type="text" name="company_phone" id="setting-company-phone" /></div><div class="form-group"><label>الرقم الضريبي</label><input type="text" name="company_tax" id="setting-company-tax" /></div><div class="form-group"><label>نسبة الإشراف الافتراضية (%)</label><input type="number" name="default_supervision" id="setting-default-supervision" value="10" min="0" max="100" step="0.01" /></div><div class="form-group"><label>تسمية العملة</label><input type="text" name="currency_label" id="setting-currency-label" value="ج.م" /></div></div><div style="margin-top:12px"><button type="button" class="btn btn-primary" onclick="App.saveSettings()">💾 حفظ الإعدادات</button></div><p id="settings-msg" style="font-size:12px;color:var(--green);margin-top:8px;min-height:18px"></p></form><div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text3)">الإصدار المحلي: <strong id="settings-version">-</strong> &nbsp;|&nbsp; آخر نسخة احتياطية: <strong id="settings-last-backup">-</strong></div></div></div><div class="content-grid"><div class="card"><h3>🔐 المستخدمين والصلاحيات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة حسابات المستخدمين وصلاحيات الوصول للشاشات.</p><button class="btn btn-primary" onclick="App.go('users')">فتح المستخدمين</button></div><div class="card"><h3>🧑‍💼 الموظفين</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة بيانات الموظفين ومعاملاتهم.</p><button class="btn btn-primary" onclick="App.go('employees')">فتح الموظفين</button></div><div class="card"><h3>📋 البيانات الأساسية</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إدارة التصنيفات، الأصناف، أقسام المشاريع وبنود الأعمال.</p><button class="btn btn-primary" onclick="App.go('master')">فتح البيانات الأساسية</button></div><div class="card"><h3>💾 النسخ الاحتياطي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">تحميل نسخة احتياطية ومراجعة حالة الجداول.</p><button class="btn btn-primary" onclick="App.go('backup')">فتح النسخ الاحتياطي</button></div><div class="card"><h3>📜 سجل العمليات</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">متابعة التعديلات والإضافات على قاعدة البيانات.</p><button class="btn btn-primary" onclick="App.go('audit')">فتح السجل</button></div></div>`;
     if (screen === 'users') return `<div class="page-header"><h1>🔐 إدارة المستخدمين</h1><div style="display:flex;gap:8px;flex-wrap:wrap">${Auth.can('users', 'add') ? `<button class="btn btn-primary" onclick="Crud.addUser()">+ إضافة مستخدمين</button>` : ''}<button class="btn btn-secondary" onclick="App.go('permissions')">🔑 صلاحيات المستخدمين</button></div></div><div class="card"><div id="users-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
-    if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'audit') return `<div class="page-header"><h1>📜 سجل العمليات</h1></div><div class="card"><div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"><label style="font-size:13px">الجدول:</label><select id="audit-table" onchange="App.loadAuditLog()" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit"><option value="">الكل</option><option value="clients">العملاء</option><option value="projects">المشاريع</option><option value="employees">الموظفين</option><option value="vendors">الموردين</option><option value="transactions">معاملات المشاريع</option><option value="procurements">المشتريات</option><option value="invoices">الفواتير</option></select><button class="btn btn-secondary" onclick="App.loadAuditLog()">🔄 تحديث</button></div><div id="audit-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'backup') return `<div class="page-header"><h1>💾 النسخ الاحتياطي</h1></div><div class="content-grid"><div class="card"><h3>📥 نسخ احتياطي محلي</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">حمّل نسخة كاملة من قاعدة البيانات على جهازك كملف ZIP.</p><div id="backup-progress" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.downloadLocalBackup()">📥 تحميل النسخة الاحتياطية</button><div id="backup-last" style="margin-top:12px;font-size:12px;color:var(--text3)"></div></div><div class="card"><h3>☁️ حالة النسخ الاحتياطي</h3><div id="backup-status">جاري التحميل...</div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🔄 استعادة من نسخة احتياطية</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">اختر ملف ZIP سابقًا تم تحميله من هذا النظام لاستعادة البيانات. سيتم دمج الصفوف المتشابهة حسب الرقم التعريفي.</p><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><input type="file" id="restore-file" accept=".zip" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;max-width:280px"><button class="btn btn-secondary" onclick="App.previewRestoreBackup()">👁️ استعراض</button></div><div id="restore-preview" style="margin-bottom:12px"></div><button class="btn btn-primary" onclick="App.restoreFromBackup()" id="restore-btn" style="display:none">🔄 استعادة البيانات</button><div id="restore-progress" style="margin-top:12px"></div></div><div class="card"><h3>🧹 مسح الكاش</h3><p style="color:var(--text2);font-size:13px;margin-bottom:12px">إذا واجهت مشاكل في تحميل التحديثات الجديدة، اضغط لمسح الكاش وإعادة تحميل التطبيق.</p><div id="cache-clear-msg" style="margin-bottom:12px;font-size:12px;color:var(--text3)">الإصدار المحلي: <strong>${localStorage.getItem('sara_app_version') || '-'}</strong></div><button class="btn btn-secondary" onclick="App.clearAppCache()">🧹 مسح الكاش وإعادة التحميل</button></div></div>`;
     if (screen === 'permissions') return `<div class="page-header"><h1>🔑 صلاحيات المستخدمين</h1><button class="btn btn-secondary" onclick="App.go('users')">← العودة إلى المستخدمين</button></div><div class="card"><div id="permissions-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
     if (screen === 'tasks') return `<div class="page-header"><h1>📋 المهام</h1></div><div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-sm ${App.taskStatusFilter==='all'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('all')">الكل</button><button class="btn btn-sm ${App.taskStatusFilter==='pending'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('pending')">معلق</button><button class="btn btn-sm ${App.taskStatusFilter==='in_progress'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('in_progress')">قيد التنفيذ</button><button class="btn btn-sm ${App.taskStatusFilter==='done'?'btn-primary':'btn-secondary'}" onclick="App.setTaskStatusFilter('done')">منتهي</button></div><div id="tasks-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
@@ -236,6 +426,10 @@ const App = {
     if (screen === 'project') return `<div class="page-header"><h1 id="project-detail-name">🏗️ تفاصيل المشروع</h1><button class="btn btn-secondary" onclick="App.go('clients')">← العودة للعملاء</button></div><div id="project-detail"><div class="skeleton skeleton-card"></div></div>`;
     if (screen === 'vendor') return `<div class="page-header"><h1 id="vendor-detail-name">🚚 تفاصيل المورد</h1><button class="btn btn-secondary" onclick="App.go('vendors')">← العودة للموردين</button></div><div id="vendor-detail"><div class="skeleton skeleton-card"></div></div>`;
     if (screen === 'master') return `<div class="page-header"><h1>📋 البيانات الأساسية</h1></div><div class="content-grid"><div class="card"><h3>📂 التصنيفات</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addSector()">+ إضافة تصنيفات</button>` : ''}<div id="sectors-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📦 الأصناف / المواد</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addItem()">+ إضافة صنف</button>` : ''}<div id="items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div><div class="content-grid" style="margin-top:16px"><div class="card"><h3>🏗️ أقسام المشاريع</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkSection()">+ إضافة قسم</button>` : ''}<div id="work-sections-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div><div class="card"><h3>📋 بنود الأعمال</h3>${Auth.can('master', 'add') ? `<button class="btn btn-primary" style="margin-bottom:12px" onclick="Crud.addWorkItem()">+ إضافة بند</button>` : ''}<div id="work-items-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div></div>`;
+    if (screen === 'reports') return `<div class="page-header"><h1>📈 التقارير</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm ${App.reportsTab==='cashflow'?'btn-primary':'btn-secondary'}" onclick="App.setReportsTab('cashflow')">التدفق النقدي</button><button class="btn btn-sm ${App.reportsTab==='pl'?'btn-primary':'btn-secondary'}" onclick="App.setReportsTab('pl')">الأرباح والخسائر</button><button class="btn btn-sm ${App.reportsTab==='office'?'btn-primary':'btn-secondary'}" onclick="App.setReportsTab('office')">تدفق المكتب</button><button class="btn btn-sm ${App.reportsTab==='aging'?'btn-primary':'btn-secondary'}" onclick="App.setReportsTab('aging')">مستحقات وتقادم</button></div></div><div id="reports-filter-bar"></div><div id="reports-content"><div class="skeleton skeleton-card"></div></div>`;
+    if (screen === 'invoices') return `<div class="page-header"><h1>🧾 الفواتير</h1>${Auth.can('invoices', 'add') ? `<button class="btn btn-primary" onclick="Crud.addInvoice()">+ إنشاء فاتورة</button>` : ''}</div><div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-sm ${App.invoiceStatusFilter==='all'?'btn-primary':'btn-secondary'}" onclick="App.setInvoiceStatusFilter('all')">الكل</button><button class="btn btn-sm ${App.invoiceStatusFilter==='draft'?'btn-primary':'btn-secondary'}" onclick="App.setInvoiceStatusFilter('draft')">مسودة</button><button class="btn btn-sm ${App.invoiceStatusFilter==='sent'?'btn-primary':'btn-secondary'}" onclick="App.setInvoiceStatusFilter('sent')">مرسلة</button><button class="btn btn-sm ${App.invoiceStatusFilter==='paid'?'btn-primary':'btn-secondary'}" onclick="App.setInvoiceStatusFilter('paid')">مدفوعة</button><button class="btn btn-sm ${App.invoiceStatusFilter==='cancelled'?'btn-primary':'btn-secondary'}" onclick="App.setInvoiceStatusFilter('cancelled')">ملغاة</button></div><div id="invoices-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'notifications') return `<div class="page-header"><h1>🔔 الإشعارات</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm ${App.notificationFilter==='all'?'btn-primary':'btn-secondary'}" onclick="App.setNotificationFilter('all')">الكل</button><button class="btn btn-sm ${App.notificationFilter==='unread'?'btn-primary':'btn-secondary'}" onclick="App.setNotificationFilter('unread')">غير مقروء</button><button class="btn btn-sm ${App.notificationFilter==='archived'?'btn-primary':'btn-secondary'}" onclick="App.setNotificationFilter('archived')">مؤرشف</button><button class="btn btn-secondary" onclick="App.markAllNotificationsRead()">تحديد الكل كمقروء</button></div></div><div class="card"><div id="notifications-tbl"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>`;
+    if (screen === 'invoice') return `<div class="page-header"><h1 id="invoice-detail-name">🧾 تفاصيل الفاتورة</h1><button class="btn btn-secondary" onclick="App.go('invoices')">← العودة للفواتير</button></div><div id="invoice-detail"><div class="skeleton skeleton-card"></div></div>`;
 
 
     return '';
@@ -266,7 +460,12 @@ const App = {
       this.startIdleTimer();
       await this.go('dashboard');
     } catch (e) {
-      UI.toast('خطأ في الدخول: ' + e.message, 'error');
+      const msg = String(e.message || '');
+      const isNetwork = /network|failed to fetch|اتصال|reach server|load failed/i.test(msg);
+      const display = isNetwork
+        ? 'تعذر الاتصال بالخادم. تأكد من اتصال الإنترنت أو حالة خدمة Supabase ثم أعد المحاولة.'
+        : 'خطأ في الدخول: ' + msg;
+      UI.toast(display, 'error');
       btn.disabled = false; btn.textContent = 'دخول';
     }
   },

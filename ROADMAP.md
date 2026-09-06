@@ -1,7 +1,8 @@
 # Sara Arch — Development Roadmap
 
-> **Current runtime version:** v292  
-> **Last updated:** 2026-06-15
+> **Current runtime version:** v301  
+> **Last updated:** 2026-06-15  
+> **Next target:** v302 security auto-hardening; Inventory / Stock Tracking held for later cycle
 
 This roadmap prioritizes critical fixes, high-value business features, quality-of-life improvements, and long-term technical excellence.
 
@@ -37,10 +38,11 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale | Effort |
 |---|-------------|-----------|--------|
-| 1.3.1 | **Invoicing module** | Generate client invoices with status workflow and PDF export. | Medium |
+| 1.3.1 | **Invoicing module** | ✅ Added in v300 with invoice items, status workflow, print preview, and linked payment. | Medium |
+| 1.3.5 | **Inventory / stock tracking** | Spec drafted; held for later cycle. Track item quantities on hand, stock-in via procurement, stock-out via project expense, and reorder alerts. | Medium |
 | 1.3.2 | **Restore from backup** | Import previously exported JSON/ZIP backups. | ✅ UI exists in Settings → Backup. |
 | 1.3.3 | **Document attachments** | Link files to clients/projects/transactions via Supabase Storage. | Medium |
-| 1.3.4 | **Retention / holdback tracking** | Track project retention amounts. | Low |
+| 1.3.4 | **Retention / holdback tracking** | Track project retention amounts. | ✅ Done in v294 |
 
 ---
 
@@ -59,7 +61,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale |
 |---|-------------|-----------|
-| 2.2.1 | **Complete PWA experience** — add install prompt, offline fallback page, background sync queue. | Improves mobile reliability. |
+| 2.2.1 | **Complete PWA experience** — add install prompt, offline fallback page, background sync queue. | ✅ Service worker + manifest active; offline fallback page added in v297; background sync queue (`SyncManager`) shipped in v301. |
 | 2.2.2 | **Form validation UX** — inline validation, required-field highlighting, error messages. | Reduces user errors. |
 | 2.2.3 | **Empty state CTAs** — guide users when lists are empty. | Onboarding improvement. |
 | 2.2.4 | **Quick date filters** on transactions, attendance, payroll, and statements. | Faster navigation. |
@@ -71,8 +73,8 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 | # | Improvement | Rationale |
 |---|-------------|-----------|
 | 2.3.1 | **Items catalog screen** | ✅ Exists in Master Data screen. |
-| 2.3.2 | **Employee transactions screen** | ✅ Exists in Employees screen. |
-| 2.3.3 | **Custody expenses screen** | ✅ Exists in Office → Custody. |
+| 2.3.2 | **Employee transactions screen** | ✅ Standalone `#/employee-transactions` screen with type filter added in v296; per-employee modal still exists in Employees screen. |
+| 2.3.3 | **Custody expenses screen** | ✅ Unified spent/returned ledger in Office → Custody added in v296 (`custody_expenses.type`). |
 | 2.3.4 | **Salary history screen** | ✅ Exists in Employees screen. |
 | 2.3.5 | **Real Settings page** | ✅ Company settings, users/permissions, and backup cards exist. |
 
@@ -80,10 +82,10 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale |
 |---|-------------|-----------|
-| 2.4.1 | **Profit & Loss (P&L) report** | High-value management report. |
-| 2.4.2 | **Aging report** (A/R and A/P). | Track overdue receivables/payables. |
-| 2.4.3 | **Cash flow statement**. | Office liquidity overview. |
-| 2.4.4 | **Project profitability card** on project detail. | Quick project health check. |
+| 2.4.1 | **Profit & Loss (P&L) report** | ✅ Added to Reports screen in v297. |
+| 2.4.2 | **Aging report** (A/R and A/P). | ✅ Added to Reports screen in v298 with `report_aging_ar`/`report_aging_ap` views and Excel export. |
+| 2.4.3 | **Cash flow statement**. | ✅ Added to Reports screen in v297. |
+| 2.4.4 | **Project profitability card** on project detail. | ✅ Added to project detail in v299 (net profit + margin). |
 
 ---
 
@@ -103,7 +105,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale |
 |---|-------------|-----------|
-| 3.2.1 | **Inventory / stock management** with quantity on hand, reorder points, and stock alerts. | Critical for merchandise vendors. |
+| 3.2.1 | **Inventory / stock management** with quantity on hand, reorder points, and stock alerts. | Spec drafted; held for later cycle. Critical for merchandise vendors. |
 | 3.2.2 | **Purchase orders** with approval workflow. | Formal procurement process. |
 | 3.2.3 | **Quotations / estimates** convertible to projects/invoices. | Sales pipeline support. |
 
@@ -111,7 +113,7 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 
 | # | Improvement | Rationale |
 |---|-------------|-----------|
-| 3.3.1 | **Notifications / alerts** for overdue payments, low stock, task deadlines. | Proactive management. |
+| 3.3.1 | **Notifications / alerts** for overdue payments, task deadlines, contract milestones. | ✅ Shipped in v301 with notification tables, generator RPC, bell UI, and notifications screen. |
 | 3.3.2 | **Multi-user real-time updates** via Supabase realtime channels. | Avoid stale data across sessions. |
 | 3.3.3 | **Task scheduling with Gantt/calendar view**. | Project planning. |
 | 3.3.4 | **Site diary / daily reports**. | Field operations tracking. |
@@ -165,9 +167,10 @@ This roadmap prioritizes critical fixes, high-value business features, quality-o
 - Form validation and mobile UX fixes.
 
 ### Phase 4 — Platform (Weeks 11+)
-- Inventory and purchase orders.
-- Notifications and real-time updates.
-- Automated testing.
+- Inventory and purchase orders (held for next business cycle).
+- ✅ Notifications and offline sync (v301).
+- Real-time multi-user updates.
+- Automated testing (Vitest + Playwright expanded in v301).
 - Architecture modernization (framework migration if justified).
 
 ---

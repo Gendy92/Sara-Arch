@@ -13,7 +13,15 @@ node_modules/
 .venv-manual/
 screenshots/
 *.docx
+tests/e2e/.state/
+test-results/
+playwright-report/
+playwright/.cache/
 
 # Allow generated specification workbooks
 !SPEC-v2.xlsx
 !LOGIC_SPEC-v1.xlsx
+
+# Never commit secrets or one-off local files
+github-recovery-codes.txt
+*.bmp

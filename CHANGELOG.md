@@ -1,12 +1,214 @@
 # Sara Arch — Changelog
 
-> **Current version:** v294  
+> **Current version:** v303  
 > **Branch:** `main` / `dev.2` (fast-forward synced)  
-> **Last updated:** 2026-07-09
+> **Last updated:** 2026-08-20
 
 ---
 
-## Version 294 (Current)
+## Version 302 (Current)
+
+### Security
+- New migration `migration_v302_security_advisor_hardening.sql` auto-applied by CI:
+  - Fixes mutable `search_path` on `apply_migration()`.
+  - Drops leftover helper functions `__auth_users_cols`, `__apply_migration_acl`, `__apply_migration_acl2`.
+  - Revokes `anon` EXECUTE on all public functions except `log_app_error()`.
+  - Revokes `authenticated` EXECUTE on all trigger functions (triggers continue to work).
+- Bumped service-worker cache key and asset query-string version to `v302`.
+
+### Tests & Quality
+- Added `js/notification-service.js` browser-notification helper and wired it into the app loader.
+- Added unit tests for `NotificationService` (12 tests) and `Crud.emailNewPassword` (4 tests).
+- Added Playwright E2E specs for notifications (2 tests) and offline sync (2 tests).
+- `SyncManager.api()` now refreshes the sync indicator immediately when a mutation is queued.
+- `npm run health` now reports **69/69 unit tests** passing and lint/audit clean.
+
+### Fixed
+- **PDF / Print**:
+  - `App.printReport()` now cleans up via the `afterprint` event instead of a fixed 1-second timeout.
+  - Added `portrait` option to `App.printReport()`; invoices now print in A4 portrait.
+  - Print stylesheet now hides `.modal-header`, `.modal-actions`, and `.no-print`.
+  - `Crud.printInvoice()` now calls `App.printReport()` for correct PDF filenames and escapes all invoice fields.
+- **Excel exports**:
+  - Client/project statement exports now include supervision and the correct balance (`deposits − expenses − supervision`).
+  - Project statement export no longer outputs `[object Object]` for the amount column.
+  - Project budget export now shows the real supervision percentage instead of `(-%)`.
+  - Vendor statement/purchases exports show absolute balance with a direction column (`مستحق`/`زيادة مدفوعة`).
+- **Data entry / CRUD**:
+  - `Crud.editEmp()` form now includes the `salary` field, preventing false salary-history entries.
+  - `Crud.addProjectDeposit()` now stores `client_name` on transactions.
+  - `Crud.save()` strips accidental `id` from POST payloads and blocks `paid_amount` when `amount` is missing.
+  - `Crud.delProject()` now cascades soft-delete to related transactions, procurements, and tasks.
+  - `App.loadOffice()` liquid balance now uses nullish coalescing (`??`) instead of treating `0` as missing.
+  - Task list project name now links to the correct project screen instead of the clients list.
+  - Fingerprint attendance import now only deletes old records for the imported employees, preserving other employees' data.
+
+---
+
+## Version 303 (Current)
+
+### Security
+- Added function-level permission guards to all mutating `Crud.*` entry points (add/edit/delete/pay/approve/etc.).
+- `App.exportOfficeExcel()` now checks `office` `print` permission before exporting.
+
+### Database
+- New migration `migration_v303_atomic_invoice_operations.sql`:
+  - `upsert_invoice_with_items()` — atomic insert/update of an invoice plus replacement of its line items.
+  - `record_invoice_payment()` — atomic creation of the deposit transaction and invoice payment update.
+  - `delete_invoice()` — atomic soft-delete of invoice and its items.
+- Updated `schema_full_fix.sql` with the v303 RPCs.
+
+### Fixed
+- Invoice create/edit/delete/payment are now transactional, eliminating partial-failure states (orphan transactions, invoices without items).
+- Office Excel export now uses the reliable Blob/download pattern instead of `XLSX.writeFile`.
+
+### Infrastructure
+- Bumped version to `303.0.0` across `package.json`, `version.json`, `sw.js`, and `index.html` cache-busting.
+
+---
+
+## Version 301
+
+### Added
+- **Notifications / Alerts**:
+  - New `notifications` and `notification_rules` tables with tenant isolation, indexes, and RLS.
+  - `generate_notifications(p_tenant_id UUID)` RPC for overdue client balances, task deadlines, and contract milestones.
+  - In-app notification bell with unread badge and dropdown.
+  - Full `#/notifications` screen with All / Unread / Archived filters, mark-read, and archive actions.
+  - New `notifications` permission in the RBAC map.
+- **PWA Background Sync**:
+  - New `js/sync.js` module with IndexedDB queue (`sara_sync_queue`), replay, conflict handling, and last-sync tracking.
+  - Service-worker `sync` event listener to trigger replay.
+  - Header sync indicator showing pending count and last sync time.
+  - New `js/notification-service.js` browser-notification helper with toast fallback.
+- **Production runbooks**:
+  - `docs/production-v301-deploy.md` — step-by-step v301 rollout.
+  - `migration_v300_custody_triggers_fix.sql` — standalone patch for the missing custody triggers.
+- **E2E seed improvements**:
+  - `tests/e2e/setup/seed.sql` now includes `e2e_seed_tenant()` for default sectors, office vendor, and notification rules.
+  - `tests/e2e/setup/global-setup.js` calls the seed function.
+  - `playwright.config.js` supports `E2E_BASE_URL` for deployed previews.
+
+### Changed
+- `migration_v301_notifications.sql` now embeds the v300 custody trigger catch-up so CI applies it automatically.
+- `admin_reset_password_email()` patched to check the `pg_net` worker and return the Resend `request_id`.
+- `schema_full_fix.sql` updated with v301 schema and the fixed email RPC.
+- Bumped service-worker cache key and CSS/JS query-string version to `v301`.
+- `npm run health` now reports **53/53 unit tests** passing.
+
+### Security
+- Added `security_advisor_hardening_patch.sql` to revoke anon/authenticated execute on internal functions and fix `apply_migration` search_path.
+- Updated `docs/SECURITY_RUNBOOK.md` with v301 pre-release checklist, Resend config, and branch-protection steps.
+
+---
+
+## Version 300
+
+### Added
+- **Invoicing module** (`#/invoices`):
+  - New `invoices` and `invoice_items` tables with tenant isolation, RLS, and triggers.
+  - Invoice list screen with status filter (draft / sent / paid / cancelled) and search.
+  - Create/edit invoices with dynamic line items, client→project cascade, auto invoice numbering, and running total.
+  - Print/preview invoice modal with company header and itemized table.
+  - **Mark as paid** creates a linked `project_deposit` transaction and updates invoice status.
+  - New E2E spec covering invoice creation + payment.
+
+### Changed
+- `js/app-core.js` adds the Invoices route, sidebar nav, status filter, and detail template.
+- `js/app-loaders.js` adds `loadInvoices()` / `loadInvoice()` and includes `invoices` in the permissions screen.
+- `js/crud.js` adds `addInvoice`, `editInvoice`, `delInvoice`, `markInvoicePaid`, and `printInvoice`.
+- **Hotfix:** Added `pg_trigger_depth()` guard to `custody_records_state_trigger()` to prevent infinite recursion when `custody_recompute_state()` updates `custody_records`.
+- Bumped service-worker cache key and CSS query-string version to `v300`.
+
+---
+
+## Version 299
+
+### Added
+- **Project profitability card** on the project detail screen:
+  - Shows **الربح الصافي** and **هامش الربح** alongside existing project KPIs.
+  - Computed from `project_balances` as: net deposits − expenses − supervision.
+
+### Changed
+- `js/app-loaders.js` project detail summary now includes profit and margin KPI cards.
+- Bumped service-worker cache key and CSS query-string version to `v299`.
+
+---
+
+## Version 298
+
+### Added
+- **Aging report** tab on the Reports screen (`#/reports`):
+  - **مستحقات العملاء (A/R)** — client receivables grouped into aging buckets (current, 1–30, 31–60, 61–90, 91–120, +120 days) using `report_aging_ar`.
+  - **مستحقات الموردين (A/P)** — vendor payables grouped into the same buckets using `report_aging_ap`.
+  - Bucket totals row per section.
+  - Excel export with two sheets (clients + vendors).
+- New database views `report_aging_ar` and `report_aging_ap` with `security_invoker`.
+- New Playwright E2E spec for the aging report.
+
+### Changed
+- `js/app-reports.js` expanded with `_loadAgingTab()` and `exportAgingReport()`.
+- `js/app-core.js` reports tab bar now includes the Aging tab.
+- Bumped service-worker cache key and CSS query-string version to `v298`.
+
+---
+
+## Version 297
+
+### Added
+- **Reports screen** (`#/reports`) with three tabs:
+  - **التدفق النقدي** — monthly income vs expense chart using `dashboard_monthly_revenue_expenses`.
+  - **الأرباح والخسائر** — per-project P&L table from `project_balances`.
+  - **تدفق المكتب** — office transactions filtered by date range from `office_transactions_view`.
+- Date-range filter with quick presets (today, this month, last month, this year) on the Reports screen.
+- Excel export buttons for each report tab.
+- New Playwright E2E spec for the Reports screen.
+
+### Changed
+- `js/app-reports.js` expanded from a single Excel export to a full reports module.
+- `js/app-core.js` now includes the Reports route, nav item, and page template.
+- Bumped service-worker cache key and CSS query-string version to `v297`.
+
+---
+
+## Version 296
+
+### Added
+- **Standalone employee-transactions screen** (`#/employee-transactions`):
+  - Top-level sidebar nav item "💸 معاملات الموظفين".
+  - Filter by transaction type (سلفة / مكافأة / جزاء / أخرى) and search by employee/notes.
+  - Reuses existing `Crud.addEmpTransaction`, `editEmpTransaction`, `delEmpTransaction`.
+- **Unified custody spent/returned ledger**:
+  - New `custody_expenses.type` column (`spent` | `returned`).
+  - Cash returns now create a `custody_expenses` row of type `returned` linked to the `custody_return` transaction.
+  - DB trigger `custody_recompute_state` now splits totals into `returned_amount` (spent) and `returned_cash_amount` (returned).
+  - Custody expense modal shows a single ledger with both expenses and cash returns.
+
+### Changed
+- `migration_v296_custody_ledger.sql` applies the custody ledger schema and trigger updates.
+- `schema_full_fix.sql` updated to include `custody_expenses.type` and the split-sum triggers.
+- Added `offline.html` PWA fallback page and updated `sw.js` to serve it when a navigation request fails.
+- Bumped service-worker cache key and CSS query-string version to `v296`.
+
+---
+
+## Version 295
+
+### Added
+- **Playwright end-to-end test suite**:
+  - 26 E2E specs covering auth, clients, projects, office, vendors, employees, retention/supervision (v294), admin, and reports.
+  - Page objects, fixtures, and form helpers for the Arabic vanilla-JS SPA.
+  - `tests/e2e/setup/global-setup.js` creates a dedicated staging tenant + admin user before the run.
+  - `tests/e2e/setup/seed.sql` provides an FK-safe `e2e_cleanup_tenant(UUID)` helper for teardown.
+  - New npm scripts: `test:e2e`, `test:e2e:ui`, `test:e2e:headed`.
+  - New GitHub Actions workflow `.github/workflows/e2e.yml` (manual + weekly schedule).
+
+### Fixed
+- **Project statement print/PDF layout**: switched print media to A4 landscape, fixed column widths, and kept the amount column (`المبلغ`) from wrapping so the whole statement fits on one page.
+
+---
+
+## Version 294
 
 ### Added
 - **Retention / holdback tracking** (Decision 1.2):

@@ -14,6 +14,7 @@ CREATE OR REPLACE FUNCTION public.apply_migration(p_version TEXT, p_sql TEXT)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = p_version) THEN

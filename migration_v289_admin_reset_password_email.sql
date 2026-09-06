@@ -14,6 +14,9 @@
 --   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 --
 -- The Resend API key and sender domain must be verified in your Resend account.
+-- For initial testing on a free Resend account, use:
+--   VALUES ('email_sender', 'onboarding@resend.dev')
+-- and send only to the email address you used to sign up at Resend.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_net;
@@ -32,6 +35,7 @@ DECLARE
   api_key TEXT;
   sender TEXT;
   payload JSONB;
+  request_id BIGINT;
 BEGIN
   IF NOT is_app_admin(auth.uid()) THEN
     RETURN jsonb_build_object('success', false, 'error', 'Admin only');
@@ -39,6 +43,14 @@ BEGIN
 
   IF p_email IS NULL OR p_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN
     RETURN jsonb_build_object('success', false, 'error', 'Invalid email address');
+  END IF;
+
+  -- The pg_net extension must be enabled AND its background worker running.
+  IF NOT net.check_worker_is_up() THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Email worker (pg_net) is not running. Enable the pg_net extension in Supabase Database → Extensions and retry.'
+    );
   END IF;
 
   -- Generate a 20-character hex password
@@ -71,18 +83,40 @@ BEGIN
 ' || 'سارة أبو العلا'
   );
 
-  PERFORM net.http_post(
+  request_id := net.http_post(
     'https://api.resend.com/emails',
     payload,
     '{}'::jsonb,
-    jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json')
+    jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
+    10000
   );
 
-  RETURN jsonb_build_object('success', true);
+  RETURN jsonb_build_object('success', true, 'request_id', request_id);
 END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.admin_reset_password_email(UUID, TEXT) FROM anon;
 GRANT EXECUTE ON FUNCTION public.admin_reset_password_email(UUID, TEXT) TO authenticated;
+
+-- Helper to inspect the Resend response after a few seconds.
+-- Run: SELECT public.get_email_status(<request_id>);
+CREATE OR REPLACE FUNCTION public.get_email_status(p_request_id BIGINT)
+RETURNS JSONB
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT jsonb_build_object(
+    'status_code', status_code,
+    'body', content,
+    'error', error_msg,
+    'created', created
+  )
+  FROM net._http_response
+  WHERE id = p_request_id;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_email_status(BIGINT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_email_status(BIGINT) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';

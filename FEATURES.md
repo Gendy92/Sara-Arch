@@ -95,11 +95,15 @@
 Based on `ROADMAP.md` and amendment requests:
 
 ### Core Business
-- **Invoicing module** — create invoices, numbering, status workflow, PDF export.
-- **Inventory / stock management** — track item quantities, reorder alerts.
+- **Invoicing module** — ✅ shipped in v300.
+- **Inventory / stock management** — spec drafted; held for later cycle.
 - **Quotations / estimates (عروض أسعار)** — convert quotes to projects.
 - **Purchase orders (أوامر شراء)** — approval workflow.
-- **Retention / holdback tracking (ضمان الأعمال)** — per-project retention amounts.
+- **Retention / holdback tracking (ضمان الأعمال)** — ✅ shipped in v294.
+
+### v301 — In Progress
+- **Notifications / alerts** — overdue payments, task deadlines, contract milestones.
+- **PWA background sync queue** — offline mutation queue with retry-on-reconnect.
 
 ### Documents & Attachments
 - **Document attachments** — upload and link files to projects/clients/transactions via Supabase Storage.
@@ -114,7 +118,8 @@ Based on `ROADMAP.md` and amendment requests:
 
 ### Platform
 - **Restore from backup** — import previously exported ZIP/JSON backups.
-- **Notifications / alerts** — overdue payments, low stock, deadlines.
+- **Notifications / alerts** — 🔄 in v301.
+- **PWA background sync queue** — 🔄 in v301.
 - **URL routing / deep linking**.
 - **Comprehensive test suite**.
 - **Server-side business logic triggers** for consistency.

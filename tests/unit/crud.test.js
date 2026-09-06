@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 beforeAll(async () => {
   // Provide the globals that the browser normally loads from config.js.
@@ -56,5 +56,41 @@ describe('Crud.save paid-amount guard', () => {
     const { Crud } = globalThis;
     await expect(Crud.save('procurements', { quantity: 2, unit_price: 100, paid_amount: 250 }))
       .rejects.toThrow('المبلغ المدفوع أكبر من إجمالي المشتريات');
+  });
+});
+
+describe('Crud.emailNewPassword', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    globalThis.UI.toast = vi.fn();
+    globalThis.UI.confirm = vi.fn((_msg, onYes) => { if (onYes) onYes(); });
+  });
+
+  it('rejects an invalid email with an error toast', async () => {
+    const { Crud } = globalThis;
+    await Crud.emailNewPassword('user-id', 'not-an-email');
+    expect(globalThis.UI.toast).toHaveBeenCalledWith('لا يوجد بريد إلكتروني صالح لهذا المستخدم', 'error');
+  });
+
+  it('shows success toast when the RPC returns success', async () => {
+    const { Crud } = globalThis;
+    globalThis.API.rpc = vi.fn().mockResolvedValue({ success: true, request_id: 123 });
+    await Crud.emailNewPassword('user-id', 'user@example.com');
+    expect(globalThis.API.rpc).toHaveBeenCalledWith('admin_reset_password_email', { p_user_id: 'user-id', p_email: 'user@example.com' });
+    expect(globalThis.UI.toast).toHaveBeenCalledWith('تم إرسال كلمة المرور الجديدة إلى البريد الإلكتروني');
+  });
+
+  it('shows the RPC error when the call fails', async () => {
+    const { Crud } = globalThis;
+    globalThis.API.rpc = vi.fn().mockResolvedValue({ success: false, error: 'Domain not verified' });
+    await Crud.emailNewPassword('user-id', 'user@example.com');
+    expect(globalThis.UI.toast).toHaveBeenCalledWith('Domain not verified', 'error');
+  });
+
+  it('shows a generic error toast when the RPC throws', async () => {
+    const { Crud } = globalThis;
+    globalThis.API.rpc = vi.fn().mockRejectedValue(new Error('Network failure'));
+    await Crud.emailNewPassword('user-id', 'user@example.com');
+    expect(globalThis.UI.toast).toHaveBeenCalledWith('Network failure', 'error');
   });
 });

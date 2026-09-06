@@ -482,6 +482,7 @@ DROP TRIGGER IF EXISTS employee_transactions_u ON employee_transactions; CREATE 
 DROP TRIGGER IF EXISTS custody_records_u ON custody_records; CREATE TRIGGER custody_records_u BEFORE UPDATE ON custody_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS custody_expenses_u ON custody_expenses; CREATE TRIGGER custody_expenses_u BEFORE UPDATE ON custody_expenses FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 ALTER TABLE custody_expenses ADD COLUMN IF NOT EXISTS linked_transaction_id UUID REFERENCES transactions(id);
+ALTER TABLE custody_expenses ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'spent' CHECK (type IN ('spent','returned'));
 DROP TRIGGER IF EXISTS attendance_records_u ON attendance_records; CREATE TRIGGER attendance_records_u BEFORE UPDATE ON attendance_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS payroll_records_u ON payroll_records; CREATE TRIGGER payroll_records_u BEFORE UPDATE ON payroll_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS work_sections_u ON work_sections; CREATE TRIGGER work_sections_u BEFORE UPDATE ON work_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -500,31 +501,34 @@ CREATE OR REPLACE FUNCTION custody_recompute_state(p_custody_id UUID)
 RETURNS void AS $$
 DECLARE
   v_amount NUMERIC;
+  v_spent NUMERIC;
   v_returned_cash NUMERIC;
-  v_expenses NUMERIC;
   v_remaining NUMERIC;
   v_status TEXT;
 BEGIN
-  SELECT COALESCE(amount,0), COALESCE(returned_cash_amount,0)
-  INTO v_amount, v_returned_cash
+  SELECT COALESCE(amount,0)
+  INTO v_amount
   FROM custody_records WHERE id = p_custody_id;
 
-  SELECT COALESCE(SUM(amount),0) INTO v_expenses
+  SELECT COALESCE(SUM(amount) FILTER (WHERE type = 'spent' OR type IS NULL), 0),
+         COALESCE(SUM(amount) FILTER (WHERE type = 'returned'), 0)
+  INTO v_spent, v_returned_cash
   FROM custody_expenses
   WHERE custody_id = p_custody_id AND deleted_at IS NULL;
 
-  v_remaining := GREATEST(v_amount - v_expenses - v_returned_cash, 0);
+  v_remaining := GREATEST(v_amount - v_spent - v_returned_cash, 0);
 
   IF v_remaining <= 0 THEN
     v_status := 'settled';
-  ELSIF v_expenses + v_returned_cash > 0 THEN
+  ELSIF v_spent + v_returned_cash > 0 THEN
     v_status := 'partial';
   ELSE
     v_status := 'active';
   END IF;
 
   UPDATE custody_records
-  SET returned_amount = v_expenses,
+  SET returned_amount = v_spent,
+      returned_cash_amount = v_returned_cash,
       remaining_balance = v_remaining,
       status = v_status
   WHERE id = p_custody_id;
@@ -534,6 +538,11 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE FUNCTION custody_records_state_trigger()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Guard against recursion: custody_recompute_state() updates custody_records,
+  -- which would fire this trigger again.
+  IF pg_trigger_depth() > 1 THEN
+    RETURN NEW;
+  END IF;
   PERFORM custody_recompute_state(NEW.id);
   RETURN NEW;
 END;
@@ -565,26 +574,32 @@ CREATE OR REPLACE FUNCTION custody_expense_limit_check()
 RETURNS TRIGGER AS $$
 DECLARE
   v_amount NUMERIC;
-  v_returned_cash NUMERIC;
-  v_other_expenses NUMERIC;
+  v_other_spent NUMERIC;
+  v_other_returned NUMERIC;
   v_current_amount NUMERIC := 0;
   v_available NUMERIC;
 BEGIN
-  SELECT COALESCE(amount,0), COALESCE(returned_cash_amount,0)
-  INTO v_amount, v_returned_cash
+  SELECT COALESCE(amount,0)
+  INTO v_amount
   FROM custody_records WHERE id = NEW.custody_id;
 
   IF TG_OP = 'UPDATE' THEN
     v_current_amount := COALESCE(OLD.amount,0);
   END IF;
 
-  SELECT COALESCE(SUM(amount),0) INTO v_other_expenses
+  SELECT COALESCE(SUM(amount) FILTER (WHERE type = 'spent' OR type IS NULL), 0),
+         COALESCE(SUM(amount) FILTER (WHERE type = 'returned'), 0)
+  INTO v_other_spent, v_other_returned
   FROM custody_expenses
   WHERE custody_id = NEW.custody_id
     AND deleted_at IS NULL
     AND id IS DISTINCT FROM COALESCE(OLD.id, NULL);
 
-  v_available := v_amount - v_other_expenses - v_returned_cash + v_current_amount;
+  IF NEW.type = 'returned' THEN
+    v_available := v_amount - v_other_spent - v_other_returned + v_current_amount;
+  ELSE
+    v_available := v_amount - v_other_spent - v_other_returned + v_current_amount;
+  END IF;
 
   IF NEW.amount > v_available THEN
     RAISE EXCEPTION 'مبلغ المصروف (%) يتجاوز الرصيد المتاح (%)', NEW.amount, v_available;
@@ -597,23 +612,26 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 CREATE OR REPLACE FUNCTION custody_return_limit_check()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_expenses NUMERIC;
+  v_spent NUMERIC;
+  v_returned NUMERIC;
   v_available NUMERIC;
 BEGIN
-  SELECT COALESCE(SUM(amount),0) INTO v_expenses
+  SELECT COALESCE(SUM(amount) FILTER (WHERE type = 'spent' OR type IS NULL), 0),
+         COALESCE(SUM(amount) FILTER (WHERE type = 'returned'), 0)
+  INTO v_spent, v_returned
   FROM custody_expenses
   WHERE custody_id = NEW.id AND deleted_at IS NULL;
 
   IF NEW.returned_cash_amount IS DISTINCT FROM OLD.returned_cash_amount THEN
-    v_available := NEW.amount - v_expenses;
+    v_available := NEW.amount - v_spent;
     IF NEW.returned_cash_amount > v_available THEN
       RAISE EXCEPTION 'مبلغ السداد (%) يتجاوز الرصيد المتبقي (%)', NEW.returned_cash_amount, v_available;
     END IF;
   END IF;
 
   IF NEW.amount IS DISTINCT FROM OLD.amount THEN
-    IF NEW.amount < v_expenses + NEW.returned_cash_amount THEN
-      RAISE EXCEPTION 'لا يمكن تقليل مبلغ العهدة عن مجموع المصروفات والسداد (%).', v_expenses + NEW.returned_cash_amount;
+    IF NEW.amount < v_spent + NEW.returned_cash_amount THEN
+      RAISE EXCEPTION 'لا يمكن تقليل مبلغ العهدة عن مجموع المصروفات والسداد (%).', v_spent + NEW.returned_cash_amount;
     END IF;
   END IF;
 
@@ -1683,6 +1701,134 @@ WHERE t.deleted_at IS NULL
 
 GRANT SELECT ON public.project_transactions_view TO authenticated;
 
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ Aging (A/R and A/P) report views                        │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE OR REPLACE VIEW public.report_aging_ar WITH (security_invoker = true) AS
+WITH project_due AS (
+  SELECT
+    pb.client_id,
+    c.name AS client_name,
+    pb.project_id,
+    pb.project_name,
+    GREATEST(0, -pb.balance) AS amount_due,
+    (
+      SELECT MAX(t.date)
+      FROM transactions t
+      WHERE t.deleted_at IS NULL
+        AND t.project_id = pb.project_id
+        AND t.type IN ('project_deposit','project_expense','vendor_settlement','client_return','retention_withheld','retention_released','supervision')
+    ) AS last_date
+  FROM public.project_balances pb
+  JOIN clients c ON c.id = pb.client_id
+  WHERE c.deleted_at IS NULL
+    AND GREATEST(0, -pb.balance) > 0
+),
+bucketed AS (
+  SELECT
+    client_id,
+    client_name,
+    project_id,
+    project_name,
+    amount_due,
+    last_date,
+    COALESCE(CURRENT_DATE - last_date, 0) AS days_overdue,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - last_date, 0) <= 30 THEN amount_due
+      ELSE 0
+    END AS bucket_current,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - last_date, 0) BETWEEN 31 AND 60 THEN amount_due
+      ELSE 0
+    END AS bucket_1_30,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - last_date, 0) BETWEEN 61 AND 90 THEN amount_due
+      ELSE 0
+    END AS bucket_31_60,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - last_date, 0) BETWEEN 91 AND 120 THEN amount_due
+      ELSE 0
+    END AS bucket_61_90,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - last_date, 0) > 120 THEN amount_due
+      ELSE 0
+    END AS bucket_over_90
+  FROM project_due
+)
+SELECT
+  client_id,
+  client_name,
+  SUM(amount_due) AS total_due,
+  MAX(last_date) AS last_date,
+  MAX(days_overdue) AS days_overdue,
+  SUM(bucket_current) AS bucket_current,
+  SUM(bucket_1_30) AS bucket_1_30,
+  SUM(bucket_31_60) AS bucket_31_60,
+  SUM(bucket_61_90) AS bucket_61_90,
+  SUM(bucket_over_90) AS bucket_over_90
+FROM bucketed
+GROUP BY client_id, client_name;
+
+CREATE OR REPLACE VIEW public.report_aging_ap WITH (security_invoker = true) AS
+WITH vendor_last AS (
+  SELECT
+    v.id AS vendor_id,
+    v.name AS vendor_name,
+    GREATEST(
+      (SELECT MAX(p.date) FROM procurements p WHERE p.deleted_at IS NULL AND p.vendor_id = v.id),
+      (SELECT MAX(t.date) FROM transactions t WHERE t.deleted_at IS NULL AND t.vendor_id = v.id AND t.type IN ('vendor_settlement','project_expense'))
+    ) AS last_date
+  FROM vendors v
+  WHERE v.deleted_at IS NULL
+),
+bucketed AS (
+  SELECT
+    vb.vendor_id,
+    vl.vendor_name,
+    vb.balance AS amount_due,
+    vl.last_date,
+    COALESCE(CURRENT_DATE - vl.last_date, 0) AS days_overdue,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - vl.last_date, 0) <= 30 THEN vb.balance
+      ELSE 0
+    END AS bucket_current,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - vl.last_date, 0) BETWEEN 31 AND 60 THEN vb.balance
+      ELSE 0
+    END AS bucket_1_30,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - vl.last_date, 0) BETWEEN 61 AND 90 THEN vb.balance
+      ELSE 0
+    END AS bucket_31_60,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - vl.last_date, 0) BETWEEN 91 AND 120 THEN vb.balance
+      ELSE 0
+    END AS bucket_61_90,
+    CASE
+      WHEN COALESCE(CURRENT_DATE - vl.last_date, 0) > 120 THEN vb.balance
+      ELSE 0
+    END AS bucket_over_90
+  FROM public.vendor_balances vb
+  JOIN vendor_last vl ON vl.vendor_id = vb.vendor_id
+  WHERE vb.balance > 0
+)
+SELECT
+  vendor_id,
+  vendor_name,
+  amount_due,
+  last_date,
+  days_overdue,
+  bucket_current,
+  bucket_1_30,
+  bucket_31_60,
+  bucket_61_90,
+  bucket_over_90
+FROM bucketed;
+
+GRANT SELECT ON public.report_aging_ar TO authenticated;
+GRANT SELECT ON public.report_aging_ap TO authenticated;
+
 -- Admin-only RPC to create a confirmed auth user directly in the database.
 -- This bypasses Supabase Auth email confirmation / rate limits because the
 -- browser no longer stores or uses the service-role key.
@@ -2040,6 +2186,7 @@ CREATE OR REPLACE FUNCTION public.apply_migration(p_version TEXT, p_sql TEXT)
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = p_version) THEN
@@ -2331,3 +2478,601 @@ CREATE TRIGGER transactions_retention_sync
 CREATE INDEX IF NOT EXISTS idx_transactions_linked_transaction_id ON public.transactions(linked_transaction_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_transactions_system_generated ON public.transactions(system_generated) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_project_period_closes_project_id ON public.project_period_closes(project_id) WHERE deleted_at IS NULL;
+
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ v300: Invoicing module                                  │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS public.invoices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_number TEXT NOT NULL,
+  client_id UUID REFERENCES public.clients(id),
+  client_name TEXT,
+  project_id UUID REFERENCES public.projects(id),
+  project_name TEXT,
+  issue_date DATE DEFAULT CURRENT_DATE,
+  due_date DATE,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft','sent','paid','cancelled')),
+  amount NUMERIC DEFAULT 0,
+  paid_amount NUMERIC DEFAULT 0,
+  payment_transaction_id UUID REFERENCES public.transactions(id),
+  notes TEXT,
+  tenant_id UUID,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS public.invoice_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id UUID NOT NULL REFERENCES public.invoices(id),
+  description TEXT NOT NULL,
+  quantity NUMERIC DEFAULT 1,
+  unit_price NUMERIC DEFAULT 0,
+  total_price NUMERIC GENERATED ALWAYS AS (quantity * unit_price) STORED,
+  sort_order INT DEFAULT 0,
+  tenant_id UUID,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_client_id ON public.invoices(client_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON public.invoices(project_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON public.invoices(status) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON public.invoices(issue_date) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON public.invoice_items(invoice_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS invoices_tenant_isolation ON public.invoices;
+CREATE POLICY invoices_tenant_isolation ON public.invoices
+  FOR ALL TO authenticated
+  USING (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  )
+  WITH CHECK (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS invoice_items_tenant_isolation ON public.invoice_items;
+CREATE POLICY invoice_items_tenant_isolation ON public.invoice_items
+  FOR ALL TO authenticated
+  USING (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  )
+  WITH CHECK (
+    is_app_admin(auth.uid())
+    OR (
+      tenant_id = get_current_tenant_id()
+      AND EXISTS (
+        SELECT 1 FROM public.user_tenants ut
+        WHERE ut.user_id = auth.uid()
+          AND ut.tenant_id = get_current_tenant_id()
+      )
+    )
+  );
+
+DROP TRIGGER IF EXISTS invoices_tenant ON public.invoices;
+CREATE TRIGGER invoices_tenant BEFORE INSERT OR UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION public.set_tenant_id();
+
+DROP TRIGGER IF EXISTS invoice_items_tenant ON public.invoice_items;
+CREATE TRIGGER invoice_items_tenant BEFORE INSERT OR UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION public.set_tenant_id();
+
+DROP TRIGGER IF EXISTS invoices_u ON public.invoices;
+CREATE TRIGGER invoices_u BEFORE UPDATE ON public.invoices FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+DROP TRIGGER IF EXISTS invoice_items_u ON public.invoice_items;
+CREATE TRIGGER invoice_items_u BEFORE UPDATE ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+DROP TRIGGER IF EXISTS invoices_cb ON public.invoices;
+CREATE TRIGGER invoices_cb BEFORE INSERT ON public.invoices FOR EACH ROW EXECUTE FUNCTION public.set_created_by();
+
+DROP TRIGGER IF EXISTS invoice_items_cb ON public.invoice_items;
+CREATE TRIGGER invoice_items_cb BEFORE INSERT ON public.invoice_items FOR EACH ROW EXECUTE FUNCTION public.set_created_by();
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ STEP 12: v301 Notifications / Alerts                    │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE TABLE IF NOT EXISTS notification_rules (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  overdue_client_days INT DEFAULT 7,
+  task_deadline_days INT DEFAULT 1,
+  contract_milestone_days INT DEFAULT 7,
+  enabled_types TEXT[] DEFAULT '{overdue_client,task_deadline,contract_milestone}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  tenant_id UUID NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('overdue_client','task_deadline','contract_milestone','system')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  link TEXT,
+  severity TEXT DEFAULT 'info' CHECK (severity IN ('info','warning','danger')),
+  is_read BOOLEAN DEFAULT false,
+  archived BOOLEAN DEFAULT false,
+  related_table TEXT,
+  related_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_tenant_created ON notifications(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_related ON notifications(related_table, related_id);
+DROP INDEX IF EXISTS idx_notifications_unique_active;
+CREATE UNIQUE INDEX idx_notifications_unique_active ON notifications(user_id, type, related_table, related_id)
+  WHERE is_read = false AND archived = false;
+
+DROP TRIGGER IF EXISTS notifications_u ON notifications;
+CREATE TRIGGER notifications_u BEFORE UPDATE ON notifications FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS notification_rules_u ON notification_rules;
+CREATE TRIGGER notification_rules_u BEFORE UPDATE ON notification_rules FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE OR REPLACE FUNCTION generate_notifications(p_tenant_id UUID)
+RETURNS void AS $$
+DECLARE
+  v_rules notification_rules%ROWTYPE;
+  v_user RECORD;
+  v_client RECORD;
+  v_task RECORD;
+  v_project RECORD;
+BEGIN
+  SELECT * INTO v_rules FROM notification_rules WHERE tenant_id = p_tenant_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  IF 'overdue_client' = ANY(v_rules.enabled_types) THEN
+    FOR v_client IN
+      SELECT c.id AS client_id, c.name AS client_name, cb.balance,
+             MAX(t.date) AS last_deposit_date
+      FROM clients c
+      JOIN client_balances cb ON cb.client_id = c.id
+      LEFT JOIN transactions t ON t.client_id = c.id AND t.type = 'project_deposit' AND t.deleted_at IS NULL
+      WHERE c.tenant_id = p_tenant_id
+        AND c.deleted_at IS NULL
+        AND cb.balance > 0
+      GROUP BY c.id, c.name, cb.balance
+      HAVING MAX(t.date) IS NULL OR MAX(t.date) < CURRENT_DATE - v_rules.overdue_client_days
+    LOOP
+      FOR v_user IN
+        SELECT p.id FROM profiles p JOIN user_tenants ut ON ut.user_id = p.id WHERE ut.tenant_id = p_tenant_id
+      LOOP
+        INSERT INTO notifications (user_id, tenant_id, type, title, message, link, severity, related_table, related_id)
+        VALUES (
+          v_user.id, p_tenant_id, 'overdue_client',
+          'مستحقات العميل المتأخرة',
+          'العميل ' || v_client.client_name || ' لديه رصيد مستحق ' || v_client.balance || ' ج.م.',
+          '#/clients?id=' || v_client.client_id,
+          'warning',
+          'clients',
+          v_client.client_id
+        )
+        ON CONFLICT DO NOTHING;
+      END LOOP;
+    END LOOP;
+  END IF;
+
+  IF 'task_deadline' = ANY(v_rules.enabled_types) THEN
+    FOR v_task IN
+      SELECT pt.id, pt.name, pt.due_date, p.id AS project_id, p.name AS project_name
+      FROM project_tasks pt
+      JOIN projects p ON p.id = pt.project_id
+      WHERE pt.tenant_id = p_tenant_id
+        AND pt.deleted_at IS NULL
+        AND pt.status != 'done'
+        AND pt.due_date IS NOT NULL
+        AND pt.due_date <= CURRENT_DATE + v_rules.task_deadline_days
+    LOOP
+      FOR v_user IN
+        SELECT p.id FROM profiles p JOIN user_tenants ut ON ut.user_id = p.id WHERE ut.tenant_id = p_tenant_id
+      LOOP
+        INSERT INTO notifications (user_id, tenant_id, type, title, message, link, severity, related_table, related_id)
+        VALUES (
+          v_user.id, p_tenant_id, 'task_deadline',
+          'موعد نهائي للمهمة',
+          'المهمة ' || v_task.name || ' (مشروع ' || v_task.project_name || ') تستحق في ' || v_task.due_date || '.',
+          '#/tasks',
+          'info',
+          'project_tasks',
+          v_task.id
+        )
+        ON CONFLICT DO NOTHING;
+      END LOOP;
+    END LOOP;
+  END IF;
+
+  IF 'contract_milestone' = ANY(v_rules.enabled_types) THEN
+    FOR v_project IN
+      SELECT id, name, end_date
+      FROM projects
+      WHERE tenant_id = p_tenant_id
+        AND deleted_at IS NULL
+        AND end_date IS NOT NULL
+        AND end_date <= CURRENT_DATE + v_rules.contract_milestone_days
+        AND status NOT IN ('completed','cancelled')
+    LOOP
+      FOR v_user IN
+        SELECT p.id FROM profiles p JOIN user_tenants ut ON ut.user_id = p.id WHERE ut.tenant_id = p_tenant_id
+      LOOP
+        INSERT INTO notifications (user_id, tenant_id, type, title, message, link, severity, related_table, related_id)
+        VALUES (
+          v_user.id, p_tenant_id, 'contract_milestone',
+          'موعد نهائي للمشروع',
+          'المشروع ' || v_project.name || ' ينتهي في ' || v_project.end_date || '.',
+          '#/project?projectId=' || v_project.id,
+          'warning',
+          'projects',
+          v_project.id
+        )
+        ON CONFLICT DO NOTHING;
+      END LOOP;
+    END LOOP;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+INSERT INTO notification_rules (tenant_id)
+SELECT id FROM tenants
+WHERE id NOT IN (SELECT tenant_id FROM notification_rules)
+ON CONFLICT (tenant_id) DO NOTHING;
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_all" ON notifications;
+DROP POLICY IF EXISTS "notifications_user_isolation" ON notifications;
+CREATE POLICY "notifications_user_isolation" ON notifications
+  FOR ALL TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+ALTER TABLE notification_rules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "authenticated_all" ON notification_rules;
+DROP POLICY IF EXISTS "notification_rules_tenant" ON notification_rules;
+CREATE POLICY "notification_rules_tenant" ON notification_rules
+  FOR ALL TO authenticated
+  USING (tenant_id = get_current_tenant_id())
+  WITH CHECK (tenant_id = get_current_tenant_id());
+
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ v289 / v301: Admin email-new-password via Resend        │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+CREATE OR REPLACE FUNCTION public.admin_reset_password_email(
+  p_user_id UUID,
+  p_email TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_pass TEXT;
+  api_key TEXT;
+  sender TEXT;
+  payload JSONB;
+  request_id BIGINT;
+BEGIN
+  IF NOT is_app_admin(auth.uid()) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Admin only');
+  END IF;
+
+  IF p_email IS NULL OR p_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid email address');
+  END IF;
+
+  IF NOT net.check_worker_is_up() THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Email worker (pg_net) is not running. Enable the pg_net extension in Supabase Database → Extensions and retry.'
+    );
+  END IF;
+
+  new_pass := encode(extensions.gen_random_bytes(10), 'hex');
+
+  UPDATE auth.users
+  SET encrypted_password = extensions.crypt(new_pass, extensions.gen_salt('bf'))
+  WHERE id = p_user_id;
+
+  SELECT value INTO api_key FROM public.app_settings WHERE key = 'resend_api_key';
+  SELECT value INTO sender FROM public.app_settings WHERE key = 'email_sender';
+
+  IF api_key IS NULL OR sender IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Email settings not configured (resend_api_key / email_sender)');
+  END IF;
+
+  payload := jsonb_build_object(
+    'from', sender,
+    'to', p_email,
+    'subject', 'Sara Arch - كلمة المرور الجديدة',
+    'text', 'مرحباً،' || E'
+
+' || 'تم إعادة تعيين كلمة المرور الخاصة بك. كلمة المرور الجديدة هي:' || E'
+
+' || new_pass || E'
+
+' || 'يرجى تغييرها فور تسجيل الدخول.' || E'
+
+' || 'سارة أبو العلا'
+  );
+
+  request_id := net.http_post(
+    'https://api.resend.com/emails',
+    payload,
+    '{}'::jsonb,
+    jsonb_build_object('Authorization', 'Bearer ' || api_key, 'Content-Type', 'application/json'),
+    10000
+  );
+
+  RETURN jsonb_build_object('success', true, 'request_id', request_id);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.admin_reset_password_email(UUID, TEXT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.admin_reset_password_email(UUID, TEXT) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.get_email_status(p_request_id BIGINT)
+RETURNS JSONB
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT jsonb_build_object(
+    'status_code', status_code,
+    'body', content,
+    'error', error_msg,
+    'created', created
+  )
+  FROM net._http_response
+  WHERE id = p_request_id;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_email_status(BIGINT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_email_status(BIGINT) TO authenticated;
+-- Migration v303 — Atomic invoice operations
+-- Replaces the multi-step JS save/delete dance for invoices with transactional RPCs.
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ 1. Upsert invoice + replace items in one transaction    │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE OR REPLACE FUNCTION public.upsert_invoice_with_items(
+  p_invoice_id UUID DEFAULT NULL,
+  p_invoice JSONB DEFAULT '{}'::JSONB,
+  p_items JSONB DEFAULT '[]'::JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_tenant_id UUID := get_current_tenant_id();
+  v_user_id UUID := auth.uid();
+  v_invoice_id UUID;
+  v_invoice_number TEXT;
+  v_client_id UUID;
+  v_client_name TEXT;
+  v_project_id UUID;
+  v_project_name TEXT;
+  v_issue_date DATE;
+  v_due_date DATE;
+  v_status TEXT;
+  v_amount NUMERIC;
+  v_notes TEXT;
+BEGIN
+  IF v_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'Tenant context is missing';
+  END IF;
+
+  v_invoice_number := p_invoice->>'invoice_number';
+  v_client_id := NULLIF(p_invoice->>'client_id', '')::UUID;
+  v_client_name := p_invoice->>'client_name';
+  v_project_id := NULLIF(p_invoice->>'project_id', '')::UUID;
+  v_project_name := p_invoice->>'project_name';
+  v_issue_date := NULLIF(p_invoice->>'issue_date', '')::DATE;
+  v_due_date := NULLIF(p_invoice->>'due_date', '')::DATE;
+  v_status := COALESCE(p_invoice->>'status', 'draft');
+  v_amount := COALESCE((p_invoice->>'amount')::NUMERIC, 0);
+  v_notes := p_invoice->>'notes';
+
+  IF p_invoice_id IS NULL THEN
+    INSERT INTO public.invoices (
+      invoice_number, client_id, client_name, project_id, project_name,
+      issue_date, due_date, status, amount, notes, tenant_id, created_by
+    ) VALUES (
+      v_invoice_number, v_client_id, v_client_name, v_project_id, v_project_name,
+      v_issue_date, v_due_date, v_status, v_amount, v_notes, v_tenant_id, v_user_id
+    )
+    RETURNING id INTO v_invoice_id;
+  ELSE
+    v_invoice_id := p_invoice_id;
+    UPDATE public.invoices
+    SET
+      invoice_number = v_invoice_number,
+      client_id = v_client_id,
+      client_name = v_client_name,
+      project_id = v_project_id,
+      project_name = v_project_name,
+      issue_date = v_issue_date,
+      due_date = v_due_date,
+      status = v_status,
+      amount = v_amount,
+      notes = v_notes,
+      updated_by = v_user_id,
+      updated_at = NOW()
+    WHERE id = v_invoice_id AND tenant_id = v_tenant_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Invoice not found or tenant mismatch';
+    END IF;
+
+    -- Soft-delete existing items so we can replace them atomically.
+    UPDATE public.invoice_items
+    SET deleted_at = NOW(), updated_by = v_user_id, updated_at = NOW()
+    WHERE invoice_id = v_invoice_id AND tenant_id = v_tenant_id AND deleted_at IS NULL;
+  END IF;
+
+  -- Insert new items.
+  INSERT INTO public.invoice_items (
+    invoice_id, description, quantity, unit_price, sort_order, tenant_id, created_by
+  )
+  SELECT
+    v_invoice_id,
+    x->>'description',
+    COALESCE((x->>'quantity')::NUMERIC, 1),
+    COALESCE((x->>'unit_price')::NUMERIC, 0),
+    COALESCE((x->>'sort_order')::INT, 0),
+    v_tenant_id,
+    v_user_id
+  FROM jsonb_array_elements(p_items) AS x;
+
+  RETURN jsonb_build_object('id', v_invoice_id);
+END;
+$$;
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ 2. Record invoice payment atomically                    │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE OR REPLACE FUNCTION public.record_invoice_payment(
+  p_invoice_id UUID,
+  p_amount NUMERIC,
+  p_payment_method TEXT DEFAULT 'cash',
+  p_date DATE DEFAULT CURRENT_DATE,
+  p_description TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_tenant_id UUID := get_current_tenant_id();
+  v_user_id UUID := auth.uid();
+  v_inv public.invoices;
+  v_remaining NUMERIC;
+  v_new_paid NUMERIC;
+  v_tx_id UUID;
+BEGIN
+  IF v_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'Tenant context is missing';
+  END IF;
+
+  SELECT * INTO v_inv
+  FROM public.invoices
+  WHERE id = p_invoice_id AND tenant_id = v_tenant_id AND deleted_at IS NULL;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Invoice not found';
+  END IF;
+
+  v_remaining := COALESCE(v_inv.amount, 0) - COALESCE(v_inv.paid_amount, 0);
+
+  IF p_amount <= 0 OR p_amount > v_remaining THEN
+    RAISE EXCEPTION 'Invalid payment amount';
+  END IF;
+
+  INSERT INTO public.transactions (
+    type, amount, paid_amount, payment_method,
+    client_id, client_name, project_id, project_name,
+    date, description, tenant_id, created_by
+  ) VALUES (
+    'project_deposit', p_amount, p_amount, COALESCE(p_payment_method, 'cash'),
+    v_inv.client_id, v_inv.client_name, v_inv.project_id, v_inv.project_name,
+    COALESCE(p_date, CURRENT_DATE), p_description, v_tenant_id, v_user_id
+  )
+  RETURNING id INTO v_tx_id;
+
+  v_new_paid := COALESCE(v_inv.paid_amount, 0) + p_amount;
+
+  UPDATE public.invoices
+  SET
+    paid_amount = v_new_paid,
+    status = CASE WHEN v_new_paid >= COALESCE(v_inv.amount, 0) THEN 'paid' ELSE status END,
+    payment_transaction_id = v_tx_id,
+    updated_by = v_user_id,
+    updated_at = NOW()
+  WHERE id = p_invoice_id AND tenant_id = v_tenant_id;
+
+  RETURN jsonb_build_object('invoice_id', p_invoice_id, 'transaction_id', v_tx_id);
+END;
+$$;
+
+-- ┌─────────────────────────────────────────────────────────┐
+-- │ 3. Soft-delete invoice + items atomically               │
+-- └─────────────────────────────────────────────────────────┘
+
+CREATE OR REPLACE FUNCTION public.delete_invoice(p_invoice_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_tenant_id UUID := get_current_tenant_id();
+  v_user_id UUID := auth.uid();
+BEGIN
+  IF v_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'Tenant context is missing';
+  END IF;
+
+  UPDATE public.invoice_items
+  SET deleted_at = NOW(), updated_by = v_user_id, updated_at = NOW()
+  WHERE invoice_id = p_invoice_id AND tenant_id = v_tenant_id AND deleted_at IS NULL;
+
+  UPDATE public.invoices
+  SET deleted_at = NOW(), updated_by = v_user_id, updated_at = NOW()
+  WHERE id = p_invoice_id AND tenant_id = v_tenant_id AND deleted_at IS NULL;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Invoice not found';
+  END IF;
+
+  RETURN jsonb_build_object('id', p_invoice_id);
+END;
+$$;
+
+NOTIFY pgrst, 'reload schema';
+-- end of schema_full_fix

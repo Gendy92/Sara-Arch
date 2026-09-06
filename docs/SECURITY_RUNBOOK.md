@@ -134,3 +134,78 @@ The local pre-commit hook (`.githooks/pre-commit`) runs the same checks. To enab
 ```bash
 git config core.hooksPath .githooks
 ```
+
+---
+
+## 7. Configure Resend email credentials
+
+The `admin_reset_password_email()` RPC reads credentials from `app_settings` and sends password-reset emails via Resend.
+
+### Steps
+
+1. Sign up / log in at [https://resend.com](https://resend.com).
+2. Create an API key with **Sending** permission.
+3. Verify a sender domain **or** use the Resend test address `onboarding@resend.dev`.
+   - On a free/test Resend account you can usually only send **to the email address you used to sign up at Resend**.
+4. Ensure the `pg_net` extension is enabled **and** its worker is running:
+   ```sql
+   SELECT net.check_worker_is_up();  -- should return true
+   ```
+   If it returns `false`, go to **Supabase → Database → Extensions**, toggle `pg_net` off and on, then re-check.
+5. In the Supabase SQL Editor, run:
+   ```sql
+   INSERT INTO public.app_settings (key, value)
+   VALUES ('resend_api_key', 're_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+   INSERT INTO public.app_settings (key, value)
+   VALUES ('email_sender', 'Sara Arch <noreply@yourdomain.com>')
+   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+   ```
+   For initial testing, use `onboarding@resend.dev` as the sender.
+6. In the app, go to **Settings → Users**, pick a test user, and click **إرسال كلمة مرور جديدة بالبريد**.
+   - The RPC now returns a `request_id`.
+   - After ~10 seconds, run in the SQL Editor:
+     ```sql
+     SELECT public.get_email_status(<request_id>);
+     ```
+   - Check the Resend dashboard **Logs** for the delivery status.
+7. Store the Resend key in a password manager; it is not committed to the repo.
+
+---
+
+## 8. Protect `main` and `dev.2` branches
+
+Branch protection prevents force-pushes and requires review/status checks before merge.
+
+### Steps
+
+1. GitHub repo → **Settings → Branches**.
+2. Add or edit rules for `main` and `dev.2`:
+   - ✅ **Require a pull request before merging**
+     - Require approvals: at least 1
+   - ✅ **Require status checks to pass before merging**
+     - `lint-and-test` (or the name of your CI check)
+   - ✅ **Require branches to be up to date before merging**
+   - ✅ **Restrict pushes that create files larger than 100 MB**
+   - ✅ **Do not allow bypassing the above settings** (for admins too, once you are confident)
+3. Save each rule.
+
+---
+
+## v301 Pre-Release Security Checklist
+
+| # | Task | Where | Status | Notes |
+|---|------|-------|--------|-------|
+| 1 | Revoke any exposed GitHub OAuth token | GitHub → Settings → Developer settings | ⬜ N/A | No exposed token found in tracked files |
+| 2 | Enable GitHub 2FA on the `Gendy92` owner account | GitHub → Settings → Account security | ✅ | Authenticator app enabled; recovery codes saved |
+| 3 | Enable MFA for admin users in Supabase Auth | Supabase → Authentication → MFA | ⏸️ | Deferred — enable after admin devices are ready |
+| 4 | Insert Resend key + sender into `app_settings` and send a test email | Supabase SQL Editor + Resend dashboard | ⏸️ | Deferred — Resend domain verification needed |
+| 5 | Run `verify_high_priority.sql` + `tenant_isolation.sql` + review Security Advisor | Supabase SQL Editor + Security Advisor | ⏸️ | Patch created; run `security_advisor_hardening_patch.sql` + enable leaked-password protection |
+| 6 | Apply v300 custody trigger fix and v301 migration | Supabase SQL Editor / CI | ✅ | Deployed; custody triggers verified |
+| 7 | Protect `main` and `dev.2` with required status checks | GitHub → Settings → Branches | ⏸️ | Pending manual GitHub settings |
+| 8 | Rotate Supabase service-role and anon keys | Supabase → Project Settings → API + GitHub Secrets | ⏸️ | See `docs/key-rotation-runbook.md` |
+| 9 | Enable the local pre-commit hook | Local shell | ✅ | `git config core.hooksPath .githooks` executed |
+
+> **Note:** Items 1–3 and 7–8 require owner-level access and cannot be automated through code commits. Schedule them before the v301 public release.
+

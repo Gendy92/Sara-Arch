@@ -310,6 +310,10 @@ Object.assign(App, {
       const retentionReleased = pb.retention_released || 0;
       const balance = pb.balance || 0;
       const netDeposit = deposits - retentionWithheld + retentionReleased;
+      const profit = netDeposit - expenses - supervision;
+      const margin = (project.value || 0) > 0 ? (profit / project.value) * 100 : 0;
+      const marginFmt = margin.toFixed(1) + '%';
+      const profitColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
 
       const summary = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">القيمة</div><div class="kpi-value">${this.fmtMoney(project.value)}</div></div>
@@ -320,6 +324,8 @@ Object.assign(App, {
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">ضمان محجوز</div><div class="kpi-value" style="color:var(--red)">${this.fmtMoney(retentionWithheld)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">ضمان مُرجع</div><div class="kpi-value" style="color:var(--green)">${this.fmtMoney(retentionReleased)}</div></div>
         <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الرصيد</div><div class="kpi-value">${this.fmtMoney(balance)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">الربح الصافي</div><div class="kpi-value" style="color:${profitColor}">${this.fmtMoney(profit)}</div></div>
+        <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">هامش الربح</div><div class="kpi-value" style="color:${profitColor}">${marginFmt}</div></div>
       </div>`;
 
       const isAdmin = Auth.isAdmin();
@@ -476,6 +482,135 @@ Object.assign(App, {
     }
   },
 
+  async loadInvoices() {
+    try {
+      const page = this.pageState.invoices || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.invoices || '';
+      const statusFilter = App.invoiceStatusFilter && App.invoiceStatusFilter !== 'all' ? `&status=eq.${encodeURIComponent(App.invoiceStatusFilter)}` : '';
+      const searchFilter = App.ilikeOr(['invoice_number','client_name','project_name','notes'], searchTerm);
+      const [data, total] = await Promise.all([
+        API.request('invoices', 'GET', null, `?select=*,clients(name),projects(name)&deleted_at=is.null${statusFilter}${searchFilter}&order=issue_date.desc&limit=${limit}&offset=${offset}`),
+        API.count('invoices', '?deleted_at=is.null' + statusFilter + searchFilter)
+      ]);
+      const statusLabels = { draft: 'مسودة', sent: 'مرسلة', paid: 'مدفوعة', cancelled: 'ملغاة' };
+      const statusColors = { draft: 'gray', sent: 'blue', paid: 'green', cancelled: 'red' };
+      const html = data.length ? this.table(['رقم الفاتورة', 'العميل', 'المشروع', 'تاريخ الإصدار', 'الاستحقاق', 'الحالة', 'المبلغ', 'المدفوع', 'الباقي', 'الإجراءات'], data.map(inv => {
+        const remaining = (+inv.amount || 0) - (+inv.paid_amount || 0);
+        const canPay = inv.status !== 'paid' && inv.status !== 'cancelled' && Auth.can('invoices', 'edit');
+        const actions = UI.actions(inv.id, 'Crud.editInvoice', 'Crud.delInvoice', Auth.can('invoices', 'edit'), Auth.can('invoices', 'delete')) +
+          ` <button class="btn btn-sm btn-primary" onclick="Crud.printInvoice('${inv.id}')">🖨️ طباعة</button>` +
+          (canPay ? ` <button class="btn btn-sm btn-secondary" onclick="Crud.markInvoicePaid('${inv.id}')">💰 دفع</button>` : '');
+        return [
+          { html: `<a href="#" onclick="App.go('invoice',{invoiceId:'${inv.id}'});return false;" style="color:var(--gold);text-decoration:none;font-weight:600">${App.esc(inv.invoice_number)}</a>` },
+          App.esc(inv.clients?.name || inv.client_name || '-'),
+          App.esc(inv.projects?.name || inv.project_name || '-'),
+          inv.issue_date || '-',
+          inv.due_date || '-',
+          { html: `<span class="badge badge-${statusColors[inv.status] || 'gray'}">${statusLabels[inv.status] || inv.status}</span>` },
+          App.fmtMoney(inv.amount || 0),
+          App.fmtMoney(inv.paid_amount || 0),
+          App.fmtMoney(remaining),
+          { html: actions }
+        ];
+      })) : `<p style="color:var(--text3);padding:16px">لا توجد فواتير</p>${Auth.can('invoices','add')?'<button class="btn btn-primary" onclick="Crud.addInvoice()">+ إنشاء أول فاتورة</button>':''}`;
+      document.getElementById('invoices-tbl').innerHTML = html + (data.length ? this._paginationHtml('invoices', page, limit, total) : '');
+      this.attachSearch('invoices-tbl', '🔍 بحث في الفواتير...', (term) => {
+        App.searchState.invoices = term;
+        App.pageState.invoices = 1;
+        App.loadInvoices();
+      });
+      const searchInput = document.getElementById('invoices-tbl-search');
+      if (searchInput) searchInput.value = App.searchState.invoices || '';
+    } catch (e) {
+      UI.toast('فشل تحميل الفواتير: ' + e.message, 'error');
+      App.loadErrorHtml('invoices-tbl', 'تعذر تحميل الفواتير', 'App.loadInvoices()', e);
+    }
+  },
+
+  async loadInvoice(invoiceId) {
+    try {
+      const [invRows, itemRows] = await Promise.all([
+        API.request('invoices', 'GET', null, `?select=*,clients(name),projects(name)&id=eq.${invoiceId}&deleted_at=is.null`),
+        API.request('invoice_items', 'GET', null, `?select=*&invoice_id=eq.${invoiceId}&deleted_at=is.null&order=sort_order.asc`)
+      ]);
+      const inv = invRows[0];
+      if (!inv) { document.getElementById('invoice-detail').innerHTML = '<p style="color:var(--red);padding:16px">⚠️ الفاتورة غير موجودة</p>'; return; }
+      const remaining = (+inv.amount || 0) - (+inv.paid_amount || 0);
+      const statusLabels = { draft: 'مسودة', sent: 'مرسلة', paid: 'مدفوعة', cancelled: 'ملغاة' };
+      const statusColors = { draft: 'gray', sent: 'blue', paid: 'green', cancelled: 'red' };
+      const itemRowsHtml = itemRows.length ? this.table(['#', 'البيان', 'الكمية', 'سعر الوحدة', 'الإجمالي'], itemRows.map((it, i) => [i + 1, App.esc(it.description), it.quantity || 1, App.fmtMoney(it.unit_price || 0), App.fmtMoney(it.total_price || 0)])) : '<p style="color:var(--text3);padding:16px">لا توجد بنود</p>';
+      const canPay = inv.status !== 'paid' && inv.status !== 'cancelled' && Auth.can('invoices', 'edit');
+      const actions = (Auth.can('invoices', 'edit') ? `<button class="btn btn-secondary" onclick="Crud.editInvoice('${inv.id}')">✏️ تعديل</button> ` : '') +
+        `<button class="btn btn-primary" onclick="Crud.printInvoice('${inv.id}')">🖨️ طباعة</button>` +
+        (canPay ? ` <button class="btn btn-secondary" onclick="Crud.markInvoicePaid('${inv.id}')">💰 تسجيل دفع</button>` : '');
+      document.getElementById('invoice-detail-name').textContent = '🧾 فاتورة ' + App.esc(inv.invoice_number);
+      document.getElementById('invoice-detail').innerHTML = `
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+            <div>
+              <h3 style="margin-bottom:4px">${App.esc(inv.invoice_number)}</h3>
+              <div style="font-size:12px;color:var(--text2)">العميل: ${App.esc(inv.clients?.name || inv.client_name || '-')} · المشروع: ${App.esc(inv.projects?.name || inv.project_name || '-')}</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px">تاريخ الإصدار: ${inv.issue_date || '-'} · الاستحقاق: ${inv.due_date || '-'} · الحالة: <span class="badge badge-${statusColors[inv.status] || 'gray'}">${statusLabels[inv.status] || inv.status}</span></div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${actions}</div>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+            <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المبلغ الإجمالي</div><div class="kpi-value">${App.fmtMoney(inv.amount || 0)}</div></div>
+            <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المدفوع</div><div class="kpi-value" style="color:var(--green)">${App.fmtMoney(inv.paid_amount || 0)}</div></div>
+            <div class="kpi-card" style="flex:1;min-width:140px"><div class="kpi-label">المتبقي</div><div class="kpi-value" style="color:${remaining > 0 ? 'var(--red)' : 'var(--green)'}">${App.fmtMoney(remaining)}</div></div>
+          </div>
+          <h4 style="margin:12px 0 8px;color:var(--text2)">البنود</h4>
+          ${itemRowsHtml}
+          ${inv.notes ? `<p style="margin-top:16px;color:var(--text2);font-size:13px"><strong>ملاحظات:</strong> ${App.esc(inv.notes)}</p>` : ''}
+        </div>`;
+    } catch (e) {
+      UI.toast('فشل تحميل الفاتورة: ' + e.message, 'error');
+      App.loadErrorHtml('invoice-detail', 'تعذر تحميل الفاتورة', `App.loadInvoice('${invoiceId}')`, e);
+    }
+  },
+
+  async loadNotifications() {
+    try {
+      const page = this.pageState.notifications || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const filter = App.notificationFilter || 'all';
+      let query = '?select=*';
+      if (filter === 'unread') query += '&is_read=eq.false&archived=eq.false';
+      else if (filter === 'archived') query += '&archived=eq.true';
+      query += '&order=created_at.desc';
+      const [data, total] = await Promise.all([
+        API.request('notifications', 'GET', null, `${query}&limit=${limit}&offset=${offset}`),
+        API.count('notifications', filter === 'unread' ? '?is_read=eq.false&archived=eq.false' : filter === 'archived' ? '?archived=eq.true' : '')
+      ]);
+      const severityColors = { info: 'blue', warning: 'gold', danger: 'red' };
+      const typeLabels = { overdue_client: 'مستحقات متأخرة', task_deadline: 'موعد مهمة', contract_milestone: 'موعد مشروع', system: 'نظام' };
+      const html = data.length ? this.table(['النوع','العنوان','الرسالة','الخطورة','الوقت','مقروء','مؤرشف','الإجراءات'], data.map(n => {
+        const actions = [
+          n.is_read ? '' : `<button class="btn btn-sm btn-secondary" onclick="App.markNotificationRead('${n.id}')">تحديد كمقروء</button>`,
+          n.archived ? '' : `<button class="btn btn-sm btn-secondary" onclick="App.archiveNotification('${n.id}')">أرشفة</button>`,
+          n.link ? `<button class="btn btn-sm btn-primary" onclick="App.go('${n.link.replace('#/', '')}')">فتح</button>` : ''
+        ].filter(Boolean).join(' ');
+        return [
+          typeLabels[n.type] || n.type,
+          App.esc(n.title),
+          App.esc(n.message),
+          `<span class="badge badge-${severityColors[n.severity] || 'gray'}">${n.severity}</span>`,
+          App.fmtDate(n.created_at),
+          n.is_read ? '✅' : '⏳',
+          n.archived ? '✅' : '⏳',
+          { html: actions }
+        ];
+      })) : '<p style="color:var(--text3);padding:16px">لا توجد إشعارات</p>';
+      document.getElementById('notifications-tbl').innerHTML = html + (data.length ? this._paginationHtml('notifications', page, limit, total) : '');
+    } catch (e) {
+      UI.toast('فشل تحميل الإشعارات: ' + e.message, 'error');
+      App.loadErrorHtml('notifications-tbl', 'تعذر تحميل الإشعارات', 'App.loadNotifications()', e);
+    }
+  },
+
     async loadTransactions() {
     if (!document.getElementById('tx-kpis')) return;
     try {
@@ -559,28 +694,42 @@ Object.assign(App, {
   },
 
   exportOfficeExcel() {
+    if (!Auth.can('office', 'print')) { UI.toast('ليس لديك صلاحية تصدير كشف المكتب', 'error'); return; }
     if (typeof XLSX === 'undefined') {
       UI.toast('مكتبة Excel لم يتم تحميلها — تأكد من اتصال الإنترنت', 'error');
       return;
     }
-    const rows = (this._officeData || []).map(t => [
-      t.created_at ? new Date(t.created_at).toLocaleDateString('ar-EG') : '-',
-      App.fmtTxType(t.type),
-      +t.amount || 0,
-      t.employee_name || '-',
-      t.sector_name || '-',
-      t.description || '-'
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['كشف حساب المكتب'],
-      ['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'],
-      ...rows
-    ]);
-    ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 30 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'كشف المكتب');
-    XLSX.writeFile(wb, `كشف-حساب-المكتب-${new Date().toISOString().slice(0,10)}.xlsx`);
-    UI.toast('تم التحميل');
+    try {
+      const rows = (this._officeData || []).map(t => [
+        t.created_at ? new Date(t.created_at).toLocaleDateString('ar-EG') : '-',
+        App.fmtTxType(t.type),
+        +t.amount || 0,
+        t.employee_name || '-',
+        t.sector_name || '-',
+        t.description || '-'
+      ]);
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['كشف حساب المكتب'],
+        ['التاريخ', 'النوع', 'المبلغ', 'الموظف', 'التصنيف', 'الوصف'],
+        ...rows
+      ]);
+      ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 30 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'كشف المكتب');
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `كشف-حساب-المكتب-${new Date().toISOString().slice(0,10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      UI.toast('تم التحميل');
+    } catch (e) {
+      UI.toast('فشل التحميل: ' + e.message, 'error');
+    }
   },
 
   async loadOffice() {
@@ -607,7 +756,7 @@ Object.assign(App, {
       const ob = officeBal[0] || {};
       const cashBalance = ob.cash_balance || 0;
       const bankBalance = ob.bank_balance || 0;
-      const liquidBalance = ob.liquid_balance || cashBalance + bankBalance;
+      const liquidBalance = ob.liquid_balance ?? (cashBalance + bankBalance);
       const officeBalance = ob.total_balance || 0;
       const totalOfficeExpense = officeExpenseRows.reduce((s, r) => s + (+r.amount || 0), 0);
 
@@ -736,6 +885,52 @@ Object.assign(App, {
     } catch (e) {
       App.loadErrorHtml('emp-tx-tbl', 'تعذر تحميل المعاملات', 'App.loadEmpTransactions()', e);
     }
+  },
+
+  async loadEmployeeTransactionsScreen() {
+    try {
+      const page = this.pageState.employeeTransactionsScreen || 1;
+      const limit = this.PAGE_SIZE;
+      const offset = (page - 1) * limit;
+      const searchTerm = App.searchState.employeeTransactionsScreen || '';
+      const typeFilter = App.filterState?.employeeTransactionsScreenType || '';
+      const searchFilter = App.ilikeOr(['employee_name','notes'], searchTerm);
+      const typeQuery = typeFilter ? `&type=eq.${encodeURIComponent(typeFilter)}` : '';
+      const [data, total] = await Promise.all([
+        API.request('employee_transactions', 'GET', null, `?select=*,employees(name)&deleted_at=is.null${searchFilter}${typeQuery}&order=date.desc&limit=${limit}&offset=${offset}`),
+        API.count('employee_transactions', '?deleted_at=is.null' + searchFilter + typeQuery)
+      ]);
+      const typeLabels = { advance: 'سلفة', penalty: 'جزاء', bonus: 'مكافأة', other: 'أخرى' };
+      const typeColors = { advance: 'blue', penalty: 'red', bonus: 'green', other: 'gray' };
+      const typeOptions = [{v:'',l:'الكل'},{v:'advance',l:'سلفة'},{v:'bonus',l:'مكافأة'},{v:'penalty',l:'جزاء'},{v:'other',l:'أخرى'}];
+      const typeSelect = `<div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label style="font-size:13px">النوع:</label><select id="emp-tx-type-filter" onchange="App.setEmployeeTransactionTypeFilter(this.value)" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit">${typeOptions.map(o => `<option value="${o.v}" ${o.v === typeFilter ? 'selected' : ''}>${o.l}</option>`).join('')}</select></div>`;
+      const html = data.length ? this.table(['التاريخ', 'الموظف', 'النوع', 'المبلغ', 'ملاحظات', 'الإجراءات'], data.map(t => [
+        t.date || '-',
+        App.esc(t.employees?.name || t.employee_name || '-'),
+        {html: `<span class="badge badge-${typeColors[t.type] || 'gray'}">${App.esc(typeLabels[t.type] || t.type)}</span>`},
+        this.fmtMoney(t.amount),
+        App.esc(t.notes || '-'),
+        {html: UI.actions(t.id, 'Crud.editEmpTransaction', 'Crud.delEmpTransaction')}
+      ])) : '<p style="color:var(--text3);padding:16px">لا توجد معاملات موظفين</p>';
+      const container = document.getElementById('emp-tx-standalone-tbl');
+      if (container) container.innerHTML = typeSelect + html + (data.length ? this._paginationHtml('employeeTransactionsScreen', page, limit, total) : '');
+      this.attachSearch('emp-tx-standalone-tbl', '🔍 بحث في معاملات الموظفين...', (term) => {
+        App.searchState.employeeTransactionsScreen = term;
+        App.pageState.employeeTransactionsScreen = 1;
+        App.loadEmployeeTransactionsScreen();
+      });
+      const searchInput = document.getElementById('emp-tx-standalone-tbl-search');
+      if (searchInput) searchInput.value = App.searchState.employeeTransactionsScreen || '';
+    } catch (e) {
+      App.loadErrorHtml('emp-tx-standalone-tbl', 'تعذر تحميل المعاملات', 'App.loadEmployeeTransactionsScreen()', e);
+    }
+  },
+
+  setEmployeeTransactionTypeFilter(type) {
+    if (!App.filterState) App.filterState = {};
+    App.filterState.employeeTransactionsScreenType = type;
+    App.pageState.employeeTransactionsScreen = 1;
+    App.loadEmployeeTransactionsScreen();
   },
 
   async loadEmpSalaryHistory() {
@@ -917,11 +1112,13 @@ Object.assign(App, {
     }));
     if (!records.length) { UI.toast('لا توجد سجلات صالحة للحفظ', 'error'); return; }
     try {
-      // Upsert: delete old records for same month first, then insert new
+      // Upsert: delete old records for same month and imported employees first, then insert new
       const start = `${year}-${String(month).padStart(2,'0')}-01`;
       const endDay = new Date(year, month, 0).getDate();
       const end = `${year}-${String(month).padStart(2,'0')}-${String(endDay).padStart(2,'0')}`;
-      const existing = await API.request('attendance_records', 'GET', null, `?select=id&date=gte.${start}&date=lte.${end}&deleted_at=is.null`);
+      const employeeIds = [...new Set(records.map(r => r.employee_id).filter(Boolean))];
+      const idFilter = employeeIds.length ? `&employee_id=in.(${employeeIds.join(',')})` : '';
+      const existing = await API.request('attendance_records', 'GET', null, `?select=id&date=gte.${start}&date=lte.${end}&deleted_at=is.null${idFilter}`);
       // Soft delete old
       for (const ex of existing) {
         await API.request('attendance_records', 'PATCH', { deleted_at: new Date().toISOString() }, '?id=eq.' + ex.id);
@@ -1141,7 +1338,7 @@ Object.assign(App, {
       document.getElementById('backup-last').innerHTML = last
         ? `آخر نسخة يدوية: <strong>${new Date(last).toLocaleString('ar-EG')}</strong>`
         : 'لم يتم عمل نسخة يدوية بعد';
-      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks','app_settings'];
+      const tables = ['clients','projects','employees','vendors','items','sectors','transactions','procurements','employee_transactions','employee_salary_history','custody_records','custody_expenses','attendance_records','payroll_records','work_sections','work_items','profiles','audit_logs','user_permissions','project_tasks','app_settings','notification_rules','notifications'];
       // Check which tables actually exist
       const results = await Promise.all(tables.map(async t => {
         try { await API.request(t, 'GET', null, '?select=id&limit=1'); return { table: t, ok: true }; }
@@ -1228,7 +1425,8 @@ Object.assign(App, {
     'app_settings', 'clients', 'employees', 'vendors', 'sectors', 'items',
     'work_sections', 'work_items', 'projects', 'transactions', 'procurements',
     'employee_transactions', 'employee_salary_history', 'custody_records', 'custody_expenses',
-    'attendance_records', 'payroll_records', 'project_tasks', 'audit_logs', 'user_permissions', 'profiles'
+    'attendance_records', 'payroll_records', 'project_tasks', 'audit_logs', 'user_permissions', 'profiles',
+    'notification_rules', 'notifications'
   ],
   _restoreData: null,
 
@@ -1321,6 +1519,8 @@ Object.assign(App, {
         { key: 'transactions', label: '💰 معاملات المشاريع' },
         { key: 'office', label: '🏢 المكتب' },
         { key: 'employees', label: '🧑‍💼 الموظفين' },
+        { key: 'invoices', label: '🧾 الفواتير' },
+        { key: 'notifications', label: '🔔 الإشعارات' },
         { key: 'master', label: '📋 البيانات الأساسية' }
       ];
       const actions = [
@@ -1541,7 +1741,7 @@ Object.assign(App, {
 
       const rows = filtered.map((t, i) => [
         i+1,
-        {html: `<a href="#" onclick="App.go('clients');return false;" style="color:var(--gold);text-decoration:none">${App.esc(projectMap[t.project_id] || t.projects?.name || '-')}</a>`},
+        {html: `<a href="#" onclick="App.go('project',{projectId:'${t.project_id}'});return false;" style="color:var(--gold);text-decoration:none">${App.esc(projectMap[t.project_id] || t.projects?.name || '-')}</a>`},
         App.esc(t.name),
         t.assignee || '-',
         t.start_date || '-',

@@ -1,0 +1,36 @@
+name: Deploy DB Migrations
+
+# Applies new migration_*.sql files to Supabase on every push to main.
+# This replaces the fragile Supabase <-> GitHub dashboard integration:
+# migrations deploy from here, independent of the dashboard connection.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_URL                e.g. https://tvjkctttcijymqvaetsv.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY the service_role key (never stored in the repo)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'migration_*.sql'
+      - 'schema_full_fix.sql'
+      - '.github/workflows/supabase-migrate.yml'
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply pending migrations
+        run: npm run migrate
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
