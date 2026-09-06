@@ -16,8 +16,8 @@ BEGIN
     RAISE EXCEPTION 'service_role only';
   END IF;
 
-  IF p_password IS NULL OR length(p_password) < 6 THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Password must be at least 6 characters');
+  IF p_password IS NULL OR length(p_password) < 4 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Password must be at least 4 characters');
   END IF;
 
   UPDATE auth.users
